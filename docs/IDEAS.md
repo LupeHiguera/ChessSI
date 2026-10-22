@@ -37,9 +37,9 @@ top one, test it, log it, then move on.
 3. Null-move pruning - *Claude Code*
 4. Late move reductions - *Claude Code*
 5. Reverse futility pruning (static null move)
-6. Aspiration windows
-7. Late move pruning and futility pruning
-8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning
+6. Aspiration windows - *Claude Code*
+7. Late move pruning and futility pruning - *Claude Code*
+8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning - *Claude Code*
 9. Check evasions in quiescence search
 10. TT replacement by depth and age, and TT cutoffs in quiescence
 11. Internal iterative reductions when there is no TT move
