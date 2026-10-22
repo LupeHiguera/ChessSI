@@ -132,3 +132,28 @@ A final mechanism check gave both engines enough budget to complete the larger o
 For both cases with a deeper completed RFP iteration, the baseline selected the same move when it reached that depth. This supports an extra-completed-iteration explanation for those particular move changes. The equal-depth case retained its move disagreement. These observations separate two mechanisms behind a changed choice while leaving the strength question to the match. The earlier reference preferences still apply to the selected moves; reaching them through an additional iteration does not guarantee higher reference value.
 
 The six calls reported 657,107 visits. Evidence: `engines/rfp-validation/choice-depth-control-01/`; collector `control_choice_depth.py`, SHA-256 `697037eec7ed48db2dc279339f8578218926309830c07d8c6149f85186b1226e`. This was a bounded follow-up on the same three development cases, with no candidate edits or parameter tuning.
+
+## Isolated optimization: first-pawn legal witness
+
+An implementation-only variant tries the generator's exact first ordinary pawn push before constructing the full move list in `first_legal_move()`. The bitboard expression, exclusion of promotion-rank pawns and least-significant-target ordering match the existing generator. A legal push is returned immediately; an illegal push is undone and the original routine runs. With no such push, the original routine runs directly. Thus the intended invariant is the exact first legal move, including the search's fallback choice, rather than only a legal-move existence test. This is a Known optimization technique, not a new search heuristic.
+
+The variant lives only in `engines/rfp-validation/first-pawn-witness-01/`. It retains all RFP conditions and margins. The live match uses the original candidate throughout.
+
+Validation passed: 35 perft cases, 15 RFP boundary cases, the same 15 cases with AddressSanitizer/UBSan, and an additional sanitizer-enabled comparison on 2,203 positions. Those positions combine the existing check-evasion corpus, all 128 development roots, the RFP stalemate/escape controls and constructed pawn-edge fixtures with color mirrors. The fast routine returned exactly the same first move as complete generation, agreed with independent python-chess legality, and restored FEN, key and draw state. All 128 full-history search traces matched the frozen candidate's iteration scores, bounds, nodes, PVs and final move. Bench remained `11112214`.
+
+After one warmup per binary, six paired benchmarks alternated execution order on CPU 19 while the five-game match continued:
+
+| Pair | Original search time | Variant search time |
+| --- | ---: | ---: |
+| 1 | 1,194 ms | 1,189 ms |
+| 2 | 1,193 ms | 1,135 ms |
+| 3 | 1,241 ms | 1,158 ms |
+| 4 | 1,213 ms | 1,128 ms |
+| 5 | 1,258 ms | 1,146 ms |
+| 6 | 1,196 ms | 1,183 ms |
+
+The median changed from 1,204.5 to 1,152 ms, a 4.36% reduction, with the variant faster in all six pairs. This is a short local timing observation under concurrent load. It establishes neither an Elo gain nor a general speed guarantee. The implementation remains unpromoted and would require testing as part of the complete candidate under the repository protocol.
+
+The first diagnostic attempt passed the engine tests, then python-chess rejected a constructed diagonal-pin fixture because its white rook on h1 also checked the black king on h8 while White was to move. Moving that king to a8 corrected the fixture while retaining the intended pin. The original generator, failure explanation and corrected inputs are preserved. The remaining checks resumed against the unchanged build; already completed tests were not needlessly repeated. `reproduction.json` distinguishes the corrected setup script from the initially executed generator and the successful resume script.
+
+Variant source SHA-256: `c90b8528db3c61597054eb672cc5766405c73dce4ffb0ce1f0837437b784a26f`. Binary: `f8a903d6acda4b6ad860c4f2138151a9ab5274779380199a148800b32e7207be`. Successful continuation script `resume_first_pawn_witness.py`: `afc3a465c271ee8a1e500e9fc39862d1f04e9844da73a12f0fd6c7b8ee8132d3`. The archive retains the patch, plan, all test/build logs, input positions, exact search comparisons, warmups and raw timing pairs.
