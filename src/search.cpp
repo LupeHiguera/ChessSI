@@ -13,9 +13,9 @@
 
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
-// with MVV-LVA ordering, killer moves, null-move pruning and late move
-// reductions. Other pruning and history heuristics are left out on purpose:
-// each is a separate experiment for the ideas log.
+// with MVV-LVA ordering, killer moves, null-move pruning, late move
+// reductions and aspiration windows. Other pruning and history heuristics are
+// left out on purpose: each is a separate experiment for the ideas log.
 
 std::atomic<bool> Search::stop{false};
 
@@ -306,7 +306,27 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
     SearchResult result;
 
     for (int depth = 1; depth <= std::min(limits.depth, MAX_PLY - 1); ++depth) {
-        int score = s.search(-VALUE_INF, VALUE_INF, depth, 0);
+        // Aspiration windows: search a narrow window around the last score and
+        // widen whichever side fails until the score lands inside it.
+        int delta = 25;
+        int alpha = -VALUE_INF, beta = VALUE_INF;
+        if (depth >= 5) {
+            alpha = std::max(result.score - delta, -VALUE_INF);
+            beta = std::min(result.score + delta, int(VALUE_INF));
+        }
+        int score;
+        while (true) {
+            score = s.search(alpha, beta, depth, 0);
+            if (s.stopped)
+                break;
+            if (score <= alpha)
+                alpha = std::max(score - delta, -VALUE_INF);
+            else if (score >= beta)
+                beta = std::min(score + delta, int(VALUE_INF));
+            else
+                break;
+            delta *= 2;
+        }
         if (s.stopped)
             break;
 
