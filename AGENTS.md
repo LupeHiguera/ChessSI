@@ -36,15 +36,17 @@ The engine speaks UCI on stdin. Extra commands: `perft <depth>`, `d` (show board
 
 One idea per cycle. Do not batch ideas: a combined result says nothing about each one.
 
-1. Pick the top idea from the queue in `docs/IDEAS.md`, or propose a new one.
+1. Pick the top idea from the queue in `docs/IDEAS.md`, or propose a new one. The project's real
+   question is whether AI can find genuinely novel improvements, so look for those too (see
+   "Novel ideas" in `docs/IDEAS.md`), and check prior art before calling an idea novel.
 2. Implement the smallest version of it.
 3. `make test` must pass. If the change should not alter search (refactor, speedup), the bench node
    count must be unchanged.
 4. Run `scripts/sprt.sh` against the last accepted commit. Gainers use `ELO0=0 ELO1=5`; simplifications
    use `ELO0=-5 ELO1=0`.
-5. Add a row to the log in `docs/IDEAS.md`, pass or fail: date, model, idea, result, Elo with its
-   error bar, games. The model column names the AI that proposed and wrote the change. That column
-   is the benchmark data, so fill it in honestly.
+5. Add a row to the log in `docs/IDEAS.md`, pass or fail: date, model, kind (Known or Novel), idea,
+   result, Elo with its error bar, games. The model column names the AI that proposed and wrote the
+   change. That column is the benchmark data, so fill it in honestly.
 6. Passed: commit with the format below. Failed: revert the code, keep the log row.
 
 Commit message for an accepted change:

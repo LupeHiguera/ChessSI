@@ -3,10 +3,12 @@
 ## Benchmark log
 
 Every idea tested, newest first, pass or fail. **Model** is the AI that proposed and wrote the change.
+**Kind** is Known (an existing technique, reimplemented) or Novel (not found in prior art: the
+chessprogramming wiki, TalkChess, Stockfish's fishtest). Novel ideas are the real benchmark signal.
 **Result** is Passed, Failed or Inconclusive. **Elo** is the SPRT estimate with its error bar.
 
-| Date | Model | Idea | Result | Elo | Games |
-| --- | --- | --- | --- | --- | --- |
+| Date | Model | Kind | Idea | Result | Elo | Games |
+| --- | --- | --- | --- | --- | --- | --- |
 
 Baseline before the first idea: bench `20648203`.
 
@@ -15,6 +17,8 @@ What to watch over time:
 - **Hit rate:** the share of ideas that pass. A rising hit rate means better judgment, not just faster code.
 - **Elo per accepted idea** and **games per accepted change** show how efficient each model is.
 - **New models:** when one ships, run the same loop and compare these numbers with earlier models.
+- **Novel ideas:** how many are proposed, how many pass, and their Elo. This is the closest measure of
+  research ability rather than implementation speed.
 
 ## Queue
 
@@ -35,6 +39,25 @@ top one, test it, log it, then move on.
 12. Mate distance pruning; insufficient-material draws
 13. Time management: stop early when the best move is stable
 14. Phase 3: self-play data generation and a first NNUE network (trainer on the RTX 5080)
+
+## Novel ideas
+
+The goal is to find out whether AI can improve on the state of the art, not just reproduce it. Known
+techniques raise the baseline that novel ideas must beat; novel ideas are what the benchmark is about.
+Any part of the project counts: search, evaluation, training, data, or the testing method itself.
+
+Before testing a novel idea, check the prior-art sources above. If it turns out to exist, log it as
+Known and note where it was found. Proposals:
+
+- **Cheaper testing (methodology).** CPU time for SPRTs is the bottleneck. Ways to get more decisions
+  per CPU hour count as research too: early adjudication of decided games, cheap pre-screening at very
+  fast time controls, and testing several independent changes at once with a factorial design that
+  separates their effects (verified against single-idea SPRTs before it is trusted).
+- **GPU teacher for data (phase 3).** Data generation is CPU-bound. Train a larger network on the GPUs
+  from our own games and use it to relabel positions in large batches, so the CPU plays games and the
+  GPU supplies the evaluation targets.
+- **Uncertainty-aware evaluation.** Train the network to also predict how unsure it is, and use that to
+  set pruning margins and time use instead of fixed values.
 
 ## Measurements
 
