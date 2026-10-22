@@ -90,3 +90,31 @@ Artifacts: `engines/rfp-validation/shadow-depth3-01/` and `shadow-fresh-tt-01/`.
 At `2026-10-22T13:50:19.870416+00:00`, a frozen prefix contained 232 completed games. All 23,184 plies replayed legally. Every PGN result agreed with the log, all eleven statistics reports reconciled to completed pairs, and no crash, illegal-move or time-forfeit termination was recorded. The autosave represented an earlier 220-game report and matched that event boundary; it was not mistaken for the newer PGN count. The 26-file archive verified without integrity errors or missing copied artifacts.
 
 This is an integrity check of a live prefix, not an SPRT decision or an adjudication-accuracy estimate. The unique run's source, binary and process records remain the basis for the eventual terminal audit. Evidence: `engines/rfp-validation/match-audit-01/`, using the previously validated `audit_match.py` collector with SHA-256 `567fc6c868f9df7bfa8da871815f75d046c6b17f4eee93bfc83098fa2101bdac`.
+
+## Paired root-budget behavior and move references
+
+A further predeclared diagnostic compared all 128 frozen development roots at `go nodes 131072`, preserving full game histories and clearing the TT before each independent search. Existing exact RFP traces were reused. The accepted baseline was run both unchanged and with a final-node counter; every completed iteration's score, bounds, node count, PV and best move matched between those builds, and the counter build retained bench `20648203`. All replayed histories, PVs and chosen moves were legal. Node caps are requested budgets, not equal CPU time.
+
+| RFP completed depth versus baseline | Roots | Same chosen move | Different chosen move |
+| --- | ---: | ---: | ---: |
+| Lower | 1 | 1 | 0 |
+| Equal | 104 | 103 | 1 |
+| Higher | 23 | 21 | 2 |
+
+RFP completed one extra ply on 22 roots and two extra plies on one; it completed one fewer ply on one. The median completed depth was five for both engines. Chosen moves agreed on 125/128 roots. Baseline visits totaled 16,777,278 versus 16,777,263 for RFP; the engine's existing polling behavior produced one-node overshoots on 62 and 47 roots respectively. The fraction of visits after the last completed iteration was 40.89% for baseline and 42.06% for RFP. These visits are not automatically wasted or recoverable by a different time policy, and a deeper completed iteration is not a move-quality measurement.
+
+### Reference every differing move
+
+All three move disagreements were selected before reference queries, with no score filter. Each alternative received independent Stockfish 19 forced-root searches at 262,144 and 1,048,576 requested nodes, fresh TT and the complete recorded game history. Choice order alternated by case and budget. The checksum-verified universal binary used its embedded `nn-1a298aa575a0.nnue`, Threads 1, Hash 16, MultiPV 1, `NumaPolicy=none`, no strength limit, and CPU 19. All process/thread affinities and PV legality checks passed. No root or chosen child had an automatic termination, twofold/threefold repetition or claimable repetition/fifty-move draw under the recorded history.
+
+| Source game | Baseline choice | RFP choice | Extra completed depth | Reference difference at 262,144 nodes | At 1,048,576 nodes |
+| --- | --- | --- | ---: | ---: | ---: |
+| 1324 | `c3d5` | `c3b5` | +1 | -16 cp | -12 cp |
+| 1487 | `f6g6` | `f6e5` | 0 | +10 cp | +64 cp |
+| 1098 | `c7f4` | `a6b4` | +1 | -52 cp | -86 cp |
+
+Differences are the reference score for RFP's choice minus the reference score for the baseline choice, from the root player's perspective. All pairs were CP comparisons; no mate-to-CP conversion was made. The two deeper RFP choices were less favored by this reference, while the equal-depth choice was more favored. The sign persisted across both budgets. This is a selected three-case diagnostic, not evidence of a general preference, causal attribution to a particular cutoff, or an Elo effect. Reference scores are the last unbounded operational UCI scores, not guaranteed completed-depth evaluations or chess truth.
+
+The twelve reference queries requested 7,864,320 nodes and reported 7,866,947. No label-pilot data were added. The live match source, binaries and settings remained unchanged.
+
+Evidence: `engines/rfp-validation/root-budget-01/` and `root-reference-01/`, including plans, complete transcripts, exact comparisons and all three histories. Collectors: `compare_root_budget.py`, SHA-256 `c09a748f95dfb9c0fd521764d845e8857cf6150ee29c8e42248658d75431ae9a`; `reference_root_choices.py`, SHA-256 `a97257feb0cecde16c4cb96c63c08466db6461065a79d35af32836b30857eb8f`. No candidate parameter or selection threshold was changed after seeing these outcomes.
