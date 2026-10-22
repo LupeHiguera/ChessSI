@@ -14,8 +14,8 @@
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
 // with MVV-LVA ordering, killer moves, a history heuristic, null-move pruning,
-// late move reductions and aspiration windows. Other pruning is left out on
-// purpose: each is a separate experiment for the ideas log.
+// late move reductions, late move pruning and aspiration windows. Other pruning
+// is left out on purpose: each is a separate experiment for the ideas log.
 
 std::atomic<bool> Search::stop{false};
 
@@ -229,6 +229,13 @@ struct Searcher {
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
             bool quiet = is_quiet(m);
+
+            // Late move pruning: near the leaves, quiet moves this far down
+            // the ordering almost never matter, so skip them once a move has
+            // kept us out of a mate score.
+            if (!pvNode && !inCheck && quiet && depth <= 8 && best > -VALUE_MATE_IN_MAX_PLY
+                && quietCount >= 3 + depth * depth)
+                continue;
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;

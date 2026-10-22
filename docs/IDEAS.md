@@ -18,13 +18,19 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-22 | Claude Opus 5.5 | Known | Aspiration windows (from depth 5, ±25 cp, doubling on fail) | Passed | +56.1 ± 15.0 | 944 (13 concurrent) | Passed, 592 games, +43.1 ± 19.8 |
 | 2026-10-22 | Claude Opus 5.5 | Known | Late move pruning (non-PV, depth <= 8, skip quiets after 3 + depth²) | Failed | −140.0 ± 39.8 (pre-screen) | 238 (13 concurrent) | Failed, 238 games; full SPRT skipped by the gate |
 | 2026-10-22 | Claude Opus 5.5 | Known | History heuristic, retest of the same code on top of LMR | Passed | +60.4 ± 16.1 | 930 (13 concurrent) | Passed, 568 games, +48.6 ± 21.9 |
+| 2026-10-22 | Claude Opus 5.5 | Known | Late move pruning, retest of the same code on top of the history heuristic | Passed | +52.5 ± 14.9 | 1,000 (13 concurrent) | Inconclusive at 600-game cap, +12.2 ± 21.0 |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
 The history heuristic was retested on top of late move reductions, where quiet-move order matters
 far more than on the bare baseline. The identical code went from −2.7 ± 4.7 to +60.4 ± 16.1: a
 failed idea is a result about one baseline, not a verdict on the idea, and is worth retrying once
-the techniques it feeds are in.
+the techniques it feeds are in. Late move pruning, retried on top of history, went from −140 to
++52.5 ± 14.9.
+
+The pre-screen at 2+0.02 scored that late-move-pruning retest at only +12.2 ± 21.0. Pruning gains
+grow with search depth, so very short games understate them. The gate skips the full SPRT only on
+a negative pre-screen; a near-zero pre-screen for a depth-dependent idea should still go to 10+0.1.
 
 Baseline before the first idea: bench `20648203`.
 
