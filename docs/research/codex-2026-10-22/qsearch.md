@@ -166,3 +166,26 @@ The candidate is retained as a negative speed-screen result, not promoted or sub
 | Search equivalence and timing | `engines/qsearch-validation/quiet-tail-01/equivalence-timing/result.json` |
 
 All three implementation variants were proposed and written by GPT-6 (Codex), are classified Known, and remain local diagnostics of the same claimed quiescence idea. None has a completed strength test. They are recorded separately here so a failed local screen cannot disappear from the research record or become an unearned Elo claim.
+
+## Prepared implementation variant: quiet king escapes first
+
+The evasion-cost profile also motivated a small ordering variant of idea 9. After the original scoring step at checked quiescence nodes, zero-scored king moves receive score 1. Captures and queen promotions retain their larger scores; other quiet moves retain zero. This tests whether searching king escapes before quiet interpositions finds cutoffs sooner. It starts from the original corrected candidate and is not combined with any other prepared variant. Move ordering is Known: Stockfish separately ranks capture and quiet evasions, using history for the latter. This fixed preference is not claimed as a novel method or as Stockfish's rule. [Stockfish move picker](https://github.com/official-stockfish/Stockfish/blob/master/src/movepick.cpp)
+
+The variant passed all eight quiescence regressions, 35 perft cases and eight ASan/UBSan cases. Direct full-window quiescence probes agreed on every score across the existing 2,057 legal checked positions. All probes finished below their 131,072-node cap and restored FEN/key state. Aggregate direct-probe nodes fell from 225,101 to 194,982, a 13.38% reduction on this deliberately checked-position sample.
+
+The full depth-seven benchmark changed from `22824107` to `22730941`, only 0.408% fewer nodes. Changed nodes are expected for a move-ordering change. Fresh-TT UCI traces on all 14 unchanged positions found 44 iterations with different node counts; scores, bounds, PVs and best moves remained identical throughout. This diagnostic shows agreement on those searches, not universal search equivalence. The checked-only sample's larger reduction does not describe general playing workloads.
+
+Six alternating timing pairs on CPU 19 followed one warm-up per binary. Parent median time was 2,556 ms; variant median was 2,524 ms, 1.25% lower. Median throughput was 8,926,127 versus 9,002,387.5 nodes/second. Five pairs were faster and one slower; paired speed ratios ranged from 0.9779 to 1.0441, median 1.0095. The small runtime difference remains an uncertain observation under shared load. No strength test or promotion follows from it, and it recovers little of the original correction's measured overall cost.
+
+A setup check in `king-first-01/` stopped before any build or search because the earlier oracle's input digest referred to the newline-separated FEN stream, not its JSONL wrapper. The controlled attempt in `king-first-02/` checked both scopes: JSONL SHA-256 `8e2dfd3b6ff7d3a44936ba12ac9e2ca68f273da40332ad1f86c1af235e062dc0`, FEN-stream SHA-256 `ad2de9be40f1ba4c11aea59c5a87d3248db8fbd22d7521e325e03332f673e0ab`. The input itself had not changed.
+
+| Artifact | Identity |
+| --- | --- |
+| Variant source SHA-256 | `0a06fd936716314009e4230f94fafaace9b26cc5783c0b8bc1a3c59249ec2685` |
+| Variant binary SHA-256 | `7e11ebb3993e1d0eddddce5cefc79b695561881ab70769d810318d1eb50593bb` |
+| Parent-relative patch and validation | `engines/qsearch-validation/king-first-02/` |
+| Direct quiescence score/node pairs | `engines/qsearch-validation/king-first-02/direct-q-comparison.json` |
+| Root traces and all timing pairs | `engines/qsearch-validation/king-first-02/search-timing/` |
+| Combined diagnostic record | `engines/qsearch-validation/king-first-02/final-diagnostic.json` |
+
+Reproduction scripts are `prepare_king_first.py` and `time_king_first.py` under `engines/qsearch-validation/`; the initial setup script is retained as `prepare_king_first_01.py`. Proposer/implementer is GPT-6 (Codex). The active source and binary hashes remained unchanged. These four local variants remain separate attempts with no completed Elo result; none is substituted into the ongoing test.
