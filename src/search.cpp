@@ -14,8 +14,9 @@
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
 // with MVV-LVA ordering, killer moves, a history heuristic, null-move pruning,
-// late move reductions, late move pruning and aspiration windows. Other pruning
-// is left out on purpose: each is a separate experiment for the ideas log.
+// late move reductions, late move pruning, futility pruning and aspiration
+// windows. Other pruning is left out on purpose: each is a separate experiment
+// for the ideas log.
 
 std::atomic<bool> Search::stop{false};
 
@@ -199,10 +200,11 @@ struct Searcher {
         // Null-move pruning: if passing the turn still fails high, a real move
         // almost surely would too. Skipped in check, without pieces (zugzwang)
         // and right after another null move.
+        int staticEval = inCheck ? -VALUE_INF : evaluate(pos);
         Color us = pos.side_to_move();
         bool hasPieces = pos.pieces(us) & ~pos.pieces(PAWN) & ~pos.pieces(KING);
         if (!pvNode && !inCheck && !root && depth >= 3 && hasPieces && moveStack[ply - 1] != MOVE_NONE
-            && evaluate(pos) >= beta) {
+            && staticEval >= beta) {
             int R = 3 + depth / 6;
             moveStack[ply] = MOVE_NONE;
             pos.do_null_move();
@@ -235,6 +237,12 @@ struct Searcher {
             // kept us out of a mate score.
             if (!pvNode && !inCheck && quiet && depth <= 8 && best > -VALUE_MATE_IN_MAX_PLY
                 && quietCount >= 3 + depth * depth)
+                continue;
+
+            // Futility pruning: if even a generous margin over the static
+            // eval cannot reach alpha, a quiet move will not either.
+            if (!pvNode && !inCheck && quiet && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
+                && staticEval + 120 * depth <= alpha)
                 continue;
             if (!pos.do_move(m)) {
                 pos.undo_move(m);

@@ -19,6 +19,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-22 | Claude Opus 5.5 | Known | Late move pruning (non-PV, depth <= 8, skip quiets after 3 + depth²) | Failed | −140.0 ± 39.8 (pre-screen) | 238 (13 concurrent) | Failed, 238 games; full SPRT skipped by the gate |
 | 2026-10-22 | Claude Opus 5.5 | Known | History heuristic, retest of the same code on top of LMR | Passed | +60.4 ± 16.1 | 930 (13 concurrent) | Passed, 568 games, +48.6 ± 21.9 |
 | 2026-10-22 | Claude Opus 5.5 | Known | Late move pruning, retest of the same code on top of the history heuristic | Passed | +52.5 ± 14.9 | 1,000 (13 concurrent) | Inconclusive at 600-game cap, +12.2 ± 21.0 |
+| 2026-10-22 | Claude Opus 5.5 | Known | Futility pruning (non-PV, depth <= 6, skip quiets when eval + 120 × depth <= alpha) | Passed | +43.3 ± 13.4 | 1,210 (13 concurrent) | Inconclusive at 600-game cap, +33.7 ± 19.5 |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
