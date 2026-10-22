@@ -1,0 +1,163 @@
+--- a/src/position.h
++++ b/src/position.h
+@@ -1,6 +1,8 @@
+ #pragma once
+ 
+ #include <string>
++#include <algorithm>
++#include <iterator>
+ #include <vector>
+ 
+ #include "bitboard.h"
+@@ -9,6 +11,7 @@
+ 
+ // Everything do_move changes that undo_move cannot recompute.
+ struct StateInfo {
++    bool operator==(const StateInfo&) const = default;
+     uint64_t key;
+     int castling;
+     Square ep;
+@@ -20,6 +23,12 @@
+ class Position {
+ public:
+     static void init();
++    bool audit_equal(const Position& rhs) const {
++        return std::equal(std::begin(byType),std::end(byType),std::begin(rhs.byType))
++            && std::equal(std::begin(byColor),std::end(byColor),std::begin(rhs.byColor))
++            && std::equal(std::begin(board),std::end(board),std::begin(rhs.board))
++            && stm==rhs.stm && fullmove==rhs.fullmove && states==rhs.states;
++    }
+ 
+     // Returns false if the FEN cannot be parsed.
+     bool set(const std::string& fen);
+--- a/src/search.cpp
++++ b/src/search.cpp
+@@ -5,6 +5,9 @@
+ #include <cmath>
+ #include <sstream>
+ #include <thread>
++#include <cstdlib>
++#include <iostream>
++#include <stdexcept>
+ 
+ #include "eval.h"
+ #include "movegen.h"
+@@ -45,12 +48,13 @@
+     uint64_t nodes = 0;
+     bool stopped = false;
+ 
+-    Move pv[MAX_PLY + 1][MAX_PLY + 1];
+-    int pvLength[MAX_PLY + 1];
++    Move pv[MAX_PLY + 1][MAX_PLY + 1] = {};
++    int pvLength[MAX_PLY + 1] = {};
+     Move killers[MAX_PLY + 1][2] = {};
+     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
+ 
+-    Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
++    #include "../audit_members.inc"
++    Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l), auditRoot(p) {}
+ 
+     int64_t elapsed() const {
+         return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start).count();
+@@ -187,14 +191,16 @@
+ 
+         // Reverse futility pruning: at shallow null-window nodes, a large
+         // static advantage may make the remaining search unnecessary.
+-        if (!root && !pvNode && !inCheck && depth <= 3
++        if (!auditDisableRfp && !root && !pvNode && !inCheck && depth <= 3
+             && pos.rule50() + depth < 100
+             && std::abs(beta) < VALUE_MATE_IN_MAX_PLY
+             && (pos.pieces(pos.side_to_move()) & ~(pos.pieces(PAWN) | pos.pieces(KING)))) {
+             const int staticEval = evaluate(pos);
+-            if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 150 * depth >= beta)
+-                // A static advantage cannot override stalemate.
+-                return first_legal_move() == MOVE_NONE ? 0 : staticEval;
++            if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 150 * depth >= beta) {
++                const bool legal = first_legal_move() != MOVE_NONE;
++                audit_cutoff(alpha, beta, depth, ply, staticEval, legal);
++                return legal ? staticEval : 0;
++            }
+         }
+ 
+ 
+@@ -205,6 +211,8 @@
+         bool hasPieces = pos.pieces(us) & ~pos.pieces(PAWN) & ~pos.pieces(KING);
+         if (!pvNode && !inCheck && !root && depth >= 3 && hasPieces && moveStack[ply - 1] != MOVE_NONE
+             && evaluate(pos) >= beta) {
++            auditNmpAtEntry += ply == auditEntryPly;
++            incomingR[ply + 1] = 0; callKind[ply + 1] = 1;
+             int R = 3 + depth / 6;
+             moveStack[ply] = MOVE_NONE;
+             pos.do_null_move();
+@@ -237,9 +245,10 @@
+             moveStack[ply] = m;
+ 
+             int score;
+-            if (legalMoves == 1)
++            if (legalMoves == 1) {
++                incomingR[ply + 1] = 0; callKind[ply + 1] = 2;
+                 score = -search(-beta, -alpha, depth - 1, ply + 1);
+-            else {
++            } else {
+                 // Late quiet moves are searched shallower first, and only
+                 // re-searched at full depth if they beat alpha.
+                 int r = 0;
+@@ -249,11 +258,16 @@
+                         --r;
+                     r = std::clamp(r, 0, depth - 2);
+                 }
++                incomingR[ply + 1] = r; callKind[ply + 1] = r > 0 ? 3 : 4;
+                 score = -search(-alpha - 1, -alpha, depth - 1 - r, ply + 1);
+-                if (score > alpha && r > 0)
++                if (score > alpha && r > 0) {
++                    incomingR[ply + 1] = 0; callKind[ply + 1] = 5;
+                     score = -search(-alpha - 1, -alpha, depth - 1, ply + 1);
+-                if (score > alpha && score < beta)
++                }
++                if (score > alpha && score < beta) {
++                    incomingR[ply + 1] = 0; callKind[ply + 1] = 6;
+                     score = -search(-beta, -alpha, depth - 1, ply + 1);
++                }
+             }
+             pos.undo_move(m);
+             if (stopped)
+@@ -348,5 +362,11 @@
+     if (result.best == MOVE_NONE)
+         result.best = s.first_legal_move();
+     result.nodes = s.nodes;
++    if (s.auditSampling)
++        std::cerr << "RFPTOTAL {\"nodes\":" << s.nodes << ",\"cutoffs\":" << s.auditCutoffs
++            << ",\"reduced\":" << s.auditReduced << ",\"null_descendant\":" << s.auditNull
++            << ",\"both\":" << s.auditBoth << ",\"gate_hits\":" << s.auditGateHits
++            << ",\"samples\":" << s.auditSamples << ",\"shadow_nodes\":" << s.auditShadowNodes
++            << ",\"control_nodes\":" << s.auditControlNodes << "}\n";
+     return result;
+ }
+--- a/src/tt.h
++++ b/src/tt.h
+@@ -8,6 +8,7 @@
+ enum Bound : uint8_t { BOUND_NONE, BOUND_UPPER, BOUND_LOWER, BOUND_EXACT };
+ 
+ struct TTEntry {
++    bool operator==(const TTEntry&) const = default;
+     uint64_t key;
+     Move move;
+     int16_t score;
+@@ -19,6 +20,7 @@
+ // obvious early experiment.
+ class TranspositionTable {
+ public:
++    bool audit_equal(const TranspositionTable& rhs) const { return table == rhs.table; }
+     void resize(size_t megabytes);
+     void clear();
+ 
+--- a/src/uci.cpp
++++ b/src/uci.cpp
+@@ -110,6 +110,7 @@
+     Search::stop = false;
+     searchThread = std::thread([pos = std::move(pos), limits]() mutable {
+         SearchResult result = Search::think(pos, limits, true);
++        UCI::send("info string AUDITFINAL " + std::to_string(result.nodes));
+         UCI::send("bestmove " + move_to_uci(result.best));
+     });
+ }

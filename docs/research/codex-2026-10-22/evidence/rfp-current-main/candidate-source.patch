@@ -1,0 +1,59 @@
+diff --git a/Makefile b/Makefile
+index a770175..f3082d6 100644
+--- a/Makefile
++++ b/Makefile
+@@ -20,7 +20,7 @@ endif
+ SRCS := $(wildcard src/*.cpp)
+ HDRS := $(wildcard src/*.h)
+ 
+-.PHONY: all debug test bench clean
++.PHONY: all debug test test-rfp bench clean
+ 
+ all: $(EXE)
+ 
+@@ -32,11 +32,19 @@ debug:
+ 	$(CXX) -std=c++20 -O1 -g -fsanitize=address,undefined -Wall -Wextra $(SRCS) -o $(EXE)-debug $(LDFLAGS)
+ 
+ # Move generator correctness: every count in tests/perft.epd up to depth 5.
+-test: $(EXE)
++test: $(EXE) $(EXE)-rfp-tests
+ 	./$(EXE) perftsuite tests/perft.epd 5
++	./$(EXE)-rfp-tests
++
++# Search boundaries for the shallow reverse futility trial.
++$(EXE)-rfp-tests: tests/rfp.cpp $(SRCS) $(HDRS)
++	$(CXX) $(CXXFLAGS) tests/rfp.cpp $(filter-out src/main.cpp src/uci.cpp src/search.cpp,$(SRCS)) -o $@ $(LDFLAGS)
++
++test-rfp: $(EXE)-rfp-tests
++	./$(EXE)-rfp-tests
+ 
+ bench: $(EXE)
+ 	./$(EXE) bench
+ 
+ clean:
+-	rm -f $(EXE) $(EXE).exe $(EXE)-debug
++	rm -f $(EXE) $(EXE).exe $(EXE)-debug $(EXE)-rfp-tests
+diff --git a/src/search.cpp b/src/search.cpp
+index b1dc3f9..4ebcd04 100644
+--- a/src/search.cpp
++++ b/src/search.cpp
+@@ -185,6 +185,19 @@ struct Searcher {
+                 return ttScore;
+         }
+ 
++        // Reverse futility pruning: at shallow null-window nodes, a large
++        // static advantage may make the remaining search unnecessary.
++        if (!root && !pvNode && !inCheck && depth <= 3
++            && pos.rule50() + depth < 100
++            && std::abs(beta) < VALUE_MATE_IN_MAX_PLY
++            && (pos.pieces(pos.side_to_move()) & ~(pos.pieces(PAWN) | pos.pieces(KING)))) {
++            const int staticEval = evaluate(pos);
++            if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 150 * depth >= beta)
++                // A static advantage cannot override stalemate.
++                return first_legal_move() == MOVE_NONE ? 0 : staticEval;
++        }
++
++
+         // Null-move pruning: if passing the turn still fails high, a real move
+         // almost surely would too. Skipped in check, without pieces (zugzwang)
+         // and right after another null move.

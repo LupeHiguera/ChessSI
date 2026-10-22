@@ -1,0 +1,8 @@
+{
+  "recorded_utc": "2026-10-22T17:00:30+00:00",
+  "kind": "pre-query clerical correction",
+  "mistyped_roots_sha256": "8a197269535824b8d6edd978cec7988e7ec94ec3eaaa3bb3e2f7ba4ec9db505",
+  "verified_roots_sha256": "8a197269535824b8d6dedd978cec7988e7ec94ec3eaaa3bb3e2f7ba4ec9db505",
+  "evidence": "Actual roots file and old shadow-audit-01/plan.json agree. Initial plan omitted one hexadecimal d and contains only 63 digits. No corpus or parameters changed.",
+  "failed_preflight": "2026-10-22 approximately 17:00 UTC: prepare exited 1 at frozen() roots SHA assertion before attempt folder creation, compiler execution or engine query."
+}

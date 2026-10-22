@@ -1,0 +1,601 @@
+{
+  "schema_version": 2,
+  "recorded_utc": "2026-10-22T17:30:57.078763+00:00",
+  "baseline": "f801f8c519b0fe5b3d009b8f0664b049409a1188",
+  "purpose": "Compact diagnostic evidence only; no accepted strength result or promotion.",
+  "files": {
+    "README.md": {
+      "sha256": "fdfb3bb52a2389951d62b6c182259d016ce63a6947395a5e58b3de4d17a28057",
+      "bytes": 5415,
+      "kind": "derived",
+      "generator": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/finalize_readme.py",
+        "bytes": 3463,
+        "sha256": "41833f3025721259bc4ee55bdc4d2489daca6adfa094a41bb1e6826aa32e491c"
+      },
+      "inputs": [
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/README-before-final-review.md",
+          "bytes": 5461,
+          "sha256": "3d5eb3b44f172d9379de8a70006b9fb6ce3a9d3f6c0339f207f1e3b5c90e28f5"
+        }
+      ],
+      "description": "Final prose-spacing review of the generated README; substantive diagnostic claims unchanged."
+    },
+    "candidate-source.patch": {
+      "sha256": "ef81bde1eff9c9c67c31fb871329ff9500f7a10c67f058735c940aa1d9c9e10c",
+      "bytes": 2121,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/candidate.patch",
+        "sha256": "ef81bde1eff9c9c67c31fb871329ff9500f7a10c67f058735c940aa1d9c9e10c",
+        "bytes": 2121
+      }
+    },
+    "context-observer.patch": {
+      "sha256": "a3bbda009ce8088bbc190d5cce3ab3f822b8e5caa93b79c7bf5bbf2a9d811d93",
+      "bytes": 6284,
+      "kind": "derived",
+      "generator": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/build_bundle.py",
+        "sha256": "db30aacbf17e312c42aea60b893a6b5885c891aaf6a1e5bb52f266d01985d3b5",
+        "bytes": 20856
+      },
+      "inputs": [
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/src/position.h",
+          "sha256": "aa779f3134d67e49d1821dfe37fbc08c4f2ccbced226793298f9d9157796a850",
+          "bytes": 2265
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/src/position.h",
+          "sha256": "c94b6e1f3e2777c48ad1108507c8320bcc5df5c0d914b02c144b98872e85a13c",
+          "bytes": 2752
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/reference-search.cpp",
+          "sha256": "a13807cdfa9e1ced5d66f948ae70245386344634e88d1c7801603991d3f2cc84",
+          "bytes": 12237
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/src/search.cpp",
+          "sha256": "c8dd374912954dcec88b024d5e6495d0b04cc55f9dc93d6ac6bcb4b93e6e8fb9",
+          "bytes": 13328
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/src/tt.h",
+          "sha256": "77f4e7179b1194c85b59baf3d56f608bf21bb851af1062ce83224bb24deeb68d",
+          "bytes": 1197
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/src/tt.h",
+          "sha256": "f1ef85841b6ddf478742a1ff5b9f3b208aa8fe2d7d178e275e89fba6888f94a5",
+          "bytes": 1339
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/src/uci.cpp",
+          "sha256": "f8adb4e825d07afd654f82bb5df446ba7eb0d2011131e1732be79662adfdf81c",
+          "bytes": 6543
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/src/uci.cpp",
+          "sha256": "7b2fd0caa085a63004638ca9284ca2355e0c148e365bf9850f5a4dc5a475fc35",
+          "bytes": 6620
+        }
+      ],
+      "description": "Exact diagnostic source delta from the reconstructed current RFP candidate; support files are separate."
+    },
+    "context-reference.patch": {
+      "sha256": "70db6639848cfe55fc328bd6de6360fea7364d72cb294803ae97f2f97647852c",
+      "bytes": 373,
+      "kind": "derived",
+      "generator": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/build_bundle.py",
+        "sha256": "db30aacbf17e312c42aea60b893a6b5885c891aaf6a1e5bb52f266d01985d3b5",
+        "bytes": 20856
+      },
+      "inputs": [
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/src/uci.cpp",
+          "sha256": "f8adb4e825d07afd654f82bb5df446ba7eb0d2011131e1732be79662adfdf81c",
+          "bytes": 6543
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/reference/uci.cpp",
+          "sha256": "7b2fd0caa085a63004638ca9284ca2355e0c148e365bf9850f5a4dc5a475fc35",
+          "bytes": 6620
+        }
+      ],
+      "description": "Exact diagnostic source delta from the reconstructed current RFP candidate; support files are separate."
+    },
+    "context/audit_members.inc": {
+      "sha256": "20909e2b32cb06e73331a51716503bb98b5231fc1d1f73fc0a636037e8e84858",
+      "bytes": 7756,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/audit_members.inc",
+        "sha256": "20909e2b32cb06e73331a51716503bb98b5231fc1d1f73fc0a636037e8e84858",
+        "bytes": 7756
+      }
+    },
+    "context/collector.py": {
+      "sha256": "496b5ad47703e6c6a41c98ce5e4eaccd100e809d70099bb9c27f61c63caf8f11",
+      "bytes": 16841,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/collector.py",
+        "sha256": "496b5ad47703e6c6a41c98ce5e4eaccd100e809d70099bb9c27f61c63caf8f11",
+        "bytes": 16841
+      }
+    },
+    "context/controls.cpp": {
+      "sha256": "8839c6ac5c1c89f2af7d24e0a7072225c97a9bba02030eb72a2a08ae29eb60dc",
+      "bytes": 4817,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/controls.cpp",
+        "sha256": "8839c6ac5c1c89f2af7d24e0a7072225c97a9bba02030eb72a2a08ae29eb60dc",
+        "bytes": 4817
+      }
+    },
+    "context/controls.stderr": {
+      "sha256": "2b75ed78e706d482d69735cd11e2894934c243996d724da90b0422be871ae01e",
+      "bytes": 818,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/controls.stderr",
+        "sha256": "2b75ed78e706d482d69735cd11e2894934c243996d724da90b0422be871ae01e",
+        "bytes": 818
+      }
+    },
+    "context/controls.stdout": {
+      "sha256": "dbda4306f42c0dcc0dfa47d01b40d2b1072cd0b475d3171fba709fb8ded769ab",
+      "bytes": 373,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/controls.stdout",
+        "sha256": "dbda4306f42c0dcc0dfa47d01b40d2b1072cd0b475d3171fba709fb8ded769ab",
+        "bytes": 373
+      }
+    },
+    "context/label_budget.py": {
+      "sha256": "12bd0bc6ac1cc3ba584f71236ad1671842db34625d563a7206e5f8a6a05ba90b",
+      "bytes": 34169,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/label_budget.py",
+        "sha256": "12bd0bc6ac1cc3ba584f71236ad1671842db34625d563a7206e5f8a6a05ba90b",
+        "bytes": 34169
+      }
+    },
+    "context/launch-retry-metadata.json": {
+      "sha256": "ffee0a7ef7f469cea509b12ca2065942b67c1549cab372fa48375e8e97ab7d8a",
+      "bytes": 869,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/launch-retry-metadata.json",
+        "sha256": "ffee0a7ef7f469cea509b12ca2065942b67c1549cab372fa48375e8e97ab7d8a",
+        "bytes": 869
+      }
+    },
+    "context/optimization-guards-retry.json": {
+      "sha256": "2f655a032b228a2cefb9b8d2838fb547de762a4df4bbd3533488d3b925dad4da",
+      "bytes": 1095,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/optimization-guards-retry.json",
+        "sha256": "2f655a032b228a2cefb9b8d2838fb547de762a4df4bbd3533488d3b925dad4da",
+        "bytes": 1095
+      }
+    },
+    "context/optimization-guards.json": {
+      "sha256": "b06921537ba4d8b1e8312aa39bb4109b2db59b8c6faa97dcd48655f22d44fa6c",
+      "bytes": 1179,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/optimization-guards.json",
+        "sha256": "b06921537ba4d8b1e8312aa39bb4109b2db59b8c6faa97dcd48655f22d44fa6c",
+        "bytes": 1179
+      }
+    },
+    "context/peer-archival.json": {
+      "sha256": "add8d7d948f0f71090648f2a921272cf021bf1c220b2b91ea8976e17bdda4629",
+      "bytes": 1540,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/corpus/peer-verification-01/archival.json",
+        "sha256": "add8d7d948f0f71090648f2a921272cf021bf1c220b2b91ea8976e17bdda4629",
+        "bytes": 1540
+      }
+    },
+    "context/peer-verification.json": {
+      "sha256": "cfa155c8a2af7422a636ba4a57cec3c0c237f5aaba4dccbfa0e49af4657a560e",
+      "bytes": 1092,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/corpus/peer-verification-01/stdout.json",
+        "sha256": "cfa155c8a2af7422a636ba4a57cec3c0c237f5aaba4dccbfa0e49af4657a560e",
+        "bytes": 1092
+      }
+    },
+    "context/peer-verifier.py": {
+      "sha256": "e9bea5d0b294af1867e52d73fefe7243d920379085059ae59603297e652b1450",
+      "bytes": 6033,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/corpus/peer-verification-01/verifier.py",
+        "sha256": "e9bea5d0b294af1867e52d73fefe7243d920379085059ae59603297e652b1450",
+        "bytes": 6033
+      }
+    },
+    "context/plan.json": {
+      "sha256": "127c749fd45746bcb6a25d0c2df95d4fe2aae97f22fa1d09954d17e99537f5cc",
+      "bytes": 3013,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/plan.json",
+        "sha256": "127c749fd45746bcb6a25d0c2df95d4fe2aae97f22fa1d09954d17e99537f5cc",
+        "bytes": 3013
+      }
+    },
+    "context/preflight-correction.json": {
+      "sha256": "17bdd26c83c52f8742cf4ba6c77f852b41d0a0fca8ff31d7b86533d84def27bb",
+      "bytes": 637,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/preflight-correction.json",
+        "sha256": "17bdd26c83c52f8742cf4ba6c77f852b41d0a0fca8ff31d7b86533d84def27bb",
+        "bytes": 637
+      }
+    },
+    "context/result.json": {
+      "sha256": "91fe93df2a354230cec4789ad98b4c88b4e1e0d6330a0c428052fb3a996f0b3c",
+      "bytes": 782,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/corpus/result.json",
+        "sha256": "91fe93df2a354230cec4789ad98b4c88b4e1e0d6330a0c428052fb3a996f0b3c",
+        "bytes": 782
+      }
+    },
+    "context/validation.json": {
+      "sha256": "1934eb779c66da39a061ea1a6f894209ff3b33891fe5bca27b6bf4ff52ecf484",
+      "bytes": 6361,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/validation.json",
+        "sha256": "1934eb779c66da39a061ea1a6f894209ff3b33891fe5bca27b6bf4ff52ecf484",
+        "bytes": 6361
+      }
+    },
+    "experiment.json": {
+      "sha256": "21c73ab2b9de0088cff27a9c698ff3b0221bb570589ff4babb531af4612b6937",
+      "bytes": 3752,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/launch-plan.json",
+        "sha256": "21c73ab2b9de0088cff27a9c698ff3b0221bb570589ff4babb531af4612b6937",
+        "bytes": 3752
+      }
+    },
+    "first-pawn-witness.patch": {
+      "sha256": "bccf717052f32f2c7f1c7247a424e5655d80de0785747f130eedc2a55d1eb347",
+      "bytes": 791,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/candidate.patch",
+        "sha256": "bccf717052f32f2c7f1c7247a424e5655d80de0785747f130eedc2a55d1eb347",
+        "bytes": 791
+      }
+    },
+    "first-pawn/Check.mk": {
+      "sha256": "886d775d432e4f64943f0f840788bd38b2774daf72bb6258495fc31937f0c0f0",
+      "bytes": 223,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/Check.mk",
+        "sha256": "886d775d432e4f64943f0f840788bd38b2774daf72bb6258495fc31937f0c0f0",
+        "bytes": 223
+      }
+    },
+    "first-pawn/check.cpp": {
+      "sha256": "6f69c1ed1e548525c208b0ba2847b14fd468b8916aec0fd7dd2a4875a88e1ac8",
+      "bytes": 1004,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/check.cpp",
+        "sha256": "6f69c1ed1e548525c208b0ba2847b14fd468b8916aec0fd7dd2a4875a88e1ac8",
+        "bytes": 1004
+      }
+    },
+    "first-pawn/collect.py": {
+      "sha256": "d0038130673266340d22dab30ad6eeab526c3c94ddaeebe4f1ea1d42ef064d58",
+      "bytes": 26234,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/collect.py",
+        "sha256": "d0038130673266340d22dab30ad6eeab526c3c94ddaeebe4f1ea1d42ef064d58",
+        "bytes": 26234
+      }
+    },
+    "first-pawn/correctness.json": {
+      "sha256": "5f13689e9c637d16db5e9be6cd437c56d8f1b0087d60a3ce9a7f502bca26e44e",
+      "bytes": 553,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/correctness.json",
+        "sha256": "5f13689e9c637d16db5e9be6cd437c56d8f1b0087d60a3ce9a7f502bca26e44e",
+        "bytes": 553
+      }
+    },
+    "first-pawn/execution-plan.json": {
+      "sha256": "41362dc2677591c3b120a8b7c1781387991d3348af95a363ce6b7466d19389e5",
+      "bytes": 4046,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/execution-plan.json",
+        "sha256": "41362dc2677591c3b120a8b7c1781387991d3348af95a363ce6b7466d19389e5",
+        "bytes": 4046
+      }
+    },
+    "first-pawn/fixture-correction.json": {
+      "sha256": "b5b3e2d48690f5a0d44bffa618ae5cef0144b430b031375013b6c415b953cf52",
+      "bytes": 880,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/prior/fixture-correction.json",
+        "sha256": "b5b3e2d48690f5a0d44bffa618ae5cef0144b430b031375013b6c415b953cf52",
+        "bytes": 880
+      }
+    },
+    "first-pawn/order-verification.json": {
+      "sha256": "7bd530b1925faa0ca3505cb6c3398c106f3dee9c879d9bc563a2cd554392a9f6",
+      "bytes": 409,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/peer-verification-01/execution-order-result.json",
+        "sha256": "7bd530b1925faa0ca3505cb6c3398c106f3dee9c879d9bc563a2cd554392a9f6",
+        "bytes": 409
+      }
+    },
+    "first-pawn/order-verifier.py": {
+      "sha256": "c2298fbfd98b44d076db087a7844ae03c5d627de8ea9de6a1479425f1b7fcc4a",
+      "bytes": 1494,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/peer-verification-01/execution-order.py",
+        "sha256": "c2298fbfd98b44d076db087a7844ae03c5d627de8ea9de6a1479425f1b7fcc4a",
+        "bytes": 1494
+      }
+    },
+    "first-pawn/peer-verification.json": {
+      "sha256": "151bee02a6469fec89e66679229be7fe1673810d5fa0c43a78b3afb24c475d5a",
+      "bytes": 2196,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/peer-verification-01/result.json",
+        "sha256": "151bee02a6469fec89e66679229be7fe1673810d5fa0c43a78b3afb24c475d5a",
+        "bytes": 2196
+      }
+    },
+    "first-pawn/peer-verifier.py": {
+      "sha256": "35b62269a9087a2bb4e1d03b632a1b88ab60f966413941260a4cf3457b982f67",
+      "bytes": 14417,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/peer-verification-01/verify.py",
+        "sha256": "35b62269a9087a2bb4e1d03b632a1b88ab60f966413941260a4cf3457b982f67",
+        "bytes": 14417
+      }
+    },
+    "first-pawn/plan-amendment-01.json": {
+      "sha256": "c51c7a2300707a932c6e39fd6f0b69a86aa8e0a09e20bdba8b8be786a0202fb9",
+      "bytes": 10414,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/plan-amendment-01.json",
+        "sha256": "c51c7a2300707a932c6e39fd6f0b69a86aa8e0a09e20bdba8b8be786a0202fb9",
+        "bytes": 10414
+      }
+    },
+    "first-pawn/plan.json": {
+      "sha256": "27c54545401e967a15a279fd02518f2745036ac2e0d2c66dd9861c678f7c8d4d",
+      "bytes": 11883,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/plan.json",
+        "sha256": "27c54545401e967a15a279fd02518f2745036ac2e0d2c66dd9861c678f7c8d4d",
+        "bytes": 11883
+      }
+    },
+    "first-pawn/postrun-provenance.json": {
+      "sha256": "e580c0b79be4bc3afa7c1d54673cb9b8fa3127099d920db0c1a0b019d221e02a",
+      "bytes": 6813,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/postrun-provenance.json",
+        "sha256": "e580c0b79be4bc3afa7c1d54673cb9b8fa3127099d920db0c1a0b019d221e02a",
+        "bytes": 6813
+      }
+    },
+    "first-pawn/result.json": {
+      "sha256": "8a38c9871bdee53eaf3b73f33c66de559c8c83d140ac0f4ba91a0df22965a68c",
+      "bytes": 4109,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/result.json",
+        "sha256": "8a38c9871bdee53eaf3b73f33c66de559c8c83d140ac0f4ba91a0df22965a68c",
+        "bytes": 4109
+      }
+    },
+    "first-pawn/timing-pairs.jsonl": {
+      "sha256": "1a40d9a532fbe25a48c9b44dc5ca570b75c8d4ca59234c12decb30adde1fc215",
+      "bytes": 1667,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/timing-pairs.jsonl",
+        "sha256": "1a40d9a532fbe25a48c9b44dc5ca570b75c8d4ca59234c12decb30adde1fc215",
+        "bytes": 1667
+      }
+    },
+    "local-artifacts.json": {
+      "sha256": "203407708e05eff20186d67683c85b6a3409eb013690d43f331ee4a6a569d93e",
+      "bytes": 6012,
+      "kind": "derived",
+      "generator": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/build_bundle.py",
+        "sha256": "db30aacbf17e312c42aea60b893a6b5885c891aaf6a1e5bb52f266d01985d3b5",
+        "bytes": 20856
+      },
+      "inputs": [
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/roots.jsonl",
+          "sha256": "8a197269535824b8d6dedd978cec7988e7ec94ec3eaaa3bb3e2f7ba4ec9db505",
+          "bytes": 127126
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/positions.jsonl",
+          "sha256": "58effe17580f433a74e8d9ecc550f5ebf67c7bb8c1d79c6ca0f6721c73f26dec",
+          "bytes": 497905
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/corpus/samples.jsonl",
+          "sha256": "d597725d98685a53bf221fd528b2342200fc870e69056a1581ada856f33ff362",
+          "bytes": 561113
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/corpus/frozen.jsonl",
+          "sha256": "cac094dcd6dcd655271390a0bac34b0209e53567bec5e23ebf1c3166531ae1b7",
+          "bytes": 168944
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/corpus/reference.jsonl",
+          "sha256": "451577e586a9d681a2ed114d82f1b9521f9934c76e39819df238dbe06ac7a2c5",
+          "bytes": 171888
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/corpus/observer.jsonl",
+          "sha256": "8980bf54dffd805a45921ccbbabebc2e836750c5c5743e80e497b410a2e363b2",
+          "bytes": 193454
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-01/validation.json",
+          "sha256": "221d38b3c69126f56c76e1a2496e514f67aa8839e6aa997d22f6d1352b8193b6",
+          "bytes": 5989
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/artifact-inventory.json",
+          "sha256": "646a7903657b9d6f11eab8d386c71f0368bf585a276f5d91b4e07a54b932e199",
+          "bytes": 247961
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/peer-verification-01/input-hashes.json",
+          "sha256": "8b3ed0100a56c0dd1d5d65978ec5cf1624c28bd9d0d074367bcb2c3eb86cde4d",
+          "bytes": 266451
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/bench-invocations.jsonl",
+          "sha256": "0305e3757108ba28ce64c4d10de29da13dee6db50c2ba2b2443237ab2afcb035",
+          "bytes": 145624
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/progress.jsonl",
+          "sha256": "708bde1b7bae0609680b568cd01f4bb4337d172767f96fdec849c02d7a809644",
+          "bytes": 339066
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/variant-traces.jsonl",
+          "sha256": "cac094dcd6dcd655271390a0bac34b0209e53567bec5e23ebf1c3166531ae1b7",
+          "bytes": 168944
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/reference-selection.json",
+          "sha256": "3c82e71ea11564f57f4abd973af88dd8798edadbd361d2bca3ed7336eedf6912",
+          "bytes": 13582
+        }
+      ],
+      "description": "Selected full-file identities and deterministic complete-group index digests; bulky data remains local."
+    },
+    "patch-verification.json": {
+      "sha256": "7fa20d31248a9052c343b5475ebb73055ab90d606d55768a73a8e12feece6871",
+      "bytes": 7928,
+      "kind": "derived",
+      "generator": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/build_bundle.py",
+        "sha256": "db30aacbf17e312c42aea60b893a6b5885c891aaf6a1e5bb52f266d01985d3b5",
+        "bytes": 20856
+      },
+      "inputs": [
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/launch-plan.json",
+          "sha256": "21c73ab2b9de0088cff27a9c698ff3b0221bb570589ff4babb531af4612b6937",
+          "bytes": 3752
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/plan.json",
+          "sha256": "27c54545401e967a15a279fd02518f2745036ac2e0d2c66dd9861c678f7c8d4d",
+          "bytes": 11883
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/shadow-context-01/attempt-02/validation.json",
+          "sha256": "1934eb779c66da39a061ea1a6f894209ff3b33891fe5bca27b6bf4ff52ecf484",
+          "bytes": 6361
+        }
+      ],
+      "description": "Fresh byte-reconstruction verification against git archive of f801; no engine execution."
+    },
+    "rfp-engine.patch": {
+      "sha256": "0d9337ec36eac0b86ff1643af20bb05dd49755ec6bd66386a169b98ac57c40a0",
+      "bytes": 8044,
+      "kind": "derived",
+      "generator": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/build_bundle.py",
+        "sha256": "db30aacbf17e312c42aea60b893a6b5885c891aaf6a1e5bb52f266d01985d3b5",
+        "bytes": 20856
+      },
+      "inputs": [
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/candidate.patch",
+          "sha256": "ef81bde1eff9c9c67c31fb871329ff9500f7a10c67f058735c940aa1d9c9e10c",
+          "bytes": 2121
+        },
+        {
+          "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/candidate-rfp.cpp",
+          "sha256": "0350253bba4d77f01198a8779d12f8e3fe07f71fbfdcee859a693d1fe1e567d6",
+          "bytes": 5674
+        }
+      ],
+      "description": "Complete candidate reconstruction: exact launch diff followed by addition of the exact17-case regression test."
+    },
+    "tests-rfp.cpp": {
+      "sha256": "0350253bba4d77f01198a8779d12f8e3fe07f71fbfdcee859a693d1fe1e567d6",
+      "bytes": 5674,
+      "kind": "exact_copy",
+      "source": {
+        "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/candidate-rfp.cpp",
+        "sha256": "0350253bba4d77f01198a8779d12f8e3fe07f71fbfdcee859a693d1fe1e567d6",
+        "bytes": 5674
+      }
+    }
+  },
+  "copied_artifacts_verified": 35,
+  "derived_artifacts": 6,
+  "payload_bytes_excluding_manifest": 220111,
+  "generation_script": {
+    "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/build_bundle.py",
+    "sha256": "db30aacbf17e312c42aea60b893a6b5885c891aaf6a1e5bb52f266d01985d3b5",
+    "bytes": 20856
+  },
+  "cpu_affinity": [
+    19
+  ],
+  "scope": "Manifest excludes itself and its SHA sidecar. Exact-copy hashes equal source hashes. Derived files state their complete inputs and transformation.",
+  "final_readme_review": {
+    "recorded_utc": "2026-10-22T17:31:50.901131+00:00",
+    "script": {
+      "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/finalize_readme.py",
+      "bytes": 3463,
+      "sha256": "41833f3025721259bc4ee55bdc4d2489daca6adfa094a41bb1e6826aa32e491c"
+    }
+  }
+}

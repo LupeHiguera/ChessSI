@@ -1,0 +1,157 @@
+{
+  "verified_utc": "2026-10-22T17:30:56.993654+00:00",
+  "baseline": "f801f8c519b0fe5b3d009b8f0664b049409a1188",
+  "scope": "Source-byte patch reconstruction and copied-artifact checks only; zero engine launches/builds/tests/matches.",
+  "candidate_source_files_compared": 21,
+  "candidate_reconstruction_exact": true,
+  "first_pawn_source_files_compared": 21,
+  "first_pawn_reconstruction_exact": true,
+  "context": {
+    "reference": {
+      "source_files_compared": 18,
+      "exact": true,
+      "sha256": {
+        "src/bitboard.cpp": "c1013ad95f87aa3907f0ef00872f38b4ceb957ac3501af75103399d4dad79ee8",
+        "src/bitboard.h": "23990775a97c365d1834c7757460dfaa597138e46bf30999a75f7aeea4445569",
+        "src/eval.cpp": "9a79b233d86f24ed96d55440f97d1623dcf0e9cb04eed945ef0421eab9cdfff3",
+        "src/eval.h": "67f2130d25fbea28987c9ade5de3c1dea40d4374943ee9bc53789ee2e0601ce6",
+        "src/main.cpp": "7975b5c5c0bc235d393ddf6cc6b69fa6d4eb70df079b6a9547a42744f009ce74",
+        "src/movegen.cpp": "7640271920c14cc1eac291b167b4a25c9f46c830f35045da06320e9b36473839",
+        "src/movegen.h": "e2b2d99078992bb72f261eba21fe46d3e0320223b5f88a401879e859a258fcb9",
+        "src/perft.cpp": "5f05b85fc5be21b5b009c893fa6eda01550a3ca7805d4a29ddddd08d405de5d9",
+        "src/perft.h": "22a094ac38f3db22c937ed2e8b22c165a7d2573d86eab0bbebde34f340e30a37",
+        "src/position.cpp": "3161c29e8c3d0a3586f9acd4357de9d0c534c242f4e89530f3a392c869e58a32",
+        "src/position.h": "aa779f3134d67e49d1821dfe37fbc08c4f2ccbced226793298f9d9157796a850",
+        "src/search.cpp": "a13807cdfa9e1ced5d66f948ae70245386344634e88d1c7801603991d3f2cc84",
+        "src/search.h": "b3a2d1324d49d35ad0b9bb096390ca7fb1f11b0be719c033c4a00929e4c0cd84",
+        "src/tt.cpp": "99820a51ed5df3d899c6db152fa28c4527ec633de5fb3070bb66badf39675f39",
+        "src/tt.h": "77f4e7179b1194c85b59baf3d56f608bf21bb851af1062ce83224bb24deeb68d",
+        "src/types.h": "551f3f08ac30b50e9b7caa77a65805582d291a0af79cf1eec82bb60f544976ae",
+        "src/uci.cpp": "7b2fd0caa085a63004638ca9284ca2355e0c148e365bf9850f5a4dc5a475fc35",
+        "src/uci.h": "dfb040fd651692e5cd5b30aabbf60b9271faeaafbba637074bdfc21c5e002619"
+      }
+    },
+    "observer": {
+      "source_files_compared": 18,
+      "exact": true,
+      "sha256": {
+        "src/bitboard.cpp": "c1013ad95f87aa3907f0ef00872f38b4ceb957ac3501af75103399d4dad79ee8",
+        "src/bitboard.h": "23990775a97c365d1834c7757460dfaa597138e46bf30999a75f7aeea4445569",
+        "src/eval.cpp": "9a79b233d86f24ed96d55440f97d1623dcf0e9cb04eed945ef0421eab9cdfff3",
+        "src/eval.h": "67f2130d25fbea28987c9ade5de3c1dea40d4374943ee9bc53789ee2e0601ce6",
+        "src/main.cpp": "7975b5c5c0bc235d393ddf6cc6b69fa6d4eb70df079b6a9547a42744f009ce74",
+        "src/movegen.cpp": "7640271920c14cc1eac291b167b4a25c9f46c830f35045da06320e9b36473839",
+        "src/movegen.h": "e2b2d99078992bb72f261eba21fe46d3e0320223b5f88a401879e859a258fcb9",
+        "src/perft.cpp": "5f05b85fc5be21b5b009c893fa6eda01550a3ca7805d4a29ddddd08d405de5d9",
+        "src/perft.h": "22a094ac38f3db22c937ed2e8b22c165a7d2573d86eab0bbebde34f340e30a37",
+        "src/position.cpp": "3161c29e8c3d0a3586f9acd4357de9d0c534c242f4e89530f3a392c869e58a32",
+        "src/position.h": "c94b6e1f3e2777c48ad1108507c8320bcc5df5c0d914b02c144b98872e85a13c",
+        "src/search.cpp": "c8dd374912954dcec88b024d5e6495d0b04cc55f9dc93d6ac6bcb4b93e6e8fb9",
+        "src/search.h": "b3a2d1324d49d35ad0b9bb096390ca7fb1f11b0be719c033c4a00929e4c0cd84",
+        "src/tt.cpp": "99820a51ed5df3d899c6db152fa28c4527ec633de5fb3070bb66badf39675f39",
+        "src/tt.h": "f1ef85841b6ddf478742a1ff5b9f3b208aa8fe2d7d178e275e89fba6888f94a5",
+        "src/types.h": "551f3f08ac30b50e9b7caa77a65805582d291a0af79cf1eec82bb60f544976ae",
+        "src/uci.cpp": "7b2fd0caa085a63004638ca9284ca2355e0c148e365bf9850f5a4dc5a475fc35",
+        "src/uci.h": "dfb040fd651692e5cd5b30aabbf60b9271faeaafbba637074bdfc21c5e002619"
+      }
+    }
+  },
+  "commands": [
+    {
+      "cwd": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/candidate-reconstruction",
+      "argv": [
+        "git",
+        "apply",
+        "--check",
+        "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/rfp-engine.patch"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "warning: Makefile has type 100755, expected 100644\nwarning: src/search.cpp has type 100755, expected 100644\n"
+    },
+    {
+      "cwd": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/candidate-reconstruction",
+      "argv": [
+        "git",
+        "apply",
+        "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/rfp-engine.patch"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "warning: Makefile has type 100755, expected 100644\nwarning: src/search.cpp has type 100755, expected 100644\n"
+    },
+    {
+      "cwd": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/first-pawn-reconstruction",
+      "argv": [
+        "git",
+        "apply",
+        "--check",
+        "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/first-pawn-witness.patch"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "cwd": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/first-pawn-reconstruction",
+      "argv": [
+        "git",
+        "apply",
+        "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/first-pawn-witness.patch"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "cwd": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/context-reference-reconstruction",
+      "argv": [
+        "git",
+        "apply",
+        "--check",
+        "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/context-reference.patch"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "cwd": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/context-reference-reconstruction",
+      "argv": [
+        "git",
+        "apply",
+        "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/context-reference.patch"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "cwd": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/context-observer-reconstruction",
+      "argv": [
+        "git",
+        "apply",
+        "--check",
+        "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/context-observer.patch"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "cwd": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/context-observer-reconstruction",
+      "argv": [
+        "git",
+        "apply",
+        "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01/context-observer.patch"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "scratch": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/evidence-bundle-verification-01",
+  "cpu_affinity": [
+    19
+  ]
+}

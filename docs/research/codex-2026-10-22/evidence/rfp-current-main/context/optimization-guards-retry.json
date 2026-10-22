@@ -1,0 +1,18 @@
+[
+  {
+    "mode": "-O",
+    "chunk_id": "6b2898",
+    "wall_time_seconds": 0.4680256,
+    "exit_code": 1,
+    "original_token_count": 94,
+    "output": "Traceback (most recent call last):\n  File \"/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/audit_shadow_context.py\", line 18, in <module>\n    raise RuntimeError('Python optimization disables required audit checks; run without -O/PYTHONOPTIMIZE')\nRuntimeError: Python optimization disables required audit checks; run without -O/PYTHONOPTIMIZE\n"
+  },
+  {
+    "mode": "PYTHONOPTIMIZE",
+    "chunk_id": "7f2441",
+    "wall_time_seconds": 0.4870168,
+    "exit_code": 1,
+    "original_token_count": 94,
+    "output": "Traceback (most recent call last):\n  File \"/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/audit_shadow_context.py\", line 18, in <module>\n    raise RuntimeError('Python optimization disables required audit checks; run without -O/PYTHONOPTIMIZE')\nRuntimeError: Python optimization disables required audit checks; run without -O/PYTHONOPTIMIZE\n"
+  }
+]

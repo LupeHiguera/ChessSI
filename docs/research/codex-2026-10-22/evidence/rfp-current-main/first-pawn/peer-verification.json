@@ -1,0 +1,63 @@
+{
+  "status": "passed",
+  "verified_utc": "2026-10-22T17:23:04.801867+00:00",
+  "cpu_affinity": [
+    19
+  ],
+  "engines_launched": 0,
+  "builds_run": 0,
+  "bench_invocations_verified": 387,
+  "measured_invocations": 384,
+  "warmup_invocations": 2,
+  "validation_invocations": 1,
+  "all_bench_nodes": 609035,
+  "measured_nodes": 233869440,
+  "all_invocation_nodes": 235696545,
+  "commands_verified": 391,
+  "failed_commands": 0,
+  "timing_pairs": 6,
+  "bundle_size": 32,
+  "reference_bundle_search_ms": [
+    2619,
+    2541,
+    2501,
+    2527,
+    2516,
+    2561
+  ],
+  "variant_bundle_search_ms": [
+    2535,
+    2538,
+    2457,
+    2438,
+    2427,
+    2496
+  ],
+  "reference_total_search_ms": 15265,
+  "variant_total_search_ms": 14891,
+  "aggregate_search_time_change_percent": -2.4500491320013085,
+  "median_reference_bundle_search_ms": 2534.0,
+  "median_variant_bundle_search_ms": 2476.5,
+  "median_bundle_search_time_change_percent": -2.269139700078926,
+  "pair_search_ms_differences_variant_minus_reference": [
+    -84,
+    -3,
+    -44,
+    -89,
+    -89,
+    -65
+  ],
+  "variant_faster_search_ms_pairs": 6,
+  "median_reference_bundle_wall_seconds": 12.266047839475505,
+  "median_variant_bundle_wall_seconds": 12.392840946020442,
+  "variant_faster_wall_time_pairs": 1,
+  "exact_current_reference_trace_roots": 128,
+  "completed_iterations_compared": 1181,
+  "reference_binary_sha256": "b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab",
+  "variant_binary_sha256": "de5f32537455352cd7ee5fb191fd52e6e91cc6dceac4cf1be321e1d103477a56",
+  "source_input_count_per_build": 21,
+  "collector_sha256": "d0038130673266340d22dab30ad6eeab526c3c94ddaeebe4f1ea1d42ef064d58",
+  "collected_result_sha256": "8a38c9871bdee53eaf3b73f33c66de559c8c83d140ac0f4ba91a0df22965a68c",
+  "verifier_sha256": "35b62269a9087a2bb4e1d03b632a1b88ab60f966413941260a4cf3457b982f67",
+  "limits": "Finite saved cases, integer-millisecond reported search times and shared machine load. Six alternating bundles, not independent rating evidence. One pair differs by only 3 ms. Wall times include process/startup overhead and do not show the same direction; no reruns, engine queries, strength claim or promotion."
+}

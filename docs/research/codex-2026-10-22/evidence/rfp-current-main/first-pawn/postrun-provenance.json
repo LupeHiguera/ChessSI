@@ -1,0 +1,231 @@
+{
+  "recorded_utc": "2026-10-22T17:21:36.458512+00:00",
+  "scope": "Read-only artifact accounting; no new engine work or repetition.",
+  "completed_utc": "2026-10-22T17:20:26.316360+00:00",
+  "correctness": {
+    "release": [
+      "35 passed, 0 failed",
+      "17 passed, 0 failed"
+    ],
+    "sanitizer": [
+      "17 passed, 0 failed"
+    ],
+    "witness_positions": 2203,
+    "bench": 609035,
+    "exact_history_traces": 128
+  },
+  "reference_mode": "verified-existing-current-reference",
+  "prelaunch_build_environment": {
+    "scope": "Recorded after completion from the prelaunch read-only environment inspection in this session.",
+    "variables": {
+      "CXXFLAGS": null,
+      "ARCH": null,
+      "LDFLAGS": null,
+      "EXE": null,
+      "OS": null
+    },
+    "interpretation": "All five inherited variables were unset before launch.",
+    "inspection_argv": [
+      "taskset",
+      "-c",
+      "19",
+      "bash",
+      "--noprofile",
+      "--norc",
+      "-c",
+      "declare -p CXXFLAGS ARCH LDFLAGS EXE OS"
+    ],
+    "initial_inspection_failure": "An earlier Python -c environment inspection failed from Windows quoting; it made no changes and launched no engine."
+  },
+  "release_compile_lines": [
+    "taskset -c 19 g++ -std=c++20 -O3 -march=native -DNDEBUG -Wall -Wextra src/bitboard.cpp src/eval.cpp src/main.cpp src/movegen.cpp src/perft.cpp src/position.cpp src/search.cpp src/tt.cpp src/uci.cpp -o chesssi -pthread",
+    "taskset -c 19 g++ -std=c++20 -O3 -march=native -DNDEBUG -Wall -Wextra tests/rfp.cpp src/bitboard.cpp src/eval.cpp src/movegen.cpp src/perft.cpp src/position.cpp src/tt.cpp -o chesssi-rfp-tests -pthread"
+  ],
+  "observed_affinities": {
+    "release": [
+      {
+        "exe": "/usr/bin/make",
+        "affinity": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ]
+      },
+      {
+        "exe": "/usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus",
+        "affinity": [
+          19
+        ]
+      },
+      {
+        "exe": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/candidate/chesssi",
+        "affinity": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ]
+      },
+      {
+        "exe": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/candidate/chesssi-rfp-tests",
+        "affinity": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ]
+      }
+    ],
+    "sanitizer": [
+      {
+        "exe": "/usr/bin/make",
+        "affinity": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ]
+      },
+      {
+        "exe": "/usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus",
+        "affinity": [
+          19
+        ]
+      },
+      {
+        "exe": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01/run-01/candidate/sanitized-rfp-tests",
+        "affinity": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ]
+      }
+    ],
+    "witness-build": [
+      {
+        "exe": "/usr/bin/make",
+        "affinity": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ]
+      },
+      {
+        "exe": "/usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus",
+        "affinity": [
+          19
+        ]
+      }
+    ]
+  },
+  "accounting": {
+    "all_bench_invocations": 387,
+    "separate_correctness_bench": 1,
+    "timing_warmups": 2,
+    "measured_invocations": 384,
+    "measured_nodes": 233869440,
+    "all_bench_nodes": 235696545,
+    "queries_added_by_this_summary": 0
+  },
+  "raw_pair_search_ms": [
+    {
+      "pair": 0,
+      "order": [
+        "reference",
+        "variant"
+      ],
+      "reference": 2619,
+      "variant": 2535
+    },
+    {
+      "pair": 1,
+      "order": [
+        "variant",
+        "reference"
+      ],
+      "reference": 2541,
+      "variant": 2538
+    },
+    {
+      "pair": 2,
+      "order": [
+        "reference",
+        "variant"
+      ],
+      "reference": 2501,
+      "variant": 2457
+    },
+    {
+      "pair": 3,
+      "order": [
+        "variant",
+        "reference"
+      ],
+      "reference": 2527,
+      "variant": 2438
+    },
+    {
+      "pair": 4,
+      "order": [
+        "reference",
+        "variant"
+      ],
+      "reference": 2516,
+      "variant": 2427
+    },
+    {
+      "pair": 5,
+      "order": [
+        "variant",
+        "reference"
+      ],
+      "reference": 2561,
+      "variant": 2496
+    }
+  ],
+  "reported_search_time": {
+    "median_reference_bundle_ms": 2534.0,
+    "median_variant_bundle_ms": 2476.5,
+    "median_bundle_time_change_percent": -2.269139700078926,
+    "variant_faster_pairs": 6
+  },
+  "secondary_process_wall_time": {
+    "median_reference_bundle_seconds": 12.266047839475505,
+    "median_variant_bundle_seconds": 12.392840946020442,
+    "median_bundle_change_percent": 1.03369160306781,
+    "scope": "Whole-process wall time, including startup and process waiting, is separate from engine-reported search time and does not show the same improvement."
+  },
+  "full_sha256": {
+    "src/search.cpp": "db1a1c8dc6e254920bf4f60bd8b594e96fd68f4f130745e47538b1a421100319",
+    "tests/rfp.cpp": "0350253bba4d77f01198a8779d12f8e3fe07f71fbfdcee859a693d1fe1e567d6",
+    "candidate.patch": "bccf717052f32f2c7f1c7247a424e5655d80de0785747f130eedc2a55d1eb347",
+    "plan.json": "27c54545401e967a15a279fd02518f2745036ac2e0d2c66dd9861c678f7c8d4d",
+    "plan-amendment-01.json": "c51c7a2300707a932c6e39fd6f0b69a86aa8e0a09e20bdba8b8be786a0202fb9",
+    "collect.py": "d0038130673266340d22dab30ad6eeab526c3c94ddaeebe4f1ea1d42ef064d58",
+    "result.json": "8a38c9871bdee53eaf3b73f33c66de559c8c83d140ac0f4ba91a0df22965a68c",
+    "correctness.json": "5f13689e9c637d16db5e9be6cd437c56d8f1b0087d60a3ce9a7f502bca26e44e",
+    "reference-selection.json": "3c82e71ea11564f57f4abd973af88dd8798edadbd361d2bca3ed7336eedf6912",
+    "timing-pairs.jsonl": "1a40d9a532fbe25a48c9b44dc5ca570b75c8d4ca59234c12decb30adde1fc215",
+    "bench-invocations.jsonl": "0305e3757108ba28ce64c4d10de29da13dee6db50c2ba2b2443237ab2afcb035",
+    "execution-plan.json": "41362dc2677591c3b120a8b7c1781387991d3348af95a363ce6b7466d19389e5",
+    "candidate/chesssi": "de5f32537455352cd7ee5fb191fd52e6e91cc6dceac4cf1be321e1d103477a56",
+    "reference-chesssi": "b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab"
+  },
+  "summary_script_sha256": "6c2178fe096b112f7e5a0203597d9ac339515755ed9a3eaa776b6fcdc047726f",
+  "interpretation": "Fixed finite correctness and timing sample for isolated implementation only; no general speed guarantee, statistical strength claim, Elo result or promotion."
+}

@@ -1,0 +1,14 @@
+{
+  "recorded_utc": "2026-10-22 17:08:59 UTC",
+  "first_launch_error": "ModuleNotFoundError: No module named 'chess' at audit_shadow_context.py line 192 before corpus roots, engine spawn, or any query. Empty corpus directory created only.",
+  "queries_before_failure": 0,
+  "recovery": "Root authorized unchanged attempt-02 retry with existing local dependency via PYTHONPATH; no install, script, source, binary, corpus or gate change.",
+  "preflight": {
+    "chunk_id": "5d8376",
+    "wall_time_seconds": 0.2334163,
+    "exit_code": 0,
+    "original_token_count": 44,
+    "output": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/dependencies/python-chess/chess/__init__.py\n1.11.2\n1fde6a8e932508d14b31f6a584497b49c2969fc3c7cdc675347f819f0d667a5b\n{19}\n"
+  },
+  "pythonpath": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/dependencies/python-chess"
+}

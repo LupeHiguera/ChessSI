@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "completed": {
+    "release": [
+      "35 passed, 0 failed",
+      "17 passed, 0 failed"
+    ],
+    "sanitizer": [
+      "17 passed, 0 failed"
+    ],
+    "witness_positions": 2203,
+    "bench": 609035,
+    "exact_history_traces": 128
+  },
+  "binary_sha256": {
+    "reference": "b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab",
+    "variant": "de5f32537455352cd7ee5fb191fd52e6e91cc6dceac4cf1be321e1d103477a56"
+  },
+  "scope": "Finite development validation only; no universal-equivalence or strength claim."
+}

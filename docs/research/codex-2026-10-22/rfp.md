@@ -308,3 +308,38 @@ Evidence is retained under `engines/rfp-current-main-validation/shadow-context-0
 | Selected samples | `d597725d98685a53bf221fd528b2342200fc870e69056a1581ada856f33ff362` |
 
 This bounded audit found no cross-beta return among its completed selected probes. The inherited warm TT may contain RFP-influenced bounds, and NMP, LMR, evaluation, quiescence and draw handling remain approximate. Reused development roots, visit caps and sparse null-context coverage prevent a population error-rate or safety conclusion. The result supplies no Elo evidence and does not replace the separate strength test.
+
+## First-pawn legal witness on updated main
+
+The isolated follow-up completed at **17:20:26 UTC on 2026-10-22** with **mixed timing results**. It ports the same 12-line shortcut for the first generated ordinary pawn push to the frozen RFP candidate on `f801f8c`; it is a **Known implementation optimization**, with unchanged RFP predicates and complete-list fallback. It remains unpromoted and was not added to the live strength test. The earlier 4.36% observation used a different baseline and benchmark signature; the two results must not be combined.
+
+The pre-query amendment fixed six pairs in alternating reference/variant order, with **32 unchanged default benches per binary per pair** and one warmup per binary. All six declared pairs completed without reruns, replacements or sample extension. The two time measures give different answers:
+
+| Median per 32-bench bundle | Reference | Variant | Change | Variant faster pairs |
+| --- | ---: | ---: | ---: | ---: |
+| Engine-reported search time | 2,534.0 ms | 2,476.5 ms | -2.269% | 6 / 6 |
+| Whole-process wall time | 12.2660 s | 12.3928 s | +1.034% | 1 / 6 |
+
+Reported search times have integer-millisecond granularity; one pair differed by only 3 ms. Whole-process times include startup and waiting. These fixed observations under shared-machine load establish neither a general speed improvement nor a playing-strength gain.
+
+Validation passed **35 perft cases, 17 RFP boundary cases and the same 17 cases under AddressSanitizer/UBSan**, plus the unchanged **2,203-position exact-witness corpus**. All **128 full-history root traces**, covering **1,181 completed iterations**, matched the current frozen reference on depth, score, bounds, nodes, PV and final move. Every one of **387 bench invocations** returned **609035 nodes**: 384 measured, two warmups and one separate validation. Measured benches consumed 233,869,440 nodes; all benches consumed 235,696,545. The independent saved-artifact audit reconciled **391 commands with zero failures**. Its separate chronology check verified actual command order, all six alternating pairs of contiguous 32-invocation bundles, and ordered, nonoverlapping command UTC intervals.
+
+Direct benchmarks, witness checks and trace queries used CPU 19. Compiler processes were pinned to CPU 19; make and its release/sanitizer test recipes inherited CPUs 14-19, as recorded in the observed affinities. The postrun provenance records the prelaunch build-variable inspection and emitted compiler lines. No live source or binary changed.
+
+Local evidence is under `engines/rfp-current-main-validation/first-pawn-preparation-01/`: the immutable `plan.json`, pre-query `plan-amendment-01.json`, exact patch and collector, then `run-01/` with every command, bench invocation and trace. The completed outcome is `run-01/result.json`; accounting is `run-01/postrun-provenance.json`; independent verification and chronology are `run-01/peer-verification-01/result.json` and `execution-order-result.json`. These checks read saved evidence and launched no additional engines.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Variant `src/search.cpp` | `db1a1c8dc6e254920bf4f60bd8b594e96fd68f4f130745e47538b1a421100319` |
+| Reference binary | `b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab` |
+| Variant binary | `de5f32537455352cd7ee5fb191fd52e6e91cc6dceac4cf1be321e1d103477a56` |
+| Plan | `27c54545401e967a15a279fd02518f2745036ac2e0d2c66dd9861c678f7c8d4d` |
+| Pre-query amendment | `c51c7a2300707a932c6e39fd6f0b69a86aa8e0a09e20bdba8b8be786a0202fb9` |
+| Collector `collect.py` | `d0038130673266340d22dab30ad6eeab526c3c94ddaeebe4f1ea1d42ef064d58` |
+| Collected result | `8a38c9871bdee53eaf3b73f33c66de559c8c83d140ac0f4ba91a0df22965a68c` |
+| Postrun provenance | `e580c0b79be4bc3afa7c1d54673cb9b8fa3127099d920db0c1a0b019d221e02a` |
+| Peer verifier `verify.py` | `35b62269a9087a2bb4e1d03b632a1b88ab60f966413941260a4cf3457b982f67` |
+| Peer result | `151bee02a6469fec89e66679229be7fe1673810d5fa0c43a78b3afb24c475d5a` |
+| Chronology result | `7bd530b1925faa0ca3505cb6c3398c106f3dee9c879d9bc563a2cd554392a9f6` |
+
+The [compact updated-main evidence bundle](evidence/rfp-current-main/README.md) preserves reconstructible candidate and optimization patches, the context-build deltas, exact archived harnesses and independent verification records. Full raw transcripts and corpora remain local, identified by paths and hashes in the bundle.

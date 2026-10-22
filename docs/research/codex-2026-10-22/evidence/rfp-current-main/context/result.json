@@ -1,0 +1,26 @@
+{
+  "status": "complete",
+  "utc": "2026-10-22T17:09:27.715767+00:00",
+  "all_parent_traces_equal": true,
+  "totals": {
+    "nodes": 16777305,
+    "cutoffs": 1278266,
+    "reduced": 449909,
+    "null_descendant": 47834,
+    "both": 13681,
+    "gate_hits": 5076,
+    "samples": 979,
+    "shadow_nodes": 4844,
+    "control_nodes": 979
+  },
+  "samples": 979,
+  "completed": 979,
+  "censored": 0,
+  "contradictions": 0,
+  "reduced_samples": 267,
+  "null_descendant_samples": 19,
+  "reduced_contradictions": 0,
+  "null_descendant_contradictions": 0,
+  "live_hashes_unchanged": true,
+  "limitations": "Reused development roots, deterministic visit-capped sample, warm TT may contain RFP-derived bounds, NMP/LMR/eval/qsearch remain approximate. No population rate, safety or Elo claim."
+}

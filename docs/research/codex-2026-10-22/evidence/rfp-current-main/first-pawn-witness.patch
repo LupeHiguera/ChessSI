@@ -1,0 +1,21 @@
+--- reference/src/search.cpp
++++ variant/src/search.cpp
+@@ -295,6 +295,18 @@
+     }
+ 
+     Move first_legal_move() {
++        // The complete generator lists these single pawn pushes first.
++        const Color us = pos.side_to_move();
++        const Bitboard pawns = pos.pieces(us, PAWN) & ~(us == WHITE ? RANK_7 : RANK_2);
++        const Bitboard single = (us == WHITE ? pawns << 8 : pawns >> 8) & ~pos.pieces();
++        if (single) {
++            const Square to = lsb(single);
++            const Move m = make_move(to - (us == WHITE ? 8 : -8), to);
++            const bool legal = pos.do_move(m);
++            pos.undo_move(m);
++            if (legal)
++                return m;
++        }
+         MoveList list;
+         generate(pos, list, ALL_MOVES);
+         for (Move m : list) {

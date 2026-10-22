@@ -1,0 +1,8 @@
+CONTROL contradiction 0 passed
+CONTROL contradiction 1 passed
+CONTROL independent source versus clone NMP execution passed score 545 nodes 2 entry_NMP 1
+CONTROL NMP predecessor passed good_score 545 reset_score 511 good_nodes 2 reset_nodes 10
+CONTROL nonzero killers and active PV copied passed
+CONTROL null replay 0 passed
+CONTROL null replay 1 passed
+ALL CONTROLS PASSED

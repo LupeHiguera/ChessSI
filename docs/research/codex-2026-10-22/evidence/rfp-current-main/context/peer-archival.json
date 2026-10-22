@@ -1,0 +1,19 @@
+{
+    "kind":  "archival of a prior completed read-only execution; not a new execution",
+    "captured_utc":  "2026-10-22T17:15:17.7448981Z",
+    "prior_execution_utc":  null,
+    "prior_execution_utc_note":  "The successful tool result did not provide a UTC execution timestamp. No exact prior timestamp is asserted.",
+    "source_provenance":  "Exact Python here-string body from the successful exec_command invocation, archived from conversation tool-call text with LF line endings and a final newline. This is not a capture of transport bytes.",
+    "output_provenance":  "Captured stdout from that same successful tool result, copied without recalculation.",
+    "invocation":  "PowerShell here-string piped to wsl -d Ubuntu -- taskset -c 19 python3 -B -",
+    "working_directory":  "C:\\Users\\Lupe\\CLionProjects\\ChessSI-astra",
+    "tool_chunk_id":  "189161",
+    "tool_exit_code":  0,
+    "tool_wall_time_seconds":  1.8107474,
+    "earlier_launch_note":  "A preceding non-escalated WSL attempt returned Wsl/Service/E_ACCESSDENIED before Python execution; the recorded verification is the successful approved invocation.",
+    "archive_action":  "Only these archival files were written. No engines, probes, parser reruns, builds, report edits or Git actions were performed.",
+    "files":  {
+                  "verifier.py":  "e9bea5d0b294af1867e52d73fefe7243d920379085059ae59603297e652b1450",
+                  "stdout.json":  "cfa155c8a2af7422a636ba4a57cec3c0c237f5aaba4dccbfa0e49af4657a560e"
+              }
+}

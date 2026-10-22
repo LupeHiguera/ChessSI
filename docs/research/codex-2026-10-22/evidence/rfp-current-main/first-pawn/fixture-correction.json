@@ -1,0 +1,9 @@
+{
+  "recorded_utc": "2026-10-22T14:23:36.519904+00:00",
+  "initial_failure": "Independent python-chess validation rejected the diagonal-pin fixture: a white rook on h1 attacked the black king on h8 while White was to move (OPPOSITE_CHECK).",
+  "correction": "Move only the black king from h8 to a8 in that constructed fixture, keeping the white d2 pawn pinned by the c3 bishop to e1. Validate it and its mirror before queries.",
+  "completed_before_failure": "35 perft, 15 release boundary and 15 sanitizer boundary tests; reuse these unchanged-build results.",
+  "variant_source_sha256": "c90b8528db3c61597054eb672cc5766405c73dce4ffb0ce1f0837437b784a26f",
+  "variant_binary_sha256": "f8a903d6acda4b6ad860c4f2138151a9ab5274779380199a148800b32e7207be",
+  "resume_scope": "Continue the not-yet-started legal corpus, trace and timing checks. No engine code or parameters changed."
+}

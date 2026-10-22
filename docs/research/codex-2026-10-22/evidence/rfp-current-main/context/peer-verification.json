@@ -1,0 +1,41 @@
+{
+  "verified": true,
+  "roots": 128,
+  "transcripts": 384,
+  "samples": 979,
+  "completed": 979,
+  "censored": 0,
+  "cross_beta": 0,
+  "sampled_roots": 126,
+  "sampled_openings": 99,
+  "roots_at_cap": 119,
+  "both_samples": 4,
+  "null_context_roots": 9,
+  "by_depth": {
+    "1": 890,
+    "3": 21,
+    "2": 68
+  },
+  "call_kinds": {
+    "3": 267,
+    "4": 660,
+    "2": 52
+  },
+  "samples_with_killers": 977,
+  "real_plies_replayed": 72046,
+  "null_edges_replayed": 19,
+  "reference_parent_nodes": 16777305,
+  "observer_parent_nodes": 16777305,
+  "max_parent_overshoot": 3,
+  "max_probe_nodes": 164,
+  "hashes": {
+    "result.json": "91fe93df2a354230cec4789ad98b4c88b4e1e0d6330a0c428052fb3a996f0b3c",
+    "samples.jsonl": "d597725d98685a53bf221fd528b2342200fc870e69056a1581ada856f33ff362",
+    "frozen.jsonl": "cac094dcd6dcd655271390a0bac34b0209e53567bec5e23ebf1c3166531ae1b7",
+    "reference.jsonl": "451577e586a9d681a2ed114d82f1b9521f9934c76e39819df238dbe06ac7a2c5",
+    "observer.jsonl": "8980bf54dffd805a45921ccbbabebc2e836750c5c5743e80e497b410a2e363b2"
+  },
+  "affinity": [
+    19
+  ]
+}

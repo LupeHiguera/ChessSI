@@ -1,0 +1,38 @@
+﻿{
+    "recorded_utc":  "2026-10-22T16:53:30.1151737Z",
+    "model":  "GPT-6 (Codex)",
+    "deadline_utc":  "2026-10-22T17:30:00+00:00",
+    "question":  "Do RFP cutoffs in the new reduced/null-descendant contexts cross beta under a completed inherited-context, warm-TT RFP-disabled subtree search?",
+    "source_sha256":  "a13807cdfa9e1ced5d66f948ae70245386344634e88d1c7801603991d3f2cc84",
+    "binary_sha256":  "b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab",
+    "bench":  609035,
+    "roots":  "engines/qsearch-validation/game-profile-01/roots.jsonl",
+    "roots_sha256":  "8a197269535824b8d6edd978cec7988e7ec94ec3eaaa3bb3e2f7ba4ec9db505",
+    "root_count":  128,
+    "parent_nodes":  131072,
+    "probe_requested_additional_nodes":  131072,
+    "per_root_cap":  8,
+    "sampler_seed_hex":  "6a09e667f3bcc909",
+    "sampler":  "Unchanged mix64(key xor depth\u003c\u003c32 xor (beta+VALUE_INF)\u003c\u003c16 xor parent nodes xor seed); low 8 bits zero, first eight legal-cutoff samples per root; no replacement or widening",
+    "context":  "Separate Position-bound Searchers copy full semantic Position/history/null state, TT, killers, moveStack and initialized active PV; independent local budgets preserve original polling phase. Global stop is never overwritten.",
+    "context_tags":  [
+                         "incoming LMR reduction and call stage; reset before verification",
+                         "null ancestor count",
+                         "nonzero killer slots",
+                         "depth and operative alpha/beta"
+                     ],
+    "controls":  [
+                     "two known beta1/depth1 contradictions",
+                     "NMP-entry control with real predecessor, reset-stack negative control",
+                     "nonzero killer payload preservation with reset-killer negative check",
+                     "native typed-path replay for both null colors",
+                     "state restoration including all history fields"
+                 ],
+    "parent_validation":  "Frozen candidate, counter-only reference and observer: same completed iteration depth/score/bounds/nodes/PV and final move; reference/observer also equal final node count. Reference/observer bench609035.",
+    "budget_upper_requested":  318767104,
+    "budget_note":  "Three128-root parent runs plus at most1024 disabled and1024 enabled probes; controls/bench additional; native polling/unwind overshoot recorded, stopped scores censored",
+    "timeout_seconds_per_call":  60,
+    "execution_cpu":  19,
+    "stop":  "Stop on failed controls, drift, state or trace mismatch, external stop or deadline. No corpus run until root/peer review. Stop after one pass even if no contradictions or no selected reduced/null contexts.",
+    "limitations":  "Reused development roots, deterministic visit-capped sample, warm TT may contain RFP-derived bounds, NMP/LMR/eval/qsearch remain approximate. No population rate, safety or Elo claim."
+}

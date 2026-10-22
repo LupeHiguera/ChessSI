@@ -1,0 +1,166 @@
+{
+    "schema_version":  1,
+    "recorded_utc":  "2026-10-22T17:01:23.5120738Z",
+    "model":  "GPT-6 (Codex)",
+    "status":  "Pre-query design amendment only; no execution authorized by this record",
+    "original_plan":  "plan.json",
+    "original_plan_sha256":  "27c54545401e967a15a279fd02518f2745036ac2e0d2c66dd9861c678f7c8d4d",
+    "supersedes":  [
+                       "future_validation make argv lists",
+                       "timing"
+                   ],
+    "unchanged":  [
+                      "Original plan bytes",
+                      "All source/test/patch files",
+                      "12-line implementation",
+                      "RFP predicates",
+                      "Correctness corpus and trace comparison",
+                      "Default benchmark positions/depth/signature"
+                  ],
+    "variant_search_sha256":  "db1a1c8dc6e254920bf4f60bd8b594e96fd68f4f130745e47538b1a421100319",
+    "candidate_patch_sha256":  "bccf717052f32f2c7f1c7247a424e5655d80de0785747f130eedc2a55d1eb347",
+    "global_followup_deadline_utc":  "2026-10-22T18:00:00+00:00",
+    "build_commands":  [
+                           {
+                               "stage":  "release",
+                               "cwd":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01",
+                               "argv":  [
+                                            "taskset",
+                                            "-c",
+                                            "14-19",
+                                            "make",
+                                            "-j6",
+                                            "-B",
+                                            "CXX=taskset -c 19 g++",
+                                            "test"
+                                        ],
+                               "make_affinity":  [
+                                                     14,
+                                                     15,
+                                                     16,
+                                                     17,
+                                                     18,
+                                                     19
+                                                 ],
+                               "compiler_affinity":  [
+                                                         19
+                                                     ],
+                               "recipe_affinity":  "The existing make test recipes inherit CPUs14-19; record their actual affinity and do not label this recipe execution CPU19-only."
+                           },
+                           {
+                               "stage":  "sanitizer",
+                               "cwd":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01",
+                               "argv":  [
+                                            "taskset",
+                                            "-c",
+                                            "14-19",
+                                            "make",
+                                            "-j6",
+                                            "-B",
+                                            "EXE=sanitized",
+                                            "CXX=taskset -c 19 g++",
+                                            "CXXFLAGS=-std=c++20 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Wall -Wextra",
+                                            "test-rfp"
+                                        ],
+                               "make_affinity":  [
+                                                     14,
+                                                     15,
+                                                     16,
+                                                     17,
+                                                     18,
+                                                     19
+                                                 ],
+                               "compiler_affinity":  [
+                                                         19
+                                                     ],
+                               "recipe_affinity":  "The existing make test-rfp recipe inherits CPUs14-19; record its actual affinity."
+                           },
+                           {
+                               "stage":  "witness_oracle_build",
+                               "cwd":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/first-pawn-preparation-01",
+                               "argv":  [
+                                            "taskset",
+                                            "-c",
+                                            "14-19",
+                                            "make",
+                                            "-j6",
+                                            "CXX=taskset -c 19 g++",
+                                            "-f",
+                                            "Check.mk"
+                                        ],
+                               "make_affinity":  [
+                                                     14,
+                                                     15,
+                                                     16,
+                                                     17,
+                                                     18,
+                                                     19
+                                                 ],
+                               "compiler_affinity":  [
+                                                         19
+                                                     ],
+                               "note":  "Unchanged Check.mk already invokes taskset -c 19 g++ literally. The supplied CXX wrapper documents the prescribed compiler policy; no Check.mk edit is made."
+                           }
+                       ],
+    "direct_execution":  "Direct tests, witness checks, trace queries, benchmark validation, warmups and timing invocations must run under taskset -c 19. Record actual affinity. Do not run while the context audit owns CPU19.",
+    "timing":  {
+                   "authorization":  "Deferred until separately authorized, correctness passes, and root releases CPU19 after context audit.",
+                   "rationale":  "The updated default benchmark is609035 nodes versus11112214 previously, about18.2 times smaller. Bundles reduce single-invocation millisecond granularity/noise without changing the benchmark.",
+                   "benchmark_argv":  [
+                                          "taskset",
+                                          "-c",
+                                          "19",
+                                          "BINARY",
+                                          "bench"
+                                      ],
+                   "expected_nodes_each":  609035,
+                   "positions_count":  14,
+                   "depth":  "Unchanged default",
+                   "warmup_invocations_per_binary":  1,
+                   "measured_pair_count":  6,
+                   "invocations_per_binary_per_pair":  32,
+                   "pair_orders":  [
+                                       [
+                                           "reference",
+                                           "variant"
+                                       ],
+                                       [
+                                           "variant",
+                                           "reference"
+                                       ],
+                                       [
+                                           "reference",
+                                           "variant"
+                                       ],
+                                       [
+                                           "variant",
+                                           "reference"
+                                       ],
+                                       [
+                                           "reference",
+                                           "variant"
+                                       ],
+                                       [
+                                           "variant",
+                                           "reference"
+                                       ]
+                                   ],
+                   "measured_invocations_per_binary":  192,
+                   "total_invocations_per_binary_including_warmup":  193,
+                   "measured_invocations_total":  384,
+                   "total_invocations_including_warmups":  386,
+                   "expected_nodes_per_measured_bundle":  19489120,
+                   "expected_measured_nodes_total":  233869440,
+                   "expected_nodes_total_including_warmups":  235087510,
+                   "aggregate":  "Within each binary bundle sum the32 reported search-millisecond values; retain each invocation and its reported nodes. Compare six alternating paired bundle totals, report raw pairs and medians. Wall time is secondary and separately labeled.",
+                   "output":  "Use exclusively new outputs. Preserve stdout/stderr, reported search ms, actual nodes, wall time, command, affinity and binary/source hashes for every invocation, including warmups and incomplete work.",
+                   "stopping":  "Exactly the declared six paired bundles after correctness and release, subject to fixed18:00UTC cutoff. No adaptive repeats, replacements, sample growth or selection based on measured speed. Stop on errors, node/hash mismatch, external stop or deadline; incomplete timings remain incomplete.",
+                   "interpretation":  "New updated-candidate implementation measurement only. No reused historical speed result, Elo claim, or promotion."
+               },
+    "execution_record":  {
+                             "builds":  0,
+                             "tests":  0,
+                             "engine_queries":  0,
+                             "timing_runs":  0
+                         }
+}

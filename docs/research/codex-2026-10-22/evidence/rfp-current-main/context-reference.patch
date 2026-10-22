@@ -1,0 +1,10 @@
+--- a/src/uci.cpp
++++ b/src/uci.cpp
+@@ -110,6 +110,7 @@
+     Search::stop = false;
+     searchThread = std::thread([pos = std::move(pos), limits]() mutable {
+         SearchResult result = Search::think(pos, limits, true);
++        UCI::send("info string AUDITFINAL " + std::to_string(result.nodes));
+         UCI::send("bestmove " + move_to_uci(result.best));
+     });
+ }
