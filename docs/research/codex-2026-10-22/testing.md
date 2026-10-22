@@ -222,3 +222,23 @@ Use the existing prescribed statistical bounds. Parse the final verdict and coun
 Log all proposals, variants, screened candidates, failed runs, interruptions, and confirmations with links to immutable artifacts. Record proposer, implementer, and substantive human interventions separately. Comparisons between AI models need matched starting engines, permissions, compute budgets, and opportunities; a raw hit rate on progressively harder baselines is not a controlled model comparison.
 
 For this session, the useful order is: preserve the live evidence; implement and verify run isolation in the assigned worktree; finish one engine experiment; then use completed games to calibrate adjudication. Book optimization and weighted sequential testing should wait until enough trustworthy paired experiments exist to evaluate them.
+## Validated interruption and recovery behavior
+
+On 2026-10-22 UTC, GPT-6 (Codex) exercised the installed fastchess `alpha 1.8.2`, commit suffix `f618e34`, on lifecycle fixtures using only CPU 19 and one concurrent game. These were baseline-versus-baseline fixtures with node caps and a move cap; they establish process and data behavior, not playing strength or statistical calibration. The active five-game quiescence SPRT was not interrupted.
+
+The installed revision's [signal handler](https://github.com/Disservin/fastchess/blob/f618e34/app/src/core/globals/globals.cpp) maps SIGINT to tournament stop and abnormal-termination flags. Its [main function](https://github.com/Disservin/fastchess/blob/f618e34/app/src/main.cpp) reports an interrupted tournament and a recovery command. The fixture confirmed that SIGINT terminated the manager, retained its configuration and completed PGNs, and allowed a verified terminal snapshot. A second fixture completed normally and was archived without receiving a signal. Deliberately incorrect manager and engine hashes were rejected while the fixture manager remained alive.
+
+The interrupted fixture contained 381 completed legal games but its persisted configuration counted 380. Resuming from a copy of that configuration and appending to a copy of the PGN produced 385 PGN entries for 384 counted games. Round 191's first game appeared twice; in this fixed-node fixture the duplicate had identical moves and result. Do not assume timed-game duplicates will be identical. The original interrupted artifacts were preserved unchanged.
+
+Running `prepare_corpus.py` on that resumed PGN correctly rejected game 382 with `Duplicate game key (Round, White, Black)`. The fixture therefore checks a real recovery output, beyond the existing synthetic parser tests. The initial CLI invocation omitted the required seed and was rejected before parsing; its error was retained, then the check was repeated with seed `20261022`.
+
+**Recovery rule:** keep the pre-interruption archive, resume command, original byte count, configuration and schedule identities. Use fastchess's authoritative completed-pair accounting for the match. Do not derive a new result by summing an appended PGN. A corpus needs explicitly reconciled session segments, with any repeated unpaired games identified and documented. The current corpus tool intentionally rejects unresolved duplicates rather than guessing which copy to use.
+
+Local scripts and artifacts are under ignored `engines/qsearch-validation/`:
+
+- `watch_match.py`: a Linux pidfd guard with process hash, start-time, command, working-directory and affinity checks; it sends at most one SIGINT and does not restart a match or interpret an SPRT verdict.
+- `watch-smoke-01/`: wrong-identity rejection, timed interruption, legal-PGN replay and verified terminal archive.
+- `watch-natural-01/`: normal completion, no signal, verified terminal archive.
+- `resume-smoke-01/`: copied recovery session, duplicate identity report and corpus-rejection evidence.
+
+The guard is local session infrastructure, not a general scheduler. At the deadline it permits up to 60 seconds for graceful termination, then records whether the manager remains live. A live snapshot is explicitly distinct from a terminal snapshot. Before replacing run files or starting another experiment, wait for its `state.json` to report `archived` and inspect the final snapshot. Process exit and byte integrity alone do not establish an accepted strength result.
