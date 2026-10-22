@@ -79,3 +79,12 @@ each result here with the date, the commit and its bench.
 
 | Date | Commit | Bench | Opponents | Games | Rating |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-22 | `74412b7` | 864538 | Stash 12, 13, 14, 15.3, 17, 19 (CCRL Blitz 1883-2474) | 2,400 at 10+0.1, 8moves_v3 book, 13 concurrent | **2440 ± 19** |
+
+The 2026-10-22 gauntlet used a balanced book (`8moves_v3`), not the SPRT book: UHO openings give one
+side an edge, which stretches rating gaps. Run it with `scripts/gauntlet.sh`. The ± is statistical
+only; 10+0.1 is much faster than CCRL's 2+1, so treat the rating as approximate. Performance rose
+with opponent strength (2356-2402 vs the weakest, 2461-2467 vs Stash 17 and 19), a sign of rating
+compression at the extremes, so the true figure is likely nearer 2460. The 12 time forfeits, all by
+Stash, were excluded. Stash 20.0.1 (2512) and 21 (2714) are now built for later gauntlets, so the
+next one has opponents above ChessSI.
