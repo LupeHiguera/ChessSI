@@ -1,0 +1,44 @@
+{
+  "verified_utc": "2026-10-22T14:37:58.218407+00:00",
+  "method": "Apply both complete patches sequentially to an isolated copy of the accepted baseline, then compare every engine/header/build/perft/regression source byte hash.",
+  "candidate_changed_files": [
+    "Makefile",
+    ".gitignore",
+    "tests/rfp.cpp",
+    "src/search.cpp"
+  ],
+  "candidate_reconstruction_exact": true,
+  "optimized_reconstruction_exact": true,
+  "files_compared_each_stage": 22,
+  "commands": [
+    {
+      "patch": "rfp-engine.patch",
+      "check_only": true,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "patch": "rfp-engine.patch",
+      "check_only": false,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "patch": "first-pawn-witness.patch",
+      "check_only": true,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "patch": "first-pawn-witness.patch",
+      "check_only": false,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "scope": "Patch completeness and source-byte reconstruction. Existing test results belong to the already tested identical sources; no new build or match is claimed."
+}

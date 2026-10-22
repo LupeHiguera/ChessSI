@@ -1,0 +1,42 @@
+{
+  "comparisons": [
+    {
+      "game_number": 1324,
+      "target_depth": 6,
+      "baseline_move": "c3b5",
+      "rfp_move": "c3b5",
+      "same_move_at_matched_depth": true,
+      "prior_baseline_move": "c3d5",
+      "prior_rfp_move": "c3b5",
+      "baseline_reported_nodes": 182324,
+      "rfp_reported_nodes": 97300
+    },
+    {
+      "game_number": 1487,
+      "target_depth": 4,
+      "baseline_move": "f6g6",
+      "rfp_move": "f6e5",
+      "same_move_at_matched_depth": false,
+      "prior_baseline_move": "f6g6",
+      "prior_rfp_move": "f6e5",
+      "baseline_reported_nodes": 72625,
+      "rfp_reported_nodes": 34795
+    },
+    {
+      "game_number": 1098,
+      "target_depth": 5,
+      "baseline_move": "a6b4",
+      "rfp_move": "a6b4",
+      "same_move_at_matched_depth": true,
+      "prior_baseline_move": "c7f4",
+      "prior_rfp_move": "a6b4",
+      "baseline_reported_nodes": 140467,
+      "rfp_reported_nodes": 129596
+    }
+  ],
+  "searches": 6,
+  "sum_final_reported_nodes": 657107,
+  "all_previous_iteration_traces_exact": true,
+  "script_sha256": "697037eec7ed48db2dc279339f8578218926309830c07d8c6149f85186b1226e",
+  "scope": "Three reused selected development cases; no strength, novelty or general causal claim. No live source edits."
+}

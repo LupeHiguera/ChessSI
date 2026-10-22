@@ -40,6 +40,8 @@ The match manager is PID 1850159, start ticks `3934763`, on CPUs 14-19. Its iden
 
 ## Evidence and next decision
 
+A [compact, reviewable evidence bundle](evidence/rfp/README.md) now includes complete candidate and isolated-optimization patches, the regression test, per-file hashes, six timing pairs, and the three move-disagreement histories/results. Both patches were applied in sequence to a separate copy of the accepted baseline and reconstructed all 22 listed source/build/test files byte for byte. They are stored as unapplied evidence artifacts; the research review branch engine remains the accepted baseline. Full local archives remain available as described below.
+
 Local evidence is under ignored `engines/rfp-validation/`: `launch-plan.json`, `candidate.patch`, `release-tests-tail.txt`, `sanitizer-tests.txt`, `bench.txt`, `sprt-stc.log`, and the running guard's `live-watch-01/`. The source archive `source-snapshot-01/` verified 34 files with no integrity errors or findings. It includes engine sources, tests, instructions, claim, launch settings, binaries and the observed manager executable. As with all snapshots, source capture itself does not prove source-to-binary correspondence; the forced builds, recorded commands and hashes provide the surrounding evidence.
 
 The previous match's original `config.json`, PGN, binaries and baseline source were moved into `engines/qsearch-validation/original-run-files/` before the runner reused their paths. Its independent terminal snapshot and audit remain intact.

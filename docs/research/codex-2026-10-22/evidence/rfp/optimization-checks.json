@@ -1,0 +1,109 @@
+{
+  "perft_passed": 35,
+  "boundary_passed": 15,
+  "sanitizer_boundary_passed": 15,
+  "sanitizer_legal_positions": 2203,
+  "exact_first_legal_move_matches": true,
+  "exact_trace_roots": 128,
+  "bench": 11112214,
+  "timing_pairs": [
+    {
+      "pair": 0,
+      "order": [
+        "live",
+        "variant"
+      ],
+      "live": {
+        "search_ms": 1194,
+        "wall_seconds": 1.4620583719952265
+      },
+      "variant": {
+        "search_ms": 1189,
+        "wall_seconds": 1.4551499219960533
+      }
+    },
+    {
+      "pair": 1,
+      "order": [
+        "variant",
+        "live"
+      ],
+      "variant": {
+        "search_ms": 1135,
+        "wall_seconds": 1.4162244539984385
+      },
+      "live": {
+        "search_ms": 1193,
+        "wall_seconds": 1.4566791040051612
+      }
+    },
+    {
+      "pair": 2,
+      "order": [
+        "live",
+        "variant"
+      ],
+      "live": {
+        "search_ms": 1241,
+        "wall_seconds": 1.5111291939974762
+      },
+      "variant": {
+        "search_ms": 1158,
+        "wall_seconds": 1.4325560159995803
+      }
+    },
+    {
+      "pair": 3,
+      "order": [
+        "variant",
+        "live"
+      ],
+      "variant": {
+        "search_ms": 1128,
+        "wall_seconds": 1.4010783710036776
+      },
+      "live": {
+        "search_ms": 1213,
+        "wall_seconds": 1.485296193000977
+      }
+    },
+    {
+      "pair": 4,
+      "order": [
+        "live",
+        "variant"
+      ],
+      "live": {
+        "search_ms": 1258,
+        "wall_seconds": 1.5788863629932166
+      },
+      "variant": {
+        "search_ms": 1146,
+        "wall_seconds": 1.4433409559933352
+      }
+    },
+    {
+      "pair": 5,
+      "order": [
+        "variant",
+        "live"
+      ],
+      "variant": {
+        "search_ms": 1183,
+        "wall_seconds": 1.4542533450003248
+      },
+      "live": {
+        "search_ms": 1196,
+        "wall_seconds": 1.4934785130026285
+      }
+    }
+  ],
+  "median_live_ms": 1204.5,
+  "median_variant_ms": 1152.0,
+  "median_change_percent": -4.358655043586546,
+  "variant_faster_pairs": 6,
+  "variant_source_sha256": "c90b8528db3c61597054eb672cc5766405c73dce4ffb0ce1f0837437b784a26f",
+  "variant_binary_sha256": "f8a903d6acda4b6ad860c4f2138151a9ab5274779380199a148800b32e7207be",
+  "script_sha256": "afc3a465c271ee8a1e500e9fc39862d1f04e9844da73a12f0fd6c7b8ee8132d3",
+  "disposition": "Isolated only; no Elo estimate or promotion, current match unchanged."
+}
