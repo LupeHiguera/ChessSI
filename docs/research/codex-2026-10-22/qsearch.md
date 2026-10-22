@@ -289,3 +289,49 @@ The reference comparison charged 13,107,200 requested nodes; its largest reporte
 | Fixed-depth reproduction plan, traces and comparisons | `engines/qsearch-validation/opening-reproduction-01/` |
 
 Reproduction scripts are `profile_opening_pairs.py`, `fetch_stockfish_reference.py`, `reference_opening_disagreements.py` and `reproduce_opening_choices.py` under `engines/qsearch-validation/`. Their records include source/input hashes. GPT-6 (Codex) designed and performed this audit. It supplies a more specific diagnosis than assuming all corrected choices are better or that every loss is caused only by runtime overhead; the original SPRT remains the strength decision.
+
+## Draw-boundary correctness audit
+
+The passive profile's 12,138 missed draw-predicate hits motivated a read-only audit of the frozen candidate. Nine constructed positions were checked with pinned python-chess, then passed to an isolated probe including the unchanged search implementation. Each probe called direct qsearch and normal search at requested depths zero and one, at non-root ply one, with full windows and fresh TT. All 27 calls completed, restored FEN/key/draw state, and used only 50 search nodes in total. No draw-handling patch was implemented or added to the running experiment.
+
+| Constructed case | Direct qsearch | Normal requested depth 0 | Normal requested depth 1 |
+| --- | --- | --- | --- |
+| Fifty-move claim available to the losing side | -499 | -499 | 0 |
+| Fifty-move claim while checked, with a legal escape | -550 | 0 | 0 |
+| Quiet move delivers checkmate at halfmove clock 100 | -31999 (mate) | 0 | 0 |
+| Same mate geometry at clock 0 | -31999 (mate) | -31999 (mate) | -31999 (mate) |
+| Second occurrence, existing search-repetition policy | -499 | -499 | 0 |
+| Identical FEN and key without the earlier history | -499 | -499 | -465 |
+| Third occurrence, formal repetition claim available | -499 | -499 | 0 |
+| Stalemate | -1039 | -1039 | 0 |
+| King and bishop versus king | +277 | +277 | +315 |
+
+Numbers are internal search scores, not Elo; -31999 is the mate encoding at ply one. Normal search extends check before testing the requested depth, so its depth-zero checked cases enter the normal-search body rather than qsearch. This explains the checked/nonchecked asymmetry.
+
+The clock and repetition draw checks occur after the normal-to-qsearch dispatch. Consequently, nonchecked horizon nodes can bypass the existing predicate. A different problem is that `Position::is_draw()` returns true at clock 100 without checking whether the side is already checkmated; normal search then returns zero before generating evasions. Simply adding that predicate to qsearch would propagate the mate-precedence error into the direct qsearch path too.
+
+FIDE's rules end a legal game immediately on checkmate; the fifty-move rule is a claim mechanism, whereas the separate 75-move rule is automatic. The engine's unconditional 100-ply predicate is a search convention for claims, not an implementation of every administrative rule. The second-occurrence fixture likewise exercises ChessSI's existing search policy, not a formal threefold claim. [FIDE Laws, articles 5.1.1, 9.2, 9.3 and 9.6](https://handbook.fide.com/chapter/e012023)
+
+### The mate boundary changes ordinary UCI output
+
+The follow-up used this legal position:
+
+`7k/8/5KQ1/8/8/8/8/8 w - - 99 1`
+
+White has exactly one mate in one, `g6g7`. It is a quiet move, so the resulting halfmove clock is 100. Through ordinary UCI, both the baseline and the corrected candidate instead select `g6g5`: at depth one they report +1070 cp; at depth two they report 0 cp. The selected move leaves Black a valid fifty-move claim. Changing only the initial halfmove clock to zero makes both binaries select `g6g7` and report mate in one at both depths. All eight runs used fresh TT and legal moves, totaling 606 reported nodes.
+
+Thus the error is present in the baseline as well as the current candidate, and is reachable through the normal engine interface. It is not introduced by the check-evasion patch. The optional availability of a draw claim does not require White to forgo the immediate mating move. These constructed results show a missed win, not the error's frequency or Elo impact in the current match.
+
+The repetition pair is also a concrete history warning: the rook-versus-king position after `e8f8 e1f1 f8e8 f1e1` has the same six-field FEN and position key as a fresh load of that FEN, but only the replayed position triggers the engine's repetition predicate. Preserve complete relevant history when generating labels or comparing cached bounds.
+
+### Contract for a future correction
+
+Treat consistent clock/repetition detection with mate precedence as one separately claimed correctness experiment after the current test concludes. Apply the declared draw policy across the normal-search/quiescence boundary, and preserve checkmate when a would-be draw is in check with no legal evasion. A cheap first design needs a legal-escape check only in that rare would-be-draw/in-check case; it need not generate all legal moves at every qnode. Use full make/unmake legality, not the pseudo-legal move count, and verify complete state restoration.
+
+This is Known engineering. [Stockfish 19's position code](https://github.com/official-stockfish/Stockfish/blob/sf_19/src/position.cpp) guards its 100-ply draw with a legal-move test when checked, and [its search code](https://github.com/official-stockfish/Stockfish/blob/sf_19/src/search.cpp) checks draws in both main search and qsearch. Its repetition policy also distinguishes occurrences before and after the search root; adopting that different policy would be a separate change, not part of fixing ChessSI's dispatch omission.
+
+Preserve root move selection, check extension, stop handling and the current repetition policy in the first correction. Required regressions include the clock-zero control, quiet mate crossing 99 to 100, a checked position with an escape at 100, a nonchecked claimable draw, repeated-history versus fresh-FEN controls, and narrow windows that must not hide mate. Retain the original qsearch regressions and run perft and the prescribed SPRT. Do not assume a correctness correction gains Elo without measurement.
+
+Stalemate detection at the qsearch horizon and insufficient-material handling remain separately recorded limitations; the latter already appears in queue item 12. A blanket draw return does not fix either when the existing predicate is false. Do not silently bundle them, a new repetition policy, or TT-history changes into the first correction.
+
+Evidence is in `engines/qsearch-validation/draw-boundary-audit-01/`, including the frozen plan, all fixtures, independent rule checks, original-source probe and raw outputs. Its `root-reproduction/` subdirectory holds the ordinary-UCI follow-up and control transcripts. Reproduction scripts are `audit_draw_boundaries.py` and `reproduce_draw_boundary.py` one directory above. Their SHA-256 values are `baf2caf7f8bda9fa5021c8c48c28a13f7b3b989738f2f9e562055eb30acfce32` and `5ad151780adfd12a16b9abc037c4bcbfb0819771a1da4090b475d08788efa327`. GPT-6 (Codex) wrote and ran the audit on CPU 19; the live engine sources and match binaries were unchanged.
