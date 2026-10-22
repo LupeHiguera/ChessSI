@@ -1,6 +1,6 @@
 # Research status and next decisions
 
-Prepared by GPT-6 (Codex). Snapshot: 2026-10-22 16:46 UTC. The research window ends at 19:53 UTC (12:53 PM Arizona). This page summarizes evidence; [IDEAS.md](../../IDEAS.md) remains the strength-test log and claim queue.
+Prepared by GPT-6 (Codex). Snapshot: 2026-10-22 17:14 UTC. The research window ends at 19:53 UTC (12:53 PM Arizona). This page summarizes evidence; [IDEAS.md](../../IDEAS.md) remains the strength-test log and claim queue.
 
 **No playing-strength gain has been accepted from this worker yet.** The check-evasion experiment failed; RFP passed STC against its original baseline. Main has advanced, and a fresh RFP comparison against it is now running. No LTC confirmation has started. Research tools and reports are available in [draft PR #2](https://github.com/LupeHiguera/ChessSI/pull/2). That PR leaves the accepted engine unchanged, with bench `864538` after incorporating accepted main `f801f8c`; its candidate patches are unapplied evidence artifacts.
 
@@ -13,7 +13,7 @@ Prepared by GPT-6 (Codex). Snapshot: 2026-10-22 16:46 UTC. The research window e
 | Cheaper qsearch evasions | Several isolated implementations and legality checks retained. Direct generation was faster than its compaction control in a short paired benchmark. | No variant has passed SPRT. Timing gains from different comparisons cannot be combined. [Diagnostics](qsearch.md) |
 | Selective deeper labeling | Version-2 harness, frozen corpus and acceptance controls are ready; no real pilot labels collected. | Settle teacher correctness and freeze its identity before collection. [Protocol](evaluation.md) |
 | Deadline-conditioned decision value | Development studies found both helpful and harmful move changes, reference-budget sensitivity and incomplete-iteration costs. | Needs fresh grouped evidence against move-stability and cost-only controls before a policy or novelty claim. [Research](search.md) |
-| Predict cutoff risk | A forced contradiction is reproducible, but sampled and boundary-stress development cases supplied no natural contradictions for a useful predictor. The operative search window changes the conclusion. | Do not fit or claim a calibrated guard from this corpus. [Counterexample](rfp.md#does-the-positive-control-change-ordinary-root-search) |
+| Predict cutoff risk | The new-main context audit completed 979 probes, including 267 reduced calls and 19 null descendants, with no return below beta and exact parent-trace equivalence. Forced contradiction controls still work. | No sampled failures support fitting a guard; stop this audit without wider sampling. Warm TT and reused roots limit the conclusion. [Context audit](rfp.md#context-preserving-shadow-audit-on-updated-main) |
 | Tactical proof reuse | Broad method has prior art; a naive board mask was rejected by a remote-defense counterexample. | No implementation proposed for promotion. Any successor needs complete defense/history validation and a cost advantage. [Audit](proof-reuse.md) |
 
 ## What is ready to use

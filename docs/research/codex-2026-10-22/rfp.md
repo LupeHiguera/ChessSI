@@ -273,3 +273,38 @@ The verified deadline guard attached at **16:27:07.947761 UTC** and retains the 
 All new-run evidence is separated under `engines/rfp-current-main-validation/`: launch/guard plans, source snapshot, process audit, first protocol/match audit, runner log and subsequent terminal records. The candidate and its test inputs are now frozen. No strength verdict exists for this comparison. An STC winner still needs independent 60+0.6 confirmation; no decision by the deadline remains Inconclusive.
 
 The new-baseline confirmation preflight is prepared and passed 27 focused checks. Its actual live observation at 16:45 UTC correctly waits for this STC to finish and for a fresh accepted-main check. No eligible H1 launch path or LTC match has occurred. [Preparation and evidence](testing.md#updated-main-confirmation-preparation).
+
+## Context-preserving shadow audit on updated main
+
+A single frozen audit completed at **17:09:27 UTC on 2026-10-22**, using CPU 19 and the same **128 development roots** as the earlier audits. The candidate was the unchanged new-main RFP engine identified above, bench **609035**. Each parent search requested 131,072 nodes. The existing deterministic 1/256 hash gate selected at most eight legal static cutoffs per root; each selected node received an RFP-disabled subtree probe and an RFP-enabled control, with 131,072 requested additional nodes each. No replacement sample or wider gate was used.
+
+The observer recorded **1,278,266 threshold-triggered returns**, including returns of zero when the legal-move check finds stalemate. These aggregate counters are not a count of sampled legal static cutoffs: 449,909 occurred on incoming LMR-reduced calls, 47,834 beneath a null move, and 13,681 in both contexts. Among legal cutoffs, 5,076 passed the hash gate; the per-root cap retained **979 samples from 126 roots and 99 openings**. Of the 128 roots, 119 reached the eight-sample cap.
+
+| Selected context | Samples | Completed | Censored | Disabled score below original beta |
+| --- | ---: | ---: | ---: | ---: |
+| All selected legal static cutoffs | 979 | 979 | 0 | 0 |
+| Incoming LMR-reduced call | 267 | 267 | 0 | 0 |
+| Null descendant | 19 | 19 | 0 | 0 |
+| Both reduced and null descendant | 4 | 4 | 0 | 0 |
+
+The context rows overlap. Depths 1, 2 and 3 contributed 890, 68 and 21 samples respectively; the 19 null-descendant samples came from nine roots. There were 977 samples with nonzero killer payloads. All enabled controls reproduced the original static return in one visit. Both constructed contradiction controls still returned static +182 versus disabled -50; the predecessor control also distinguished preserved NMP state (score 545, two visits) from an erased predecessor (511, ten visits). These controls check that the observer can detect specified state loss and cross-beta behavior.
+
+Separate Position-bound probes copied complete semantic board/history state, including the repetition boundary after null moves, killers, move-stack entries and initialized PV prefixes. They preserved the polling phase, restored the original TT before each control and parent continuation, and never reset the global stop flag. Incoming reduction tags were reset before full-depth re-searches. Typed path replay distinguished null edges from legal real moves and preserved ChessSI's fullmove-counter convention for null moves.
+
+Independent read-only verification reconciled **all 384 transcripts** with the saved records and replayed **72,046 real plies plus 19 typed null edges** across the sample paths. Every root's completed iteration depths, scores, bounds, node counts, PVs and final move agreed across the frozen candidate, reference and observer; the reference and observer also matched final node counts, including interrupted iterations. Timing and NPS fields were excluded from this equivalence check. The frozen production UCI does not expose final partial-search counts. All archived validation-file/binary hashes and the 21 live launch-input hashes matched.
+
+The reference and observer each used **16,777,305 parent visits**, 89 above their respective aggregate requested cap of 16,777,216; the largest per-root overshoot was three. Disabled probes used **4,844 visits** in total, at most 164 each; enabled controls used **979**. The three parent passes requested 50,331,648 nodes. Preparation controls and bench runs are additional work, and visit counts do not measure TT-copy or replay overhead.
+
+The immutable plan's initial roots digest omitted one hexadecimal digit; a separate pre-query correction preserves that typo and binds the unchanged corpus. Before collection, review tightened the 21-input provenance binding, verified-byte helper loading, Python optimization rejection, monotonic per-root timeout, failed-transcript retention and source-versus-clone NMP control. Attempt 01 remains preserved. Attempt 02's first launch lacked the local dependency path and queried zero roots; its empty-launch record was retained before an authorized environment-only retry using the existing python-chess 1.11.2. The collector, binaries, corpus and gates were unchanged for that retry.
+
+Evidence is retained under `engines/rfp-current-main-validation/shadow-context-01/attempt-02/`, including `validation.json`, `launch-retry-metadata.json`, `corpus-launch-failure-01/` and `corpus/` with all samples, transcripts and summaries. Identity checks:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Collector | `496b5ad47703e6c6a41c98ce5e4eaccd100e809d70099bb9c27f61c63caf8f11` |
+| Reused roots | `8a197269535824b8d6dedd978cec7988e7ec94ec3eaaa3bb3e2f7ba4ec9db505` |
+| Observer binary | `dfffaa3245e3a9fd262b9a2720eb614d4922786417228fd7439deff277ed9d17` |
+| Corpus result | `91fe93df2a354230cec4789ad98b4c88b4e1e0d6330a0c428052fb3a996f0b3c` |
+| Selected samples | `d597725d98685a53bf221fd528b2342200fc870e69056a1581ada856f33ff362` |
+
+This bounded audit found no cross-beta return among its completed selected probes. The inherited warm TT may contain RFP-influenced bounds, and NMP, LMR, evaluation, quiescence and draw handling remain approximate. Reused development roots, visit caps and sparse null-context coverage prevent a population error-rate or safety conclusion. The result supplies no Elo evidence and does not replace the separate strength test.
