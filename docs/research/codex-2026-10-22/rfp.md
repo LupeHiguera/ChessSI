@@ -72,3 +72,21 @@ The auditor was also tested on the previously constructed one-legal-move counter
 These two deliberately forced controls are excluded from the 951 sampled observations. The first control-build attempt failed because a template replacement also replaced part of `ALL_MOVES`; the second executed correctly but failed an overstrict -51 assertion inherited from the full-window diagnostic. Both attempts and their outputs are retained. The third attempt corrected the check to require a completed return below beta and independently verified the bound and node count against the baseline.
 
 Evidence: `engines/rfp-validation/shadow-audit-01/` contains the pre-query plan, source copy, transcripts, exact trace comparisons, sampled histories and descriptive statistics. Collector `audit_shadow.py` SHA-256: `92f0ca7c28964fea71f91f46776c4d296414e286e9264777aa4514ec0cdb216c`. Positive-control attempts are `shadow-positive-control-01/` through `-03/`; final validator `validate_shadow.py` SHA-256: `ab2eac200010a33dc6cb4dd03ec66b57f8dbc6af446f3d48268fcc5ea2ab61a9`. All work ran on CPU 19; live engine files and match settings were unchanged.
+
+### Targeted depth-three and fresh-cache follow-ups
+
+The first sample contained no depth-three events within 25 cp of the cutoff threshold. A follow-up plan, frozen before its queries, therefore selected the first four such events per root from the same 128 development positions. It examined all eligible events for selection rather than applying the original hash gate. This was an explicitly targeted response to a coverage gap, not an independent confirmation sample.
+
+Of 1,335 qualifying events, 228 were retained across 54 openings; 50 roots reached the four-event cap. All 228 disabled shadows completed and returned at least beta, using 14,155 visits in total. All enabled controls returned the original static score in one visit. The instrumented benchmark and all 128 parent traces again matched the frozen release exactly. No margin, depth limit, eligibility guard or live match artifact changed.
+
+Because a shadow can inherit TT entries produced by RFP, a second follow-up replayed **every one of those 228 contexts** in the independently compiled accepted baseline with an empty TT. It preserved the starting FEN, full game history, search path, null window, remaining depth and ply. All calls completed and restored state; all still returned at least beta, using 16,066 visits. There were 29 different fail-soft returns between warm and fresh TT, but zero changes in which side of beta the result fell on. Unequal bounds are not automatically unequal position values.
+
+These checks narrow the cache caveat for these selected cases; they do not certify pruning, measure game-level errors, or replace the match. The retained data still come from reused roots and deliberately capped event selection. The baseline search also shares the engine's existing evaluation, quiescence and draw limitations.
+
+Artifacts: `engines/rfp-validation/shadow-depth3-01/` and `shadow-fresh-tt-01/`. Collectors: `audit_shadow_depth3.py`, SHA-256 `56b3d608911b79893e19c64c05f7503d52b358b06d20e7a9546aeb5c147ee666`; `audit_fresh_tt.py`, SHA-256 `3bc0454cc7da093fb12bae143e470424e6d948dafc05d67d74d1e0e5b3db35fc`. Each retains its pre-query plan, exact input and output, and node accounting. All diagnostics used CPU 19.
+
+### First live match integrity audit
+
+At `2026-10-22T13:50:19.870416+00:00`, a frozen prefix contained 232 completed games. All 23,184 plies replayed legally. Every PGN result agreed with the log, all eleven statistics reports reconciled to completed pairs, and no crash, illegal-move or time-forfeit termination was recorded. The autosave represented an earlier 220-game report and matched that event boundary; it was not mistaken for the newer PGN count. The 26-file archive verified without integrity errors or missing copied artifacts.
+
+This is an integrity check of a live prefix, not an SPRT decision or an adjudication-accuracy estimate. The unique run's source, binary and process records remain the basis for the eventual terminal audit. Evidence: `engines/rfp-validation/match-audit-01/`, using the previously validated `audit_match.py` collector with SHA-256 `567fc6c868f9df7bfa8da871815f75d046c6b17f4eee93bfc83098fa2101bdac`.
