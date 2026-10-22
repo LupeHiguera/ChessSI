@@ -9,6 +9,9 @@
 #   CONCURRENCY=N    games in parallel (default: cores - 2)
 #   BOOK=path        EPD opening book (default: books/UHO_Lichess_4852_v1.epd)
 #   FASTCHESS=path   fastchess binary (default: fastchess on PATH)
+#
+# Decided games end early to save CPU: a resign when both engines agree one side is 4+ pawns up for
+# 3 moves, a draw from move 40 when both report a score within 0.1 pawns for 8 moves.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -45,6 +48,8 @@ echo "SPRT [$ELO0, $ELO1] at $TC, $CONCURRENCY games in parallel"
     -each tc="$TC" option.Hash=16 option.Threads=1 \
     -openings file="$BOOK" format=epd order=random \
     -rounds 100000 -games 2 -repeat -recover \
+    -resign movecount=3 score=400 twosided=true \
+    -draw movenumber=40 movecount=8 score=10 \
     -concurrency "$CONCURRENCY" \
     -sprt elo0="$ELO0" elo1="$ELO1" alpha=0.05 beta=0.05 \
     -pgnout file=engines/sprt.pgn
