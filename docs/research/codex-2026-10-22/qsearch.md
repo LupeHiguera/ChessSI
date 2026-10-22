@@ -189,3 +189,31 @@ A setup check in `king-first-01/` stopped before any build or search because the
 | Combined diagnostic record | `engines/qsearch-validation/king-first-02/final-diagnostic.json` |
 
 Reproduction scripts are `prepare_king_first.py` and `time_king_first.py` under `engines/qsearch-validation/`; the initial setup script is retained as `prepare_king_first_01.py`. Proposer/implementer is GPT-6 (Codex). The active source and binary hashes remained unchanged. These four local variants remain separate attempts with no completed Elo result; none is substituted into the ongoing test.
+
+## Passive profile on ordinary game positions
+
+To check whether the 14-position benchmark hid a different workload, a passive instrumented build searched 128 positions from the independently audited live-game snapshot. The sampling plan was recorded before extraction: use game numbers above 1,000, the ply grid 12+8k, at most two roots per game by deterministic hash, then 128 roots globally, seed `20261022`. No result or evaluation filter was used. The selected roots cover 118 games and 101 initial openings.
+
+Whole games were excluded if their opening or any recorded board/side state overlapped a start or sampled root in the frozen label-pilot corpus; no such overlap was found. Terminal grid roots and official benchmark roots were excluded. This is a separate development diagnostic, not a held-out labeling experiment. The pilot corpus and its source hash remained unchanged.
+
+Both the unchanged candidate and the passive build received 131,072 requested nodes per root with fresh TT and complete history replay. Every completed iteration's score, bound, PV and node count, and every final best move, matched. The passive build also retained bench `22824107`. Its elapsed times are not used as speed measurements.
+
+| Passive counter | Observed value |
+| --- | --- |
+| Total nodes | 16,777,279 |
+| Quiescence nodes | 13,397,267 |
+| Checked quiescence nodes | 570,054 |
+| Attempted check evasions | 4,178,219 |
+| Rejected illegal evasions | 3,267,465 (78.20% of attempts) |
+| Searched quiet evasions | 470,619 |
+| Quiescence checkmates | 3,752 |
+| Maximum quiescence ply | 28 |
+| Maximum-ply fallbacks | 0 |
+
+The high rejected-evasion fraction also appears in these sampled game positions. The finite node cap and development sampling prevent a claim about all game workloads or the absence of deeper pathologies.
+
+A passive call to the existing `Position::is_draw()` predicate found 12,138 quiescence-node hits: 5,831 fifty-move-clock hits in one sampled root's search and 6,307 repetition hits across 102 root searches. In total, 102 of 128 root searches had at least one hit. Every hit entered quiescence directly from normal search; none occurred at a checked or recursively entered quiescence node in this sample. The predicate treats a previous matching key as a search repetition; these are not all formal threefold claims. These counts expose the already-noted draw-check omission at the normal-search/quiescence boundary, but do not measure how many final root scores it changes or its Elo effect. They do not support blaming recursive checking cycles for the observed cost. Draw handling remains a separate correction, outside the running patch.
+
+The profile also checked node accounting. Sixty-three searches used one visit beyond their 131,072-node request; the others matched it. Thus multiples of the 1,024-node polling interval are not an exact final-node guarantee. The last completed UCI iterations reported only 9,883,132 nodes in total, about 58.91% of the passive build's actual visits, omitting work in interrupted iterations. Requested caps remain the declared accounting proxy for the label pilot; exact final visits are reported here only because this diagnostic emits them.
+
+The diagnostic charged 33,554,432 requested nodes across its two binaries, plus the separate unchanged-benchmark validation. The root JSONL SHA-256 is `8a197269535824b8d6dedd978cec7988e7ec94ec3eaaa3bb3e2f7ba4ec9db505`. Instrumented source SHA-256 is `472120bc32c96d91579c2cb358b4f441aec3d5be2ef98572ff09e6522c04d3ed`; binary SHA-256 is `2c923197f20dd5dae6c5889d0572b164cbd2d85826e5c2cadb227b6ffde0ba72`. The plan, selection record, per-root histories/transcripts, complete trace comparison, counters and accounting are under `engines/qsearch-validation/game-profile-01/`. Reproduce with `profile_game_roots.py` one directory above. GPT-6 (Codex) wrote and ran this diagnostic using CPU 19; no live source or match binary changed.

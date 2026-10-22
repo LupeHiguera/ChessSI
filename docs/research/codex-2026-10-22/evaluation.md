@@ -140,6 +140,8 @@ The search checks limits every 1,024 visited nodes. A general node cap can overs
 
 The final UCI response currently omits `SearchResult.nodes`; the last completed info line can undercount work from the aborted next iteration. Charge the requested cap for every search and save last-completed nodes as a lower-information measurement. Do not label it exact consumed nodes. A later instrumentation-only extension may emit final nodes, but it should be validated independently and must preserve bench nodes.
 
+A later passive diagnostic on 128 disjoint game roots measured 16,777,279 final visits for 16,777,216 requested nodes: 63 searches overshot by one visit despite aligned caps. The last completed info lines accounted for only 9,883,132 visits (58.91%). This validates the need to distinguish requested, last-completed and actual work; it does not change the frozen pilot budgets. The instrumented candidate preserved bench nodes and matched all completed UCI iterations and final moves against its uninstrumented parent. See the [game-position profile](qsearch.md#passive-profile-on-ordinary-game-positions). Recheck accounting for the actual frozen teacher, whose source may differ from this diagnostic candidate.
+
 ### Cheap-only features and learning target
 
 For the cheap search, retain the last three completed iterations and calculate:
