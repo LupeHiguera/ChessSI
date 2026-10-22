@@ -351,3 +351,30 @@ This is an explicit pre-label amendment, not a change justified by a real held-o
 The amended analysis uses schema 2 and requires its protocol identifier and matching source hash. Earlier manifests are not silently reinterpreted. A regression test reproduces the old four-control success and requires the new gate to reject it. The held-out-label invariance check now perturbs both replacement and audit results, including a selected mate, and confirms that neither changes fitted models, any selection, or charged policy budgets. This extends the earlier audit-only check. The stronger-reference and subsequent evaluator/playing-strength requirements remain in place; positive reference utility alone is still only an offline screen.
 
 The exact review-branch files passed all 64 research-tool tests on WSL CPU 19. Reanalysis of the same preserved synthetic data confirmed that the fitted models, selections, original four comparisons and charged search totals were identical; only the extra retention comparison changed the gate. The version-2 source SHA-256 is `12bd0bc6ac1cc3ba584f71236ad1671842db34625d563a7206e5f8a6a05ba90b`. Validation details and the new frozen source copy are in `label-gate-amendment-01/validation.json` and `label_budget.v2.py`. The real corpus and active match source/binary hashes were verified unchanged.
+
+## En-passant identity and future teacher adapters
+
+A read-only audit on 2026-10-22 checked whether en-passant representation could split equivalent positions across the reserved pilot's groups. The suspected leakage mechanism was not present: `prepare_corpus.py` groups by placement/side, ignoring rights, and `label_budget.py` uses the same conservative principle. Two otherwise separate synthetic provenance records with identical placement/side but different EP fields were assigned to the same component and split. This checks that particular representation issue, not every possible source of dependence or leakage. The frozen pilot inputs and protocol were unchanged.
+
+The audit did find an engine identity distinction relevant to future teachers. Begin from:
+
+`k3r3/3p4/8/4P3/8/8/8/4K2R b - - 0 1`
+
+After legal `d7d5`, White's e5 pawn attacks the nominal d6 en-passant square but cannot legally capture: leaving the e-file exposes its king to the rook on e8. ChessSI retains `d6`, following pseudo-legal EP availability. After the legal cycle `h1h2 a8a7 h2h1 a7a8`, the same placement, side, rights and legal moves recur, but the EP field is now absent. The halfmove clock changes normally and is not part of ChessSI's position key.
+
+| Pinned-EP history | Independent twofold repetition | Independent threefold repetition | ChessSI `is_draw()` | Non-root depth-one score |
+| --- | --- | --- | --- | --- |
+| Just after `d7d5` | No | No | False | +30 cp |
+| After one four-ply cycle | Yes | No | False | +30 cp |
+| After two cycles | Yes | Yes | True | 0 cp |
+| Fresh equivalent no-EP FEN, then one cycle | Yes | No | True | 0 cp |
+
+The first position key is `5437148386539901911`; after either cycle it is `11073695830031778519`. The full legal-move lists match across the three pinned cases. The no-EP control isolates the initial EP key contribution from the ordinary cycle and clock behavior.
+
+ChessSI deliberately treats a prior occurrence as a search draw, so this is a delayed search-twofold detection in the constructed history. It is not evidence of a missed formal threefold claim: the third occurrence is detected here. A second control moves the black rook from e8 to d8 before the sequence, making `e5d6` genuinely legal. In that case the initial EP right really changes the legal moves; both the independent replay and ChessSI correctly distinguish the first return from the initial position. Fixing EP key semantics, adopting a different repetition policy, and fixing qsearch draw dispatch are separate changes.
+
+Stockfish 19 was then given the complete histories through UCI, with `NumaPolicy=none`, one thread and all observed thread affinities on CPU 19. Its `d` output removes the unusable pinned EP right immediately, preserves the genuinely legal EP right in the control, and agrees with python-chess's legal-EP FEN serialization. No Stockfish search was run. This behavior agrees with the legal-capture checks in [Stockfish 19's position implementation](https://github.com/official-stockfish/Stockfish/blob/sf_19/src/position.cpp).
+
+The current ChessSI labeling adapter intentionally verifies six-field X-FEN equality, matching its frozen teacher. A future Stockfish adapter cannot blindly reuse that representation check: the same correctly replayed history can produce a different EP field. Declare engine-specific canonicalization before collecting labels. For Stockfish 19, independently replay every move and compare against the legal-EP serialization, including placement, side, castling rights and both counters. Preserve the original history and raw source FEN; do not erase EP indiscriminately or accept arbitrary FEN mismatches. Include both pinned-EP and legal-EP controls. This is an adapter requirement, not a change to the current pilot or evidence that Stockfish supplies proven game values.
+
+Seven verified non-root probes made 21 search calls totaling 220 nodes and restored state. The position source was identical in the baseline and candidate trees, SHA-256 `3c4947f65a7656807016309a971fa3785cb5dae7d3f69ca11a6c7e439766dd9c`. Full plans, histories, legal lists, keys, scores, grouping controls, Stockfish transcripts and affinities are in `engines/qsearch-validation/en-passant-identity-01/`. Reproduce with `engines/qsearch-validation/audit_ep_identity.py`, SHA-256 `ba80526da13d4b47b24dc6b1ae7658558f43073db6b250a89bfb3fc7ab7c575e`. GPT-6 (Codex) performed the audit; no real pilot labels or additional match games were collected.
