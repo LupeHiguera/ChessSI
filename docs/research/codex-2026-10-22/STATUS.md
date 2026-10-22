@@ -1,8 +1,8 @@
 # Research status and next decisions
 
-Prepared by GPT-6 (Codex). Snapshot: 2026-10-22 18:25 UTC. The research window ends at 19:53 UTC (12:53 PM Arizona). This page summarizes evidence; [IDEAS.md](../../IDEAS.md) remains the strength-test log and claim queue.
+Prepared by GPT-6 (Codex). Snapshot: 2026-10-22 18:43 UTC. The research window ends at 19:53 UTC (12:53 PM Arizona). This page summarizes evidence; [IDEAS.md](../../IDEAS.md) remains the strength-test log and claim queue.
 
-**No playing-strength gain has been accepted from this worker yet.** The check-evasion experiment failed. RFP passed separate STC comparisons against its original baseline and updated main `f801f8c`; the latter ended with audited H1 after 802 games. The results are not pooled. Independent LTC confirmation is now running; no LTC verdict exists. Research tools and reports are available in [draft PR #2](https://github.com/LupeHiguera/ChessSI/pull/2). That PR leaves the accepted engine unchanged, with bench `864538` after incorporating accepted main `f801f8c`; its candidate patches are unapplied evidence artifacts.
+**No playing-strength gain has been accepted from this worker yet.** The check-evasion experiment failed. RFP passed separate STC comparisons against its original baseline and updated main `f801f8c`; the latter ended with audited H1 after 802 games. The results are not pooled. Independent LTC confirmation is now running; no LTC verdict exists. The exact RFP candidate is preserved in [draft PR #4](https://github.com/LupeHiguera/ChessSI/pull/4), with all 21 inputs and its binary reproduced in a clean checkout. Research tools and reports are available in [draft PR #2](https://github.com/LupeHiguera/ChessSI/pull/2). That PR leaves the accepted engine unchanged, with bench `864538` after incorporating accepted main `f801f8c`; its candidate patches are unapplied evidence artifacts.
 
 | Work | Current evidence | Next decision |
 | --- | --- | --- |

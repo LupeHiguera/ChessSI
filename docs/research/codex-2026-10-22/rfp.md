@@ -391,3 +391,9 @@ At **18:24:13 UTC**, the first frozen LTC prefix verified seed **570580697723924
 | Eligible terminal preflight | `30bd525f0330e86e440b84c0a17b7074ac0d547ce6aa748c057b71d7e377ea3b` |
 | Launcher | `50e01a74ec79b31e79ecb3d35437f728314a22cd984534707d443f6bfcefa425` |
 | Guard adapter | `0cea3c7747522932377b31e5733b8f3b10aa8aceed80f0e96fd40b1e8a365b92` |
+
+### Clean candidate reproduction
+
+After the LTC launch, the tested candidate was reproduced in `engines/rfp-review-worktree` on `astra/rfp-review`, then preserved as commit `e77256e8ff73fcff9806a9b8dc5bfa0edb450e3d` in [draft PR #4](https://github.com/LupeHiguera/ChessSI/pull/4). All **21 committed source/build/test inputs** match the frozen match inputs, and the clean build produced the identical `b10c68c9...` binary. Fresh validation completed at **18:34:44 UTC** with **35 perft and 17 boundary checks passing**, and bench **609035**. Builds/test recipes used CPUs 14-19 with the compiler on CPU 19; the direct bench ran on CPU 19. The earlier sanitizer results remain separate.
+
+The active match's recorded HEAD remains `d1de9d0` plus its frozen working-tree inputs; `e77256e` is the later reproducible review commit. Its only additional bookkeeping changes ignore the generated test executable and record the existing claim/STC result. No new strength comparison or engine promotion occurred. Local reproduction evidence: `engines/rfp-current-main-validation/candidate-review-preparation-01/run-01/result.json`, SHA-256 `c4f986d61018da38400c290b216402767511585cbb0fa10b1b9f1ef70b1534e6`, with raw build/test/bench logs and staged-input verification alongside it. Independent LTC confirmation remains pending.
