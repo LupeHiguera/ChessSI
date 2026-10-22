@@ -75,8 +75,11 @@ Negative utility is a loss. Require the selected replacements to beat retaining 
 | Reduced/full disagreement | Does a verified contradiction predict later sibling misses? | Only fail-high reductions receive routine verification |
 | Evaluation-call data | Does a controlled mixture of actual search leaves improve a fixed evaluator? | Different position difficulty, teacher cost and model capacity |
 | Test efficiency | How much time does adjudication save without changing paired results? | Mixed PGN sessions and unvalidated resignation thresholds |
+| Tactical proof reuse | Can a verified short-mate strategy save work beyond full-key TT reuse? | Remote defenses, draw history and verification cost |
 
 See [search research](research/codex-2026-10-22/search.md) and [testing research](research/codex-2026-10-22/testing.md) for prior art, falsification gates and implementation details. These are hypotheses, not measured improvements. A [recent-evidence review](research/codex-2026-10-22/recent-evidence.md) checks the current Stockfish target and newer self-play results, including cases where better search labels did not improve learning.
+
+A [proof-reuse audit](research/codex-2026-10-22/proof-reuse.md) traces the idea to partition search and relevance-zone tables, rejects a naive chess mask with an explicit counterexample, and defines a verification and cost gate. It remains a proposal outside the active engine experiment.
 
 ## Preserve runs without mixing them
 
