@@ -147,3 +147,22 @@ The variant remains unpromoted, and the original match continues on its original
 | Exact search traces and timing pairs | `engines/qsearch-validation/evasion-filter-01/equivalence-timing/` |
 
 Scripts under `engines/qsearch-validation/`: `profile_evasions.py`, `prepare_evasion_filter.py`, `check_evasion_filter.py`, and `time_evasion_filter.py`. The existing source and `engines/new` hash were checked before and after preparation. This is a Known evasion-generation technique applied as a conservative filter, not a novelty claim.
+
+## Prepared implementation variant: skip the zero-scored tail
+
+A third isolated implementation variant of idea 9 counts nonzero move scores at checked quiescence nodes. Once no nonzero scores remain, the original strict-greater selection loop must choose its current element, so the variant returns that element without rescanning the tail. The unchecked path keeps the original selection behavior. This starts from the original corrected candidate; it is not combined with either previous variant.
+
+An exhaustive fixture compared the actual old and new selection methods on all 488,281 vectors of length zero through eight over scores `{-2,-1,0,1,2}`. It checked every intermediate move array, score array and remaining count, including the unchanged-path sentinel: 7,568,360 mode/prefix checks, zero failures. The variant also passed all eight quiescence regressions, 35 perft cases and eight ASan/UBSan cases. Its bench remained `22824107`; all 14 positions matched the parent at every completed search iteration through depth seven, including scores, bounds, PVs, best moves and nodes.
+
+The speed screen did not justify promotion. Six alternating timing pairs on CPU 19, after one warm-up each, gave median search times of 2,474 ms for the parent and 2,542 ms for the variant: the variant median was 2.75% slower. Median throughput was 9,222,200 versus 8,980,101.5 nodes/second. Individual paired speed ratios ranged from 0.9100 to 1.0315. Their median was 1.0131, pointing in the opposite direction from the ratio of medians. Both summaries are retained: this small shared-load sample is inconsistent, and selecting its favorable summary would overstate the evidence. No reliable speed gain or Elo result is claimed.
+
+The candidate is retained as a negative speed-screen result, not promoted or substituted into the original match. Reproduction scripts are `prepare_quiet_tail.py` and `time_quiet_tail.py` under `engines/qsearch-validation/`. The plan, parent-relative patch, exhaustive fixture, compiler/test logs and raw search/timing outputs are in `quiet-tail-01/`.
+
+| Artifact | Identity |
+| --- | --- |
+| Variant source SHA-256 | `c6b9e73a5829f797b8c34b47ba30b295782e6d2f788daca7ca8995d13266badd` |
+| Variant binary SHA-256 | `1b2f54f1be4518736c0dd4450b9f82dee28883cb1f6b9760555f6e008da7beda` |
+| Exhaustive ordering result | `engines/qsearch-validation/quiet-tail-01/ordering.stdout` |
+| Search equivalence and timing | `engines/qsearch-validation/quiet-tail-01/equivalence-timing/result.json` |
+
+All three implementation variants were proposed and written by GPT-6 (Codex), are classified Known, and remain local diagnostics of the same claimed quiescence idea. None has a completed strength test. They are recorded separately here so a failed local screen cannot disappear from the research record or become an unearned Elo claim.

@@ -242,3 +242,25 @@ Local scripts and artifacts are under ignored `engines/qsearch-validation/`:
 - `resume-smoke-01/`: copied recovery session, duplicate identity report and corpus-rejection evidence.
 
 The guard is local session infrastructure, not a general scheduler. At the deadline it permits up to 60 seconds for graceful termination, then records whether the manager remains live. A live snapshot is explicitly distinct from a terminal snapshot. Before replacing run files or starting another experiment, wait for its `state.json` to report `archived` and inspect the final snapshot. Process exit and byte integrity alone do not establish an accepted strength result.
+
+## Resolution of the remaining research window
+
+A resource-planning observation at 2026-10-22 07:55 UTC captured the last complete 1,220-game report and the original manager's verified start tick. The observed rate was about 601 reported games/hour with five concurrent games. If that rate persisted until 19:53 UTC, roughly 7,194 additional games would fit, for about 8,414 total. This is a capacity projection, not a forecast of the current test's stopping time. The active protocol and stopping rule remain unchanged.
+
+The installed fastchess revision uses normalized Elo for this SPRT. With pair score variance `v`, mean score `s`, and `C = 800/ln(10)`, its displayed normalized estimate is `(s - 0.5) * C / sqrt(2*v)`. Its displayed 95% half-width simplifies to `1.959963984540054 * C / sqrt(games)`. Recomputing both logistic and normalized estimates/errors from the captured pentanomial block reproduced all four printed values to rounding. The projected 8,414-game half-width is about 7.42 normalized Elo. This displayed interval is not an anytime-valid confidence sequence. [Pinned Elo implementation](https://github.com/Disservin/fastchess/blob/f618e34/app/src/matchmaking/elo/elo_pentanomial.cpp), [confidence constant](https://github.com/Disservin/fastchess/blob/f618e34/app/src/matchmaking/elo/elo.hpp)
+
+For scheduling only, a continuous Gaussian log-likelihood approximation illustrates the cost of the prescribed `[0,5]` test. Let hypothetical true normalized Elo be `e`, boundary `A = ln(19)`, drift per game `d = 5*(e-2.5)/C^2`, and variance rate `q = 25/C^2`. Starting a fresh test at LLR zero, the Brownian approximation gives mean games `(A/d)*tanh(A*d/q)`, with limit `A^2/q` when drift is zero. These are derived planning estimates; fastchess actually uses a constrained multinomial maximum-likelihood calculation. [Pinned SPRT implementation](https://github.com/Disservin/fastchess/blob/f618e34/app/src/matchmaking/sprt/sprt.cpp)
+
+| Hypothetical true normalized Elo | Approximate mean games from a new run | Hours at the observed rate |
+| --- | --- | --- |
+| -20 | 3,159 | 5.25 |
+| 0 or +5 | 25,591 | 42.56 |
+| +2.5 | 41,861 | 69.62 |
+| +10 | 9,475 | 15.76 |
+| +20 | 4,062 | 6.76 |
+| +40 | 1,896 | 3.15 |
+| +80 | 917 | 1.53 |
+
+The approximation ignores discrete overshoot, finite-sample variance estimation, opening heterogeneity and changes in throughput. A mean is not a deadline guarantee. These hypothetical effects are not estimates for any prepared variant, and the current test's interim point estimate is not substituted to produce an ETA. No optional early rejection or altered boundary follows from this calculation.
+
+The practical priority is to finish the current test and preserve its outcome. Small throughput observations are worth retaining, but a few-percent micro-optimization should not automatically consume the next full match. Prefer a well-motivated candidate with a larger plausible effect, or a cheap offline experiment that can falsify its mechanism before spending thousands of games. No speed percentage is converted into Elo here. Raw captured log bytes, the report block, process timing, calculations and limitations are preserved in `engines/qsearch-validation/budget-01/`; the reproduction script is `estimate_budget.py` one directory above it.
