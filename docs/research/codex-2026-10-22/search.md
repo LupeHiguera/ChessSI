@@ -467,3 +467,29 @@ The interrupted tails consumed 6,894,147 of 16,777,279 instrumented visits (41.1
 The next compute-allocation study therefore needs two distinct targets: signed value of the resulting decision and probability/cost of obtaining it within the allowance. Retain strong simple cost controls, censored observations and explicit deadline accounting. A constant that looks conservative on these reused traces must not be selected here and then described as validated on the same records. The current engine and its time manager are unchanged.
 
 Evidence is in `engines/qsearch-validation/iteration-cost-01/`, including the pre-analysis plan, all 602 records, exact versus censored quantities and all four controls. Reproduce with `engines/qsearch-validation/audit_iteration_cost.py`, SHA-256 `545d1c89c6b32a6159d6e8ada617a721905d9650f03d799d233d3aee6e732f24`. GPT-6 (Codex) ran it on CPU 19; no engine search or real pilot label was added.
+
+## Draw-clock context can mimic a transposition-table contradiction
+
+Before treating TT-bound disagreement as an uncertainty feature, an isolated diagnostic checked whether reuse across rule contexts could create the disagreement itself. This is the Known graph-history interaction problem. Stockfish 19's search explicitly describes its high-rule50 TT-cutoff restriction as a partial workaround; that source is prior art, not evidence that a copied threshold would solve every context interaction in ChessSI. [Stockfish 19 TT-cutoff handling](https://github.com/official-stockfish/Stockfish/blob/sf_19/src/search.cpp#L891-L912)
+
+The test used `4k3/8/2K5/8/8/8/8/R7 w - - 0 1`, the same board with clocks 98 and 100, and a color mirror. Pinned python-chess independently verified local legality. At clock 98, every legal first move either stalemates the opponent or leaves that opponent able to claim a fifty-move draw with a legal announced move; none delivers checkmate. The recorded oracle retains every first move and its child result. No full starting-position reachability proof or occurrence in the live match is claimed.
+
+Both unchanged search implementations were called at non-root ply one and requested depth three. A full-window call populated the TT; a subsequent `[0,1]` call used the identical board with a different clock. Each fresh control cleared the TT. The white-side results were the same in baseline and candidate:
+
+| Query | Previous root entry | Returned score | Visits |
+| --- | --- | --- | --- |
+| Clock 0, full window | Empty | +562 | 719 |
+| Clock 98, null window | Exact +562 from clock 0 | +562 | 1 |
+| Clock 98, null window | Empty | 0 | 43 |
+| Clock 98, full window | Empty | 0 | 46 |
+| Clock 0, null window | Exact 0 from clock 98 | 0 | 1 |
+| Clock 0, null window | Empty | +511 | 10 |
+| Clock 100, null window | Exact +562 from clock 0 | 0 | 1 |
+
+All three clock contexts share the same ChessSI key. The immediate clock-100 draw exit precedes TT probing and works in this fixture, but it does not prevent clock-98 reuse. The reverse transfer also matters: suppressing only a near-boundary lookup would not by itself prevent a low-clock query from consuming a score stored in a near-boundary context. Full-window and null-window values are not interchangeable exact scores; the decisive comparison here is that fresh and cached null-window calls fall on opposite sides of the same beta at the same requested depth.
+
+The color mirror reproduced both directions of mismatch and the clock-100 control. All 36 diagnostic calls restored FEN, key and draw state, used 6,664 visits altogether, and stayed below their node limit. These constructed warm-cache contexts establish a reproducible failure mode, not its frequency, practical Elo cost, or responsibility for the current qsearch result. No cache guard, key change, draw policy or live engine source was changed.
+
+A future TT-conflict experiment must separate incompatible clock/history contexts from genuine same-context bound disagreement, alongside its existing depth and bound-type controls. A future correctness fix also needs stored-context and query-context tests and its own measured cost; checking only the current draw predicate is insufficient. This remains separate from the active qsearch experiment and the proposed first RFP trial.
+
+Evidence is in `engines/qsearch-validation/tt-clock-context-02/`, including the pre-probe plan, independent legal oracle, exact source snapshots, build logs, raw output and parsed results. Reproduce with `engines/qsearch-validation/audit_tt_clock_context.py`, SHA-256 `97e0c1ed608aa1905bb0729f2ac81f746487a5da067992d0309008117c3e0b67`. Attempt 01 stopped before any build or search because its archived-source path did not exist; its failure record is retained. Attempt 02 snapshots the hash-verified candidate source locally. GPT-6 (Codex) ran both probes on CPU 19, with sequential builds invoked through the prescribed `taskset -c 14-19 make -j6` and each compiler pinned to CPU 19.
