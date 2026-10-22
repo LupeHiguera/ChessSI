@@ -13,9 +13,9 @@
 
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
-// with MVV-LVA ordering, killer moves, null-move pruning, late move
-// reductions and aspiration windows. Other pruning and history heuristics are
-// left out on purpose: each is a separate experiment for the ideas log.
+// with MVV-LVA ordering, killer moves, a history heuristic, null-move pruning,
+// late move reductions and aspiration windows. Other pruning is left out on
+// purpose: each is a separate experiment for the ideas log.
 
 std::atomic<bool> Search::stop{false};
 
@@ -48,6 +48,7 @@ struct Searcher {
     Move pv[MAX_PLY + 1][MAX_PLY + 1];
     int pvLength[MAX_PLY + 1];
     Move killers[MAX_PLY + 1][2] = {};
+    int history[2][64][64] = {}; // [side to move][from][to], quiet moves only
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
@@ -96,9 +97,19 @@ struct Searcher {
                 scores[i] = 80'000;
             else if (ply >= 0 && m == killers[ply][1])
                 scores[i] = 70'000;
+            else if (ply >= 0)
+                scores[i] = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
             else
                 scores[i] = 0;
         }
+    }
+
+    // Moves the entry toward +/-MaxHistory so it never leaves the quiet band
+    // of the move ordering (below killers at 70,000).
+    void update_history(Move m, int bonus) {
+        constexpr int MaxHistory = 16384;
+        int& h = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
+        h += bonus - h * std::abs(bonus) / MaxHistory;
     }
 
     // Selection sort step: brings the best remaining move to index i.
@@ -212,6 +223,8 @@ struct Searcher {
         int best = -VALUE_INF;
         Move bestMove = MOVE_NONE;
         int legalMoves = 0;
+        Move quietsTried[256];
+        int quietCount = 0;
 
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
@@ -256,14 +269,22 @@ struct Searcher {
                         pv[ply][j + 1] = pv[ply + 1][j];
                     pvLength[ply] = pvLength[ply + 1] + 1;
                     if (score >= beta) {
-                        if (is_quiet(m) && m != killers[ply][0]) {
-                            killers[ply][1] = killers[ply][0];
-                            killers[ply][0] = m;
+                        if (quiet) {
+                            if (m != killers[ply][0]) {
+                                killers[ply][1] = killers[ply][0];
+                                killers[ply][0] = m;
+                            }
+                            int bonus = std::min(depth * depth, 1200);
+                            update_history(m, bonus);
+                            for (int j = 0; j < quietCount; ++j)
+                                update_history(quietsTried[j], -bonus);
                         }
                         break;
                     }
                 }
             }
+            if (quiet)
+                quietsTried[quietCount++] = m;
         }
 
         if (legalMoves == 0)
