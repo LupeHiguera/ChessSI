@@ -6,6 +6,8 @@
 # Settings (environment variables):
 #   TC=10+0.1        time control; confirm winners with TC=60+0.6
 #   ELO0=0 ELO1=5    SPRT bounds; use ELO0=-5 ELO1=0 for simplifications
+#   ALPHA=0.05 BETA=0.05  SPRT error rates (false pass, false fail)
+#   ROUNDS=100000    maximum game pairs before stopping undecided
 #   CONCURRENCY=N    games in parallel (default: cores - 2)
 #   BOOK=path        EPD opening book (default: books/UHO_Lichess_4852_v1.epd)
 #   FASTCHESS=path   fastchess binary (default: fastchess on PATH)
@@ -19,6 +21,9 @@ BASE_REF=${1:-HEAD}
 TC=${TC:-10+0.1}
 ELO0=${ELO0:-0}
 ELO1=${ELO1:-5}
+ALPHA=${ALPHA:-0.05}
+BETA=${BETA:-0.05}
+ROUNDS=${ROUNDS:-100000}
 BOOK=${BOOK:-books/UHO_Lichess_4852_v1.epd}
 FASTCHESS=${FASTCHESS:-fastchess}
 CORES=$(getconf _NPROCESSORS_ONLN)
@@ -40,16 +45,16 @@ make -s -C engines/base-src EXE="$PWD/engines/base"
 
 echo "new  ($(git rev-parse --short HEAD)+working tree): bench $(engines/new bench | tail -1 | cut -d' ' -f1)"
 echo "base ($BASE_REF): bench $(engines/base bench | tail -1 | cut -d' ' -f1)"
-echo "SPRT [$ELO0, $ELO1] at $TC, $CONCURRENCY games in parallel"
+echo "SPRT [$ELO0, $ELO1] alpha $ALPHA beta $BETA at $TC, $CONCURRENCY games in parallel, at most $ROUNDS pairs"
 
 "$FASTCHESS" \
     -engine cmd=engines/new name=new \
     -engine cmd=engines/base name=base \
     -each tc="$TC" option.Hash=16 option.Threads=1 \
     -openings file="$BOOK" format=epd order=random \
-    -rounds 100000 -games 2 -repeat -recover \
+    -rounds "$ROUNDS" -games 2 -repeat -recover \
     -resign movecount=3 score=400 twosided=true \
     -draw movenumber=40 movecount=8 score=10 \
     -concurrency "$CONCURRENCY" \
-    -sprt elo0="$ELO0" elo1="$ELO1" alpha=0.05 beta=0.05 \
+    -sprt elo0="$ELO0" elo1="$ELO1" alpha="$ALPHA" beta="$BETA" \
     -pgnout file=engines/sprt.pgn

@@ -5,10 +5,12 @@
 Every idea tested, newest first, pass or fail. **Model** is the AI that proposed and wrote the change.
 **Kind** is Known (an existing technique, reimplemented) or Novel (not found in prior art: the
 chessprogramming wiki, TalkChess, Stockfish's fishtest). Novel ideas are the real benchmark signal.
+**Pre-screen** is the verdict and game count from `scripts/prescreen.sh` (2+0.02, loose SPRT); logging
+it next to the full result shows whether the pre-screen can be trusted to drop ideas on its own.
 **Result** is Passed, Failed or Inconclusive. **Elo** is the SPRT estimate with its error bar.
 
-| Date | Model | Kind | Idea | Result | Elo | Games |
-| --- | --- | --- | --- | --- | --- | --- |
+| Date | Model | Kind | Idea | Result | Elo | Games | Pre-screen |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 
 Baseline before the first idea: bench `20648203`.
 
@@ -50,8 +52,8 @@ Before testing a novel idea, check the prior-art sources above. If it turns out 
 Known and note where it was found. Proposals:
 
 - **Cheaper testing (methodology).** CPU time for SPRTs is the bottleneck. Ways to get more decisions
-  per CPU hour count as research too: early adjudication of decided games, cheap pre-screening at very
-  fast time controls, and testing several independent changes at once with a factorial design that
+  per CPU hour count as research too: early adjudication of decided games (in `sprt.sh`), cheap
+  pre-screening at very fast time controls (`scripts/prescreen.sh`, being validated), and testing several independent changes at once with a factorial design that
   separates their effects (verified against single-idea SPRTs before it is trusted).
 - **GPU teacher for data (phase 3).** Data generation is CPU-bound. Train a larger network on the GPUs
   from our own games and use it to relabel positions in large batches, so the CPU plays games and the
