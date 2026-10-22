@@ -389,6 +389,8 @@ All sixteen ordinary-UCI searches used fresh TT and together reported 180 nodes.
 
 ### Minimal first-trial contract
 
+Implementation update, 2026-10-22: the fixed first trial passed its correctness checks and is now in a separate SPRT. See the [RFP trial record](rfp.md) for the exact branch, artifacts, guards and stopping rule. No strength result is available yet.
+
 After completing and archiving the current test, check the shared queue again, claim item 5, and rebase onto the latest accepted engine. A proposed conservative first version uses only non-root, non-PV, non-check nodes at depths one through three, with a fixed 150-cp-per-ply margin, non-pawn material for the side to move, beta/static values outside the mate band, and `pos.rule50() + depth < 100`. Keep existing draw/maximum-ply and applicable TT exits ahead of the new rule. No improving flag, tuning sweep, TT-evaluation change, null move, qsearch variant or learned margin belongs in this first comparison.
 
 When the static threshold qualifies, verify that a legal move exists before returning the static evaluation. Generate pseudo-legal moves and use paired make/unmake until the first legal move; if none exists, return the existing stalemate value zero. This check is limited to would-be RFP cutoffs, rather than every node. Its cost is part of the candidate and must be measured. The terminal guarantee concerns this new cutoff path; existing TT/history and qsearch limitations are not thereby solved. The one-legal-move control remains an explicitly known heuristic miss, not a case to claim the guard fixes or to tune away after the match.
