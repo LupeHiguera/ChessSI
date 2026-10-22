@@ -54,6 +54,8 @@ Outcome, uncertainty, artifacts and next decision:
 
 Use separate rows for revised hypotheses. A failed experiment followed by a tuned replacement is two attempts. Repeated adjustment against the same held-out data turns it into development data; obtain another test sample.
 
+A per-test error setting does not control the chance of any false acceptance across all attempts. Fresh STC/LTC confirmation helps, but the two stages test different time controls; their error probabilities cannot always be multiplied. Report every attempt, and measure aggregate progress with an independent frozen-engine comparison instead of summing selected gains. See [the multiple-attempt analysis](research/codex-2026-10-22/testing.md#many-attempts-and-the-strength-of-the-final-claim). The repository's prescribed acceptance protocol remains in force.
+
 ## First research lane: selective deeper labels
 
 The immediate candidate asks whether cheap iterative-deepening diagnostics can choose positions worth more analysis. It needs no NNUE and changes no playing code. The detailed specification is in [evaluation research](research/codex-2026-10-22/evaluation.md).
