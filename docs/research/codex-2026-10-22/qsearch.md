@@ -240,3 +240,52 @@ After one warm-up per binary, six alternating timing pairs ran on CPU 19 while t
 | Combined record | `engines/qsearch-validation/evasion-compaction-01/final-diagnostic.json` |
 
 Reproduction scripts are `prepare_evasion_compaction.py` and `time_evasion_compaction.py` in `engines/qsearch-validation/`. GPT-6 (Codex) proposed and wrote this fifth local variant of idea 9. Builds used `taskset -c 14-19 make -j6` with the compiler itself pinned to CPU 19; probes and timing also used CPU 19. The active source and match-binary hashes remained unchanged. No local variant has replaced the candidate in the running match or received a completed strength result.
+
+## Matched opening searches and an independent reference audit
+
+A descriptive follow-up used the frozen, independently audited 1,613-game snapshot. It retained complete color-swapped pairs with game IDs above 1,000, excluding a whole pair if either game shared a pilot opening or any recorded board/side state with a reserved labeling root or initial state. There were 306 eligible pairs, all with distinct opening FENs, and one unpaired game. No pilot overlap or unparseable first-move annotation was found. No game outcome or evaluation was used to select these pairs.
+
+Both engines start each pair from the same six-field FEN, with the same clock setting and side to move. The PGN contains each first move's reported depth and elapsed move time, but no node count. The match binaries clear TT on `ucinewgame`. This makes first moves a useful matched diagnostic; reported move time still includes environment overhead, and completed-game snapshots can censor games still in flight.
+
+| First-search observation | Count or value |
+| --- | --- |
+| Correction reached lower / equal / higher reported depth | 27 / 278 / 1 pairs |
+| Same first move | 292 / 306 pairs |
+| Median reported depth, correction / baseline | 7 / 7 |
+| Median reported move time, correction / baseline | 1.2395 / 1.2025 seconds |
+| Median within-pair correction/baseline time ratio | 1.0834 |
+| Equal-depth pairs choosing the same move | 273 / 278 |
+| Median time ratio within the equal-depth subset | 1.0809 |
+
+The median of paired ratios is not the ratio of the two marginal medians. Equal nominal depth also does not mean equal trees: the correction extends tactical work within quiescence. These observations describe cost and choice differences; they do not attribute the current match score to a particular mechanism. Conditioning on equal depth is an exploratory case selection, not a randomized comparison.
+
+### Five equal-depth disagreements
+
+All five first-move disagreements at equal reported depth were frozen for a stronger-reference audit before collecting reference scores. The reference was the [official Stockfish 19 Linux universal release](https://github.com/official-stockfish/Stockfish/releases/tag/sf_19), published 2026-09-05. Its 81,388,977-byte archive matched the release API's SHA-256 `9defc0d4e55d49c65a6d042f3e571a39fcea499ade6dbe741b53b8c65e03611f`. Executable SHA-256 was `0f83d24cc46d2c66c60f16001af5444873bc112b7d028594513426894c12da19`; its default embedded network was `nn-1a298aa575a0.nnue`.
+
+Each alternative received separate searches at 262,144 and 1,048,576 requested nodes, with fresh TT/history tables, Hash 16 MB, Threads 1, MultiPV 1, full strength and no pondering. `NumaPolicy=none` disabled internal NUMA rebinding; every checked process-thread affinity was CPU 19. The forced move was supplied through Stockfish's `searchmoves` at the same original root FEN, keeping both alternatives in the same root-player perspective and score-normalization context. This exactly reproduces the match's FEN-only initial history, rather than inventing an earlier opening sequence.
+
+Two constructed sanity checks verified forced-root handling: Qxh7 is mate in the proof-mask counterexample A, but has a legal rook defense in B. All reported reference PVs were independently replayed for legality. The comparison uses each search's last unbounded UCI score, an operational bounded-budget estimate, not a proven game value or a claim that the reported final depth finished completely.
+
+| Opening pair | Corrected choice | Baseline choice | Reference difference at 262,144 nodes | Difference at 1,048,576 nodes |
+| --- | --- | --- | --- | --- |
+| 506 | `c1b2` | `g1f3` | -32 cp | -18 cp |
+| 602 | `f3e5` | `f1b5` | +21 cp | +6 cp |
+| 715 | `b1c3` | `d2d4` | +52 cp | +60 cp |
+| 755 | `c1e3` | `c1f4` | +14 cp | -2 cp |
+| 798 | `g8f6` | `c8b7` | -127 cp | -94 cp |
+
+Differences are Stockfish's corrected-choice score minus its baseline-choice score from the root player's perspective. Positive favors the correction's move under that reference. The results are mixed, and pair 755 changes sign between the predeclared budgets. No aggregate quality or Elo gain is inferred from five selected disagreements. Stockfish's normalized scores are not interchangeable with ChessSI's internal evaluation scale.
+
+A separate fixed-depth replay then ran both unchanged match binaries on all five FENs at their recorded depth seven, with fresh TT and the same Hash setting. All ten first moves reproduced exactly, and all returned PVs were legal. The disagreements therefore persist without wall-clock stopping in these cases. This establishes reproducibility of the choices, not their game-theoretic quality or the source of the whole-match result.
+
+The reference comparison charged 13,107,200 requested nodes; its largest reported node counts summed to 13,111,929, showing small cap overshoots. The two sanity probes reported six nodes in total. The ten completed ChessSI reproductions used 54,497,865 reported nodes. All work ran on CPU 19 while the original five-game test continued with unchanged binaries. These development diagnostics neither collect reserved pilot labels nor alter its protocol.
+
+| Evidence | Local artifact |
+| --- | --- |
+| Paired selection, exclusions, first-move records and summaries | `engines/qsearch-validation/opening-pair-profile-01/` |
+| Official release provenance and verified executable | `engines/dependencies/stockfish-19/` |
+| Frozen reference plan, five cases, all UCI transcripts and scores | `engines/qsearch-validation/opening-reference-01/` |
+| Fixed-depth reproduction plan, traces and comparisons | `engines/qsearch-validation/opening-reproduction-01/` |
+
+Reproduction scripts are `profile_opening_pairs.py`, `fetch_stockfish_reference.py`, `reference_opening_disagreements.py` and `reproduce_opening_choices.py` under `engines/qsearch-validation/`. Their records include source/input hashes. GPT-6 (Codex) designed and performed this audit. It supplies a more specific diagnosis than assuming all corrected choices are better or that every loss is caused only by runtime overhead; the original SPRT remains the strength decision.
