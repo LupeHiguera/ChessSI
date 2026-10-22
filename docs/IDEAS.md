@@ -35,3 +35,17 @@ top one, test it, log it, then move on.
 12. Mate distance pruning; insufficient-material draws
 13. Time management: stop early when the best move is stable
 14. Phase 3: self-play data generation and a first NNUE network (trainer on the RTX 5080)
+
+## Measurements
+
+Rating checks, not ideas: they change no code, get no SPRT and don't count toward the hit rate. Log
+each result here with the date, the commit and its bench.
+
+- **Gauntlet against rated engines,** after ideas 1-4 are tested. Play a few hundred games against 3-4
+  open-source engines with known CCRL Blitz ratings, picked to sit above and below ChessSI, using
+  `fastchess -tournament gauntlet` with the same book and time control as SPRTs. Fitting the scores
+  to the opponents' ratings turns the strength estimate into a measured rating. Repeat after major
+  milestones (end of phase 2, first NNUE) to chart progress.
+
+| Date | Commit | Bench | Opponents | Games | Rating |
+| --- | --- | --- | --- | --- | --- |
