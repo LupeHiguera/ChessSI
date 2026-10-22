@@ -1,0 +1,134 @@
+{
+    "schema_version":  1,
+    "created_utc":  "2026-10-22T18:13:34.7133979Z",
+    "scope":  "Exact-byte selected terminal evidence; excludes raw PGN, binaries, book and full dependencies; LTC plan is launch-only",
+    "copied_files":  16,
+    "files":  [
+                  {
+                      "path":  "stc/terminal-extraction.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  5387,
+                      "sha256":  "5751342970ab00401ad9e08b3d69c523812384f31260a51d10cb8b3a8df32ba2",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/terminal-extraction.json"
+                  },
+                  {
+                      "path":  "stc/terminal-audit-binding.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  1032,
+                      "sha256":  "66e011294d54105601c77ca8a3cbfaed991d06852d2e44baeade8bb98eb94b39",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/terminal-audit-binding.json"
+                  },
+                  {
+                      "path":  "stc/audit-result.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  32605,
+                      "sha256":  "e3dbfd141509b3205346ad9b96d6ce7d64830c6ea0b26490b5e436a7d562c625",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/terminal-audit-01/result.json"
+                  },
+                  {
+                      "path":  "stc/audit-reports.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  243812,
+                      "sha256":  "00ffb0c118166897ffa924cfe1ecc2554fd33f35499bec079308926a1a0338bb",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/terminal-audit-01/reports.json"
+                  },
+                  {
+                      "path":  "stc/terminal-state.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  2085,
+                      "sha256":  "5dd1e3f5ee4d15e6b3e3e8c2749bd547e80379bac3be1aec5fa79665bd7f7ac1",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/live-watch-01/state.json"
+                  },
+                  {
+                      "path":  "stc/guard-plan.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  2594,
+                      "sha256":  "a1f9f82fc2a0d0012aea38149990413257f9cf51942a2f0a284ec47f13b389ce",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/live-watch-01/plan.json"
+                  },
+                  {
+                      "path":  "stc/terminal-manifest.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  31849,
+                      "sha256":  "ed1a069a0b3ec21a451ccffbb37b87c999b618fb0eb7ef327fd1af329adc5fbe",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/live-watch-01/terminal-snapshot/manifest.json"
+                  },
+                  {
+                      "path":  "stc/terminal-manifest.sha256",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  65,
+                      "sha256":  "08d8b881e31825996a1fb3ce7221d5c190dc14ecea92f96f3931d5f75498df5e",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/live-watch-01/terminal-snapshot/manifest.sha256"
+                  },
+                  {
+                      "path":  "stc/runner-exit.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  118,
+                      "sha256":  "d37840085bcad734e1ab153284a02059e0031e1fa089c0d409b283acbf9370d4",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/runner-exit.json"
+                  },
+                  {
+                      "path":  "stc/audit_terminal.py",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  5332,
+                      "sha256":  "0fd0f168b6de545365cf9ced98c1db6308cf91026f047fd2a62346f16f7f6118",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/audit_terminal.py"
+                  },
+                  {
+                      "path":  "stc/audit_match.py",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  18055,
+                      "sha256":  "e67123fa57194ed4dc700a4614ec3a73fc2bf3a7b23f094e6485c2f284a1dac9",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/terminal-audit-01/audit_match.py"
+                  },
+                  {
+                      "path":  "stc/terminal.log",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  105079,
+                      "sha256":  "16d5e894cf880c43a5722469d4a3d3accbf40e2ea65e4b2fa25258c3407e9b44",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/live-watch-01/terminal-snapshot/files/0023-sprt-stc.log"
+                  },
+                  {
+                      "path":  "stc/terminal-config.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  3793,
+                      "sha256":  "698d2e77cdfdeee973664f7008048b41aff768c4ab77851dcee05ae826c58d10",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/live-watch-01/terminal-snapshot/files/0022-config.json"
+                  },
+                  {
+                      "path":  "transition/terminal-preflight.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  15221,
+                      "sha256":  "30bd525f0330e86e440b84c0a17b7074ac0d547ce6aa748c057b71d7e377ea3b",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/confirmation-validation-01/terminal-preflight-01/preflight.json"
+                  },
+                  {
+                      "path":  "transition/archive-proof.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  26755,
+                      "sha256":  "3c364ede5f74e28dfce22d559e9322eda72d930f85c1c877540fb39fbf29f95f",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/stc-run-files/archive-proof.json"
+                  },
+                  {
+                      "path":  "ltc-launch-only/launch-plan.json",
+                      "kind":  "exact_byte_copy",
+                      "bytes":  4842,
+                      "sha256":  "cc230c37a70388f7249900cb72c3b1c40fcc208731ee07db91393e325330c6c5",
+                      "source_path":  "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-ltc-validation/launch-plan.json"
+                  },
+                  {
+                      "path":  "README.md",
+                      "kind":  "generated_bundle_document",
+                      "bytes":  2956,
+                      "sha256":  "06f49dd71b6836ed5c2870c92a5bae0c1f1951921b6f70dd4c3dd7048f81f1a0",
+                      "source_path":  null
+                  },
+                  {
+                      "path":  "local-artifacts.json",
+                      "kind":  "generated_bundle_document",
+                      "bytes":  17943,
+                      "sha256":  "2a1e6ad6d073fa860940518023dc5729c648fc035fe548fc054486181c85399d",
+                      "source_path":  null
+                  }
+              ]
+}

@@ -27,7 +27,7 @@ The five cards below are ranked by usefulness to this project. "Candidate distin
 
 **Failure modes.** Score changes can be noisy, odd/even effects can masquerade as learning value, and selected positions may be tactical cases a small evaluator cannot represent. A better label is not automatically a better training example. Cheap screening and selector training costs can erase savings.
 
-**Cheap falsification.** The pilot can pass only if selected replacements improve held-out reference error over every allocation control at equal budget and over retaining the cheap labels. If that gate passes, compare identically sized evaluation models trained with the selected versus uniform labels before any match claim. The full protocol follows the cards.
+**Cheap falsification.** The pilot can pass only if selected replacements improve held-out reference error over every allocation control at equal budget and over retaining the cheap labels. If that gate passes, compare identically sized evaluation models trained with selected labels versus the strongest predeclared simple cost-matched control, chosen using training/calibration data before opening the training-stage test set; retain uniform selection as a secondary comparison. This later training experiment does not alter the frozen version-2 label pilot. The full protocol follows the cards.
 
 ## 2 Establish a small NNUE with a strict inference contract
 

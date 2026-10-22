@@ -1,6 +1,6 @@
 # Shallow reverse futility pruning trial
 
-Prepared by GPT-6 (Codex), 2026-10-22 UTC. **Status: STC Passed on the original baseline; unpromoted, with no LTC confirmation. A fresh STC comparison on updated main is now running.** See [the new run](#fresh-stc-comparison-on-updated-main). See the [audited final result](#final-result-on-the-original-baseline). Main advanced during this frozen comparison; see [baseline transition](#accepted-main-advanced-during-the-run). This is idea 5, classified Known. The separate check-evasion experiment ended with H0 accepted, was logged as Failed, and its engine changes were reverted before this trial began.
+Prepared by GPT-6 (Codex), 2026-10-22 UTC. **Status: separate STC passes on the original baseline and updated main `f801f8c`; unpromoted, with independent LTC confirmation now running.** See [the updated-main result](#final-result-on-updated-main) and [the original-baseline result](#final-result-on-the-original-baseline). Main advanced during the original frozen comparison; see [baseline transition](#accepted-main-advanced-during-the-run). This is idea 5, classified Known. The separate check-evasion experiment ended with H0 accepted, was logged as Failed, and its engine changes were reverted before this trial began.
 
 ## Question and frozen implementation
 
@@ -40,7 +40,7 @@ The original match manager was PID 1850159, start ticks `3934763`, on CPUs 14-19
 
 ## Final result on the original baseline
 
-The frozen `10+0.1` comparison accepted **H1** at log line **3779**, after **1,568 counted games**. This is an audited **STC Passed** result only against `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`. It is not an accepted or promoted gain on the newer main, and no LTC confirmation has started.
+The frozen `10+0.1` comparison accepted **H1** at log line **3779**, after **1,568 counted games**. This is an audited **STC Passed** result only against `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`. It is not an accepted or promoted gain on the newer main, and no LTC was run against that original baseline.
 
 | Terminal statistic | Value |
 | --- | --- |
@@ -227,7 +227,7 @@ The preflight checked all 22 source/build/test inputs against the published cand
 
 After an explicit H1 result, the terminal archive, candidate/baseline identities, protocol, normal runner exit and independent PGN/count audit must all reconcile before launch. Re-fetch current main and rerun the preflight into a new directory; if main moved, rebase and retest the changed comparison rather than relabeling the old result. Preserve the completed STC outputs before the standard runner writes fresh files, force a rebuild, verify binary/bench identities, then attach the existing identity-checked deadline guard to the new manager. A missing LTC decision at the deadline stays Inconclusive even if STC passed.
 
-No LTC confirmation started. Versions `confirmation-preflight-01` through `-03` are retained as historical records. Manual review identified incomplete protocol/provenance bindings, corrected before use as described in the [terminal-check review](testing.md#review-of-terminal-audit-and-confirmation-readiness). After the audited H1 result, `confirmation-preflight-04/preflight.json` at 16:18 UTC found no active manager and no remaining terminal-evidence wait, but correctly refused launch because accepted main and its local tracking reference differed from the original baseline. It binds the earlier launch/process/config observations and the revised independent audit schema. Helper `prepare_confirmation.py` SHA-256: `b3010849d5271620f4498f2a071c839f7a429591bbf4336a39c1c948be74a5b9`. Nineteen focused regression checks passed. The actual post-H1 refusal path was exercised; no eligible LTC launch has been exercised.
+No old-baseline LTC confirmation started. Versions `confirmation-preflight-01` through `-03` are retained as historical records. Manual review identified incomplete protocol/provenance bindings, corrected before use as described in the [terminal-check review](testing.md#review-of-terminal-audit-and-confirmation-readiness). After the audited H1 result, `confirmation-preflight-04/preflight.json` at 16:18 UTC found no active manager and no remaining terminal-evidence wait, but correctly refused launch because accepted main and its local tracking reference differed from the original baseline. It binds the earlier launch/process/config observations and the revised independent audit schema. Helper `prepare_confirmation.py` SHA-256: `b3010849d5271620f4498f2a071c839f7a429591bbf4336a39c1c948be74a5b9`. Nineteen focused regression checks passed. The actual post-H1 refusal path was exercised; no eligible LTC launch has been exercised.
 
 
 ## Accepted main advanced during the run
@@ -270,9 +270,37 @@ Remote main was rechecked at **16:26:36 UTC**. The fresh launcher recorded its p
 
 The verified deadline guard attached at **16:27:07.947761 UTC** and retains the fixed **19:53 UTC / 12:53 PM Arizona** cutoff. The manager and all ten engine processes were observed inside CPUs 14-19; the watcher uses CPU 19. The source/process snapshot verified all 34 archived files with no findings, including a near-launch book-path/digest observation. The first frozen configuration confirms the intended settings and distinct seed. Its independent PGN audit legally replayed 33 games and 3,321 plies, reconciled the first statistics report and every saved result, and found no missing cross-source games or suspect terminations.
 
-All new-run evidence is separated under `engines/rfp-current-main-validation/`: launch/guard plans, source snapshot, process audit, first protocol/match audit, runner log and subsequent terminal records. The candidate and its test inputs are now frozen. No strength verdict exists for this comparison. An STC winner still needs independent 60+0.6 confirmation; no decision by the deadline remains Inconclusive.
+All new-run evidence is separated under `engines/rfp-current-main-validation/`: launch/guard plans, source snapshot, process audit, first protocol/match audit, runner log and subsequent terminal records. The candidate and its test inputs remained frozen through the audited STC pass below. Independent 60+0.6 confirmation is still required; no LTC decision by the deadline remains Inconclusive for confirmation.
 
-The new-baseline confirmation preflight is prepared and passed 27 focused checks. Its actual live observation at 16:45 UTC correctly waits for this STC to finish and for a fresh accepted-main check. No eligible H1 launch path or LTC match has occurred. [Preparation and evidence](testing.md#updated-main-confirmation-preparation).
+The new-baseline confirmation preflight passed 27 focused checks. Its actual live observation at 16:45 UTC correctly waited for this STC to finish and for a fresh accepted-main check. That observation exercised the waiting path; the subsequent STC terminal audit is recorded below. LTC subsequently launched as recorded below. [Preparation and evidence](testing.md#updated-main-confirmation-preparation).
+
+## Final result on updated main
+
+The frozen `10+0.1` comparison against accepted main **`f801f8c519b0fe5b3d009b8f0664b049409a1188`** accepted **H1 at log line 1941** after **802 games / 401 complete pairs**. The runner exited normally at **17:57:28 UTC on 2026-10-22** with code 0. This is an audited **STC Passed** result; independent `60+0.6` confirmation is now running, and the candidate remains unpromoted.
+
+| Terminal statistic | Recorded value |
+| --- | --- |
+| Candidate wins / losses / draws | 303 / 148 / 351 |
+| Pentanomial counts | 11 / 51 / 155 / 140 / 44 |
+| Logistic Elo | +68.00 +/- 16.54 |
+| Normalized Elo | +101.49 +/- 24.05 |
+| Printed LLR | 2.94; explicit H1 message |
+| Completed unpaired games | 0 |
+
+The decision follows the explicit manager message, not inference from the rounded LLR. The unchanged normalized SPRT used `[0,5]`, alpha/beta 0.05 and five concurrent games on CPUs 14-19. The independent audit legally replayed **all 802 saved games and 88,397 plies**, reconciled **all 41 reports**, and agreed with the log and terminal configuration on every count and result. PGN terminations comprise **294 normal and 508 adjudicated games**. Games **803-806** started before the decision but had no recorded finish; none enters the result. No late events, missing cross-source games or suspect terminations were found. Legal replay and count reconciliation do not independently establish the accuracy of adjudication.
+
+The guard archived normal termination without sending a signal and reported no binary drift. Candidate/base benches remain **609035 / 864538**, with the identities recorded above. These fresh games and estimates are separate from the original-baseline STC pass; the two estimates must not be added or pooled.
+
+Evidence is under `engines/rfp-current-main-validation/`: `terminal-extraction.json`, `terminal-audit-01/result.json`, `terminal-audit-binding.json`, `runner-exit.json`, `live-watch-01/state.json` and `live-watch-01/terminal-snapshot/`. The [compact terminal evidence bundle](evidence/rfp-current-main-terminal/README.md) preserves exact copies of the selected records, all audit reports and the frozen log/configuration. It is a documented subset; the raw PGN, binaries and book remain local.
+
+| Terminal artifact | SHA-256 |
+| --- | --- |
+| Extraction | `5751342970ab00401ad9e08b3d69c523812384f31260a51d10cb8b3a8df32ba2` |
+| Independent audit result | `e3dbfd141509b3205346ad9b96d6ce7d64830c6ea0b26490b5e436a7d562c625` |
+| Audit binding | `66e011294d54105601c77ca8a3cbfaed991d06852d2e44baeade8bb98eb94b39` |
+| Terminal manifest | `ed1a069a0b3ec21a451ccffbb37b87c999b618fb0eb7ef327fd1af329adc5fbe` |
+| Terminal log | `16d5e894cf880c43a5722469d4a3d3accbf40e2ea65e4b2fa25258c3407e9b44` |
+| Terminal PGN | `028c7920900e92ef3cdd07625afbb32a7c0209f288ecf528197f06dcf0e29f3a` |
 
 ## Context-preserving shadow audit on updated main
 
@@ -343,3 +371,21 @@ Local evidence is under `engines/rfp-current-main-validation/first-pawn-preparat
 | Chronology result | `7bd530b1925faa0ca3505cb6c3398c106f3dee9c879d9bc563a2cd554392a9f6` |
 
 The [compact updated-main evidence bundle](evidence/rfp-current-main/README.md) preserves reconstructible candidate and optimization patches, the context-build deltas, exact archived harnesses and independent verification records. Full raw transcripts and corpora remain local, identified by paths and hashes in the bundle.
+
+## Independent LTC confirmation on updated main
+
+An independent `60+0.6` confirmation launched at **18:07:32 UTC on 2026-10-22** against unchanged accepted main `f801f8c`. The actual terminal preflight returned `ready_for_explicit_launch=true` at **18:06:34 UTC**, with no problems or waiting conditions, after the external main check at **18:06:26 UTC**. Five completed-STC output paths were archived without overwriting existing destinations; all **36 before/after file hashes** reconciled. The previous STC decision and statistics remain separate.
+
+The forced clean runner rebuild reproduced candidate/base benches **609035 / 864538** and the same binary hashes `b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab` / `819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da`. The candidate source and root HEAD `d1de9d0314cf9b18ae27bb3d61237dd1df57cb05` remain frozen. **No first-pawn optimization is included.** The new comparison uses normalized SPRT `[0,5]`, alpha/beta 0.05, the existing book/adjudication settings, Hash 16, Threads 1, five concurrent games and CPUs 14-19.
+
+Manager **2739252**, start ticks **5479196**, has its own launch and runner identity records. The identity-bound guard entered `watching` at **18:07:49.812079 UTC**, with watcher PID **2739589** on CPU 19 and the unchanged **19:53 UTC / 12:53 PM Arizona** deadline. This is a running confirmation, not an LTC result or accepted promotion. A missing terminal decision at the deadline remains Inconclusive for LTC. The new opening seed has not yet been captured in this launch record.
+
+New-run evidence is under `engines/rfp-current-main-ltc-validation/`: `launch-plan.json`, `runner-identity.json`, `sprt-ltc.log`, `guard-attachment.json` and `live-watch-01/`. Completed-STC preservation and eligibility are under `engines/rfp-current-main-validation/stc-run-files/archive-proof.json` and `confirmation-validation-01/terminal-preflight-01/preflight.json`.
+
+| Launch artifact | SHA-256 |
+| --- | --- |
+| LTC launch plan | `cc230c37a70388f7249900cb72c3b1c40fcc208731ee07db91393e325330c6c5` |
+| STC archive proof | `3c364ede5f74e28dfce22d559e9322eda72d930f85c1c877540fb39fbf29f95f` |
+| Eligible terminal preflight | `30bd525f0330e86e440b84c0a17b7074ac0d547ce6aa748c057b71d7e377ea3b` |
+| Launcher | `50e01a74ec79b31e79ecb3d35437f728314a22cd984534707d443f6bfcefa425` |
+| Guard adapter | `0cea3c7747522932377b31e5733b8f3b10aa8aceed80f0e96fd40b1e8a365b92` |

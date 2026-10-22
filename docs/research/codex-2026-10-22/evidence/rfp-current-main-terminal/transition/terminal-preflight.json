@@ -1,0 +1,410 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-22T18:06:34.583400+00:00",
+  "model": "GPT-6 (Codex)",
+  "purpose": "Prepare separate LTC confirmation of this exact updated-main STC candidate, conditional on audited terminal H1.",
+  "ready_for_explicit_launch": true,
+  "benchmark_result": "not_assigned",
+  "problems": [],
+  "waiting": [],
+  "active_managers": [],
+  "branch": "astra/rfp-current-main",
+  "head": "d1de9d0314cf9b18ae27bb3d61237dd1df57cb05",
+  "baseline": "f801f8c519b0fe5b3d009b8f0664b049409a1188",
+  "externally_checked_main": "f801f8c519b0fe5b3d009b8f0664b049409a1188",
+  "main_check": {
+    "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/main-check.json",
+    "sha256": "8cfe2f001134a1fed62c5e0e2079f9ab092fb4bcbdb4e34e8f781477c7808e3e",
+    "record": {
+      "sha": "f801f8c519b0fe5b3d009b8f0664b049409a1188",
+      "checked_utc": "2026-10-22T18:06:26+00:00",
+      "source": "GitHub refs/heads/main via connected repository tool"
+    },
+    "maximum_age_seconds": 300,
+    "scope": "Supplied external observation; this script does not fetch or independently authenticate remote main."
+  },
+  "candidate_bench": 609035,
+  "baseline_bench": 864538,
+  "checked_source_files": 21,
+  "input_hashes": {
+    "Makefile": "9421a0539adfa4215e989e7ca1e9f79cb38178797450a08a93f5b40cdc2a9258",
+    "tests/rfp.cpp": "0350253bba4d77f01198a8779d12f8e3fe07f71fbfdcee859a693d1fe1e567d6",
+    "tests/perft.epd": "8421dbafc5254aeba1631cc7548992cc8e227ee072ee859f89acd337e0126d6f",
+    "src/bitboard.cpp": "c1013ad95f87aa3907f0ef00872f38b4ceb957ac3501af75103399d4dad79ee8",
+    "src/bitboard.h": "23990775a97c365d1834c7757460dfaa597138e46bf30999a75f7aeea4445569",
+    "src/eval.cpp": "9a79b233d86f24ed96d55440f97d1623dcf0e9cb04eed945ef0421eab9cdfff3",
+    "src/eval.h": "67f2130d25fbea28987c9ade5de3c1dea40d4374943ee9bc53789ee2e0601ce6",
+    "src/main.cpp": "7975b5c5c0bc235d393ddf6cc6b69fa6d4eb70df079b6a9547a42744f009ce74",
+    "src/movegen.cpp": "7640271920c14cc1eac291b167b4a25c9f46c830f35045da06320e9b36473839",
+    "src/movegen.h": "e2b2d99078992bb72f261eba21fe46d3e0320223b5f88a401879e859a258fcb9",
+    "src/perft.cpp": "5f05b85fc5be21b5b009c893fa6eda01550a3ca7805d4a29ddddd08d405de5d9",
+    "src/perft.h": "22a094ac38f3db22c937ed2e8b22c165a7d2573d86eab0bbebde34f340e30a37",
+    "src/position.cpp": "3161c29e8c3d0a3586f9acd4357de9d0c534c242f4e89530f3a392c869e58a32",
+    "src/position.h": "aa779f3134d67e49d1821dfe37fbc08c4f2ccbced226793298f9d9157796a850",
+    "src/search.cpp": "a13807cdfa9e1ced5d66f948ae70245386344634e88d1c7801603991d3f2cc84",
+    "src/search.h": "b3a2d1324d49d35ad0b9bb096390ca7fb1f11b0be719c033c4a00929e4c0cd84",
+    "src/tt.cpp": "99820a51ed5df3d899c6db152fa28c4527ec633de5fb3070bb66badf39675f39",
+    "src/tt.h": "77f4e7179b1194c85b59baf3d56f608bf21bb851af1062ce83224bb24deeb68d",
+    "src/types.h": "551f3f08ac30b50e9b7caa77a65805582d291a0af79cf1eec82bb60f544976ae",
+    "src/uci.cpp": "f8adb4e825d07afd654f82bb5df446ba7eb0d2011131e1732be79662adfdf81c",
+    "src/uci.h": "dfb040fd651692e5cd5b30aabbf60b9271faeaafbba637074bdfc21c5e002619",
+    "candidate": "b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab",
+    "baseline": "819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da",
+    "manager": "3d0a8f3c8b837a96366ac838f3ddf6fe87b813abb4ad2852284c0ce409132566",
+    "book": "7a7f6470615a69c6cf23d565417701d38732876f480af90d67b42abade35644a"
+  },
+  "frozen_stc_binding": {
+    "anchor_sha256": {
+      "launch-plan.json": "21c73ab2b9de0088cff27a9c698ff3b0221bb570589ff4babb531af4612b6937",
+      "process-audit-01.json": "7fdc3afcaff0a3536ac3788695ca60d0252cd692a8d83acc36718d9299a9b8fe",
+      "live-watch-01/plan.json": "a1f9f82fc2a0d0012aea38149990413257f9cf51942a2f0a284ec47f13b389ce",
+      "match-audit-01/snapshot/manifest.json": "d893e9620fcf9928eb22817e7d63db7615dfb5281f1815e93f3f3c46021dee8e",
+      "source-snapshot-01/manifest.json": "2323d154d8424a830906d3252c6778ced98a2649391566214da2a66228508a03"
+    },
+    "first_config_sha256": "85b2e5f30cf3ae368ad7a3a5fba0f3f143387ca6b2bede0a210f694f2be1d2d8",
+    "first_config_seed_decimal": "6676192773240996276",
+    "manager": {
+      "pid": 2319846,
+      "start_ticks": "4928613",
+      "cwd": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra",
+      "exe": "/home/lupe/.local/bin/fastchess",
+      "exe_sha256": "3d0a8f3c8b837a96366ac838f3ddf6fe87b813abb4ad2852284c0ce409132566",
+      "argv": [
+        "/home/lupe/.local/bin/fastchess",
+        "-engine",
+        "cmd=engines/new",
+        "name=new",
+        "-engine",
+        "cmd=engines/base",
+        "name=base",
+        "-each",
+        "tc=10+0.1",
+        "option.Hash=16",
+        "option.Threads=1",
+        "-openings",
+        "file=../ChessSI/books/UHO_Lichess_4852_v1.epd",
+        "format=epd",
+        "order=random",
+        "-rounds",
+        "100000",
+        "-games",
+        "2",
+        "-repeat",
+        "-recover",
+        "-resign",
+        "movecount=3",
+        "score=400",
+        "twosided=true",
+        "-draw",
+        "movenumber=40",
+        "movecount=8",
+        "score=10",
+        "-concurrency",
+        "5",
+        "-sprt",
+        "elo0=0",
+        "elo1=5",
+        "alpha=0.05",
+        "beta=0.05",
+        "-pgnout",
+        "file=engines/sprt.pgn"
+      ],
+      "affinity": [
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ]
+    },
+    "boot_id": "cf2046b8-25a2-4f5a-9586-9a2819e573bd",
+    "book_observation": {
+      "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI/books/UHO_Lichess_4852_v1.epd",
+      "sha256": "7a7f6470615a69c6cf23d565417701d38732876f480af90d67b42abade35644a",
+      "bytes": 174889110,
+      "mtime_ns": "1697900784000000000",
+      "scope": "On-disk book observation near launch; recorded manager arguments select this path. Not an attestation of process memory."
+    },
+    "issues": [],
+    "book_identity_scope": "Pinned near-launch on-disk digest/path/size plus current digest; no attestation of historical manager-loaded bytes.",
+    "source_linkage_scope": "Frozen source and process/path binary observations plus declared validation; no cryptographic source-to-binary proof."
+  },
+  "tool_sha256": {
+    "scripts/research/extract_result.py": "a54c652046f74f0b8209d7fa66a00568a1f11a1af0ee0706025c877f52b9785c",
+    "scripts/research/snapshot_run.py": "e502f4982165c4e1833d66c97a9d521b55f2a23740f64765deef10a309e73991",
+    "scripts/research/prepare_corpus.py": "bca6c249dbe68ec127c09e749acf05b4e947dbf32ddbd1420322c7d6ed9578b3",
+    "engines/qsearch-validation/audit_match.py": "e67123fa57194ed4dc700a4614ec3a73fc2bf3a7b23f094e6485c2f284a1dac9",
+    "engines/dependencies/python-chess/chess/__init__.py": "1fde6a8e932508d14b31f6a584497b49c2969fc3c7cdc675347f819f0d667a5b",
+    "engines/dependencies/python-chess/chess/engine.py": "40a1407749ea43b4ed3174f0603e0316a9c971b8943113fbea5be47c82bde22b",
+    "engines/dependencies/python-chess/chess/pgn.py": "0e280ee44cb3c27cde903c40fe166419df71a030b05793c63f3e0ffffd6ff0c4",
+    "engines/dependencies/python-chess/chess/svg.py": "32840c66e33bf55ea2de49eadc856d45dc3cd661b87a0a1ea99d8b6c3b143b99"
+  },
+  "terminal_state_sha256": "5dd1e3f5ee4d15e6b3e3e8c2749bd547e80379bac3be1aec5fa79665bd7f7ac1",
+  "runner_exit_sha256": "d37840085bcad734e1ab153284a02059e0031e1fa089c0d409b283acbf9370d4",
+  "terminal_evidence": {
+    "schema_version": 1,
+    "snapshot": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/live-watch-01/terminal-snapshot",
+    "integrity": {
+      "integrity_ok": true,
+      "archived_files_verified": 25,
+      "unarchived_artifacts": 0,
+      "errors": [],
+      "scope": "Archive integrity only; no experiment validity or Elo claim"
+    },
+    "evidence_status": "ready_for_independent_audit",
+    "benchmark_result": "not_assigned",
+    "scope": "Reported manager evidence only; independent PGN, protocol, build and acceptance review required.",
+    "issues": [],
+    "manifest_sha256": "ed1a069a0b3ec21a451ccffbb37b87c999b618fb0eb7ef327fd1af329adc5fbe",
+    "artifact_sha256": {
+      "binary_path:candidate": "b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab",
+      "binary_path:baseline": "819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da",
+      "config": "698d2e77cdfdeee973664f7008048b41aff768c4ab77851dcee05ae826c58d10",
+      "log": "16d5e894cf880c43a5722469d4a3d3accbf40e2ea65e4b2fa25258c3407e9b44",
+      "pgn": "028c7920900e92ef3cdd07625afbb32a7c0209f288ecf528197f06dcf0e29f3a"
+    },
+    "protocol": {
+      "seed_decimal": "6676192773240996276",
+      "sprt": {
+        "alpha": 0.05,
+        "beta": 0.05,
+        "elo0": 0.0,
+        "elo1": 5.0,
+        "model": "normalized",
+        "enabled": true
+      },
+      "concurrency": 5,
+      "games_per_round": 2,
+      "rounds": 100000,
+      "opening": {
+        "file": "../ChessSI/books/UHO_Lichess_4852_v1.epd",
+        "format": 0,
+        "order": 0,
+        "plies": -1,
+        "start": 1
+      },
+      "engines": [
+        {
+          "name": "new",
+          "dir": "",
+          "cmd": "engines/new",
+          "args": "",
+          "restart": false,
+          "options": [
+            [
+              "Hash",
+              "16"
+            ],
+            [
+              "Threads",
+              "1"
+            ]
+          ],
+          "limit": {
+            "tc": {
+              "increment": 100,
+              "fixed_time": 0,
+              "time": 10000,
+              "moves": 0,
+              "timemargin": 0
+            },
+            "nodes": 0,
+            "plies": 0
+          },
+          "variant": 0
+        },
+        {
+          "name": "base",
+          "dir": "",
+          "cmd": "engines/base",
+          "args": "",
+          "restart": false,
+          "options": [
+            [
+              "Hash",
+              "16"
+            ],
+            [
+              "Threads",
+              "1"
+            ]
+          ],
+          "limit": {
+            "tc": {
+              "increment": 100,
+              "fixed_time": 0,
+              "time": 10000,
+              "moves": 0,
+              "timemargin": 0
+            },
+            "nodes": 0,
+            "plies": 0
+          },
+          "variant": 0
+        }
+      ],
+      "resign": {
+        "move_count": 3,
+        "score": 400,
+        "twosided": true,
+        "enabled": true
+      },
+      "draw": {
+        "move_number": 40,
+        "move_count": 8,
+        "score": 10,
+        "enabled": true
+      },
+      "pgn": {
+        "additional_lines_rgx": [],
+        "event_name": "Fastchess Tournament",
+        "site": "?",
+        "file": "engines/sprt.pgn",
+        "notation": 0,
+        "append_file": true,
+        "track_nodes": false,
+        "track_seldepth": false,
+        "track_nps": false,
+        "track_hashfull": false,
+        "track_tbhits": false,
+        "track_timeleft": false,
+        "track_latency": false,
+        "track_pv": false,
+        "min": false,
+        "crc": false
+      },
+      "recover": true,
+      "stats_observed": {
+        "new vs base": {
+          "wins": 303,
+          "losses": 148,
+          "draws": 351,
+          "penta_WW": 44,
+          "penta_WD": 140,
+          "penta_WL": 75,
+          "penta_DD": 80,
+          "penta_LD": 51,
+          "penta_LL": 11
+        }
+      }
+    },
+    "log_evidence": {
+      "reported_hypothesis": "H1",
+      "decision": {
+        "line": 1941,
+        "hypothesis": "H1",
+        "hypotheses": [
+          0.0,
+          5.0
+        ],
+        "statistics": {
+          "header_line": 1934,
+          "elo": [
+            68.0,
+            16.54,
+            101.49,
+            24.05
+          ],
+          "counts": [
+            802,
+            303,
+            148,
+            351
+          ],
+          "statistics_line": 1937,
+          "pentanomial": [
+            11,
+            51,
+            155,
+            140,
+            44
+          ],
+          "llr": [
+            2.94,
+            100.0,
+            -2.94,
+            2.94,
+            0.0,
+            5.0
+          ],
+          "end_line": 1939
+        },
+        "completed_games_at_decision": 802
+      },
+      "decision_messages": 1,
+      "statistics_reports": 41,
+      "completed_log_games": 802,
+      "final_paired_counts": {
+        "games": 802,
+        "wins": 303,
+        "losses": 148,
+        "draws": 351,
+        "pentanomial": [
+          11,
+          51,
+          155,
+          140,
+          44
+        ]
+      },
+      "unpaired_completed_game_ids": [],
+      "started_without_finish": [
+        803,
+        804,
+        805,
+        806
+      ],
+      "late_started_game_ids": [],
+      "late_finished_game_ids": [],
+      "late_statistics_lines": [],
+      "termination_reasons": {
+        "Draw by 3-fold repetition": 229,
+        "Black wins by adjudication": 217,
+        "White wins by adjudication": 234,
+        "Draw by adjudication": 57,
+        "Draw by insufficient mating material": 46,
+        "Draw by fifty moves rule": 17,
+        "Draw by stalemate": 2
+      },
+      "issues": []
+    },
+    "terminal_state_sha256": "5dd1e3f5ee4d15e6b3e3e8c2749bd547e80379bac3be1aec5fa79665bd7f7ac1"
+  },
+  "audit_file_hashes": {
+    "result.json": "e3dbfd141509b3205346ad9b96d6ce7d64830c6ea0b26490b5e436a7d562c625",
+    "reports.json": "00ffb0c118166897ffa924cfe1ecc2554fd33f35499bec079308926a1a0338bb",
+    "audit_match.py": "e67123fa57194ed4dc700a4614ec3a73fc2bf3a7b23f094e6485c2f284a1dac9"
+  },
+  "launch_environment": {
+    "CPUS": "14-19",
+    "CONCURRENCY": "5",
+    "MAKEFLAGS": "-j6 -B",
+    "CXX": "taskset -c 19 g++",
+    "BOOK": "../ChessSI/books/UHO_Lichess_4852_v1.epd",
+    "FASTCHESS": "/home/lupe/.local/bin/fastchess",
+    "TC": "60+0.6",
+    "ELO0": "0",
+    "ELO1": "5",
+    "ALPHA": "0.05",
+    "BETA": "0.05",
+    "ROUNDS": "100000"
+  },
+  "launch_argv": [
+    "bash",
+    "scripts/sprt.sh",
+    "f801f8c519b0fe5b3d009b8f0664b049409a1188"
+  ],
+  "deadline_utc": "2026-10-22T19:53:00+00:00",
+  "randomization": "Fresh manager RNG seed and random opening order; record exact seed after launch. Never resume/reuse STC statistics.",
+  "before_launch": [
+    "Freshly check accepted remote main immediately before launch, save the evidence and rerun this preflight into a new directory.",
+    "Independently verify prior runner and guard terminal; archive/move only completed own-run outputs before the fresh runner writes them.",
+    "Preserve frozen source/test inputs. Force rebuild through the prescribed runner and verify both hashes and bench signatures.",
+    "Attach the tested deadline guard to the verified new manager; capture new process/config/affinity/book evidence.",
+    "A readiness record expires as inputs or main change; it neither launches nor approves acceptance."
+  ],
+  "stopping": "Declared SPRT or fixed research deadline. Cap/deadline without explicit decision is Inconclusive; LTC remains separate from STC.",
+  "scope": "Reads evidence and writes a new preflight record only. No launch, output movement, source edit, result acceptance or network check.",
+  "script_sha256": "0d849d627e66f6f198aa2371b7307b0d4b9cb3f60ac6561461962c1fa0b5e31b"
+}

@@ -11,6 +11,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 
 | Date | Model | Kind | Idea | Result | Elo | Games | Pre-screen |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (updated main; STC only, LTC running) | Passed | +68.00 +/- 16.54 | 802 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (original baseline; STC only) | Passed | +39.39 +/- 13.98 | 1,568 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | GPT-6 (Codex) | Known | Check evasions in quiescence | Failed | -11.83 +/- 8.36 | 4,026 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | Null-move pruning (R = 3 + depth/6, needs non-pawn pieces and static eval >= beta) | Passed | +157.1 ± 27.0 | 472 (13 concurrent) | Passed, 310 games, +107.5 ± 35.2 |
@@ -20,7 +21,9 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 
 Baseline before the first idea: bench `20648203`.
 
-The RFP short-time test passed against original baseline `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`: normalized SPRT `[0,5]` at `10+0.1`, explicit H1, nElo +48.89 +/- 17.20, printed LLR 2.95. All 1,569 saved games and 79 reports reconciled; unpaired game 1568 is excluded. This is an STC-only result, not an accepted engine promotion. Main advanced during the match, so the next comparison must use the new baseline before longer-time confirmation. [Audited result](research/codex-2026-10-22/rfp.md#final-result-on-the-original-baseline).
+The updated-main RFP short-time test passed against `f801f8c519b0fe5b3d009b8f0664b049409a1188`: normalized SPRT `[0,5]` at `10+0.1`, explicit H1, nElo +101.49 +/- 24.05, printed LLR 2.94. The table gives the manager's logistic Elo estimate. All 802 saved games form 401 complete pairs; all 41 reports reconciled. Four games started before the decision remained unfinished. Independent `60+0.6` confirmation is running; its outcome is pending, and this is not an accepted engine change. [Audited updated-main result](research/codex-2026-10-22/rfp.md#final-result-on-updated-main).
+
+The RFP short-time test passed against original baseline `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`: normalized SPRT `[0,5]` at `10+0.1`, explicit H1, nElo +48.89 +/- 17.20, printed LLR 2.95. All 1,569 saved games and 79 reports reconciled; unpaired game 1568 is excluded. This is an STC-only result, not an accepted engine promotion. Main advanced during that match. The updated-baseline result above is a separate comparison; its Elo estimate and games are not combined with this original-baseline trial. [Audited result](research/codex-2026-10-22/rfp.md#final-result-on-the-original-baseline).
 
 The qsearch test used normalized SPRT `[0,5]` at `10+0.1` against `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`; H0 was accepted with nElo -15.19 +/- 10.73 and printed LLR -2.95. The table gives the manager's logistic Elo estimate. One unpaired completed game is excluded. The experimental code was reverted and baseline bench `20648203` reverified. [Audited result and preserved diagnostics](research/codex-2026-10-22/qsearch.md#final-result). No prescreen was run.
 

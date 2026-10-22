@@ -1,0 +1,15 @@
+{
+  "created_utc": "2026-10-22T17:58:56.026305+00:00",
+  "collector_sha256": "0fd0f168b6de545365cf9ced98c1db6308cf91026f047fd2a62346f16f7f6118",
+  "implementation_sha256": {
+    "scripts/research/extract_result.py": "a54c652046f74f0b8209d7fa66a00568a1f11a1af0ee0706025c877f52b9785c",
+    "scripts/research/snapshot_run.py": "e502f4982165c4e1833d66c97a9d521b55f2a23740f64765deef10a309e73991",
+    "scripts/research/prepare_corpus.py": "bca6c249dbe68ec127c09e749acf05b4e947dbf32ddbd1420322c7d6ed9578b3",
+    "engines/qsearch-validation/audit_match.py": "e67123fa57194ed4dc700a4614ec3a73fc2bf3a7b23f094e6485c2f284a1dac9"
+  },
+  "terminal_state_sha256": "5dd1e3f5ee4d15e6b3e3e8c2749bd547e80379bac3be1aec5fa79665bd7f7ac1",
+  "extraction_sha256": "5751342970ab00401ad9e08b3d69c523812384f31260a51d10cb8b3a8df32ba2",
+  "audit_result_sha256": "e3dbfd141509b3205346ad9b96d6ce7d64830c6ea0b26490b5e436a7d562c625",
+  "benchmark_result": "not_assigned",
+  "scope": "Bound extraction and independent replay; no protocol promotion or LTC launch"
+}

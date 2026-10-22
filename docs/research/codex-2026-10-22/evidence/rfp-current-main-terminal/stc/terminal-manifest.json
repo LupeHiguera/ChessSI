@@ -1,0 +1,1013 @@
+{
+  "schema_version": 1,
+  "capture_id": "terminal-snapshot",
+  "label": "RFP fixed depth 1-3 margin 150 on updated main; deadline archive",
+  "started_utc": "2026-10-22T17:57:28.283299+00:00",
+  "source_root": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra",
+  "run_dir": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra",
+  "mode": "observation-time-read-only",
+  "declared_baseline": "f801f8c519b0fe5b3d009b8f0664b049409a1188",
+  "baseline_verified": false,
+  "source_linkage": "captured-source-not-linked-to-running-binary",
+  "limits": {
+    "read_bytes_per_file": 268435456,
+    "copy_bytes_per_file": 134217728
+  },
+  "artifacts": [
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/Makefile",
+      "archive_path": "files/0000-Makefile",
+      "sha256": "9421a0539adfa4215e989e7ca1e9f79cb38178797450a08a93f5b40cdc2a9258",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 1393,
+      "captured_utc": "2026-10-22T17:57:28.283333+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "4785074606348389",
+        "size": 1393,
+        "mtime_ns": "1792685773900236800",
+        "ctime_ns": "1792685773900236800"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "4785074606348389",
+        "size": 1393,
+        "mtime_ns": "1792685773900236800",
+        "ctime_ns": "1792685773900236800"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "4785074606348389",
+        "size": 1393,
+        "mtime_ns": "1792685773900236800",
+        "ctime_ns": "1792685773900236800"
+      },
+      "finished_utc": "2026-10-22T17:57:28.286025+00:00",
+      "index": 0
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/tests/perft.epd",
+      "archive_path": "files/0001-perft.epd",
+      "sha256": "8421dbafc5254aeba1631cc7548992cc8e227ee072ee859f89acd337e0126d6f",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 955,
+      "captured_utc": "2026-10-22T17:57:28.286065+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "3940649676217024",
+        "size": 955,
+        "mtime_ns": "1792647216703562300",
+        "ctime_ns": "1792647216703562300"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "3940649676217024",
+        "size": 955,
+        "mtime_ns": "1792647216703562300",
+        "ctime_ns": "1792647216703562300"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "3940649676217024",
+        "size": 955,
+        "mtime_ns": "1792647216703562300",
+        "ctime_ns": "1792647216703562300"
+      },
+      "finished_utc": "2026-10-22T17:57:28.294855+00:00",
+      "index": 1
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/bitboard.cpp",
+      "archive_path": "files/0002-bitboard.cpp",
+      "sha256": "c1013ad95f87aa3907f0ef00872f38b4ceb957ac3501af75103399d4dad79ee8",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 3762,
+      "captured_utc": "2026-10-22T17:57:28.294905+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "4785074606348916",
+        "size": 3762,
+        "mtime_ns": "1792647216697517900",
+        "ctime_ns": "1792647216697517900"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "4785074606348916",
+        "size": 3762,
+        "mtime_ns": "1792647216697517900",
+        "ctime_ns": "1792647216697517900"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "4785074606348916",
+        "size": 3762,
+        "mtime_ns": "1792647216697517900",
+        "ctime_ns": "1792647216697517900"
+      },
+      "finished_utc": "2026-10-22T17:57:28.298298+00:00",
+      "index": 2
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/eval.cpp",
+      "archive_path": "files/0003-eval.cpp",
+      "sha256": "9a79b233d86f24ed96d55440f97d1623dcf0e9cb04eed945ef0421eab9cdfff3",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 6010,
+      "captured_utc": "2026-10-22T17:57:28.298338+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "5348024559770247",
+        "size": 6010,
+        "mtime_ns": "1792647216697517900",
+        "ctime_ns": "1792647216697517900"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "5348024559770247",
+        "size": 6010,
+        "mtime_ns": "1792647216697517900",
+        "ctime_ns": "1792647216697517900"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "5348024559770247",
+        "size": 6010,
+        "mtime_ns": "1792647216697517900",
+        "ctime_ns": "1792647216697517900"
+      },
+      "finished_utc": "2026-10-22T17:57:28.302843+00:00",
+      "index": 3
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/main.cpp",
+      "archive_path": "files/0004-main.cpp",
+      "sha256": "7975b5c5c0bc235d393ddf6cc6b69fa6d4eb70df079b6a9547a42744f009ce74",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 214,
+      "captured_utc": "2026-10-22T17:57:28.302887+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "7036874420034193",
+        "size": 214,
+        "mtime_ns": "1792647216698522700",
+        "ctime_ns": "1792647216698522700"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "7036874420034193",
+        "size": 214,
+        "mtime_ns": "1792647216698522700",
+        "ctime_ns": "1792647216698522700"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "7036874420034193",
+        "size": 214,
+        "mtime_ns": "1792647216698522700",
+        "ctime_ns": "1792647216698522700"
+      },
+      "finished_utc": "2026-10-22T17:57:28.306189+00:00",
+      "index": 4
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/movegen.cpp",
+      "archive_path": "files/0005-movegen.cpp",
+      "sha256": "7640271920c14cc1eac291b167b4a25c9f46c830f35045da06320e9b36473839",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 3894,
+      "captured_utc": "2026-10-22T17:57:28.306226+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "5910974513191575",
+        "size": 3894,
+        "mtime_ns": "1792647216698522700",
+        "ctime_ns": "1792647216698522700"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "5910974513191575",
+        "size": 3894,
+        "mtime_ns": "1792647216698522700",
+        "ctime_ns": "1792647216698522700"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "5910974513191575",
+        "size": 3894,
+        "mtime_ns": "1792647216698522700",
+        "ctime_ns": "1792647216698522700"
+      },
+      "finished_utc": "2026-10-22T17:57:28.309011+00:00",
+      "index": 5
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/perft.cpp",
+      "archive_path": "files/0006-perft.cpp",
+      "sha256": "5f05b85fc5be21b5b009c893fa6eda01550a3ca7805d4a29ddddd08d405de5d9",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 2501,
+      "captured_utc": "2026-10-22T17:57:28.309037+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "5348024559770266",
+        "size": 2501,
+        "mtime_ns": "1792647216699530100",
+        "ctime_ns": "1792647216699530100"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "5348024559770266",
+        "size": 2501,
+        "mtime_ns": "1792647216699530100",
+        "ctime_ns": "1792647216699530100"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "5348024559770266",
+        "size": 2501,
+        "mtime_ns": "1792647216699530100",
+        "ctime_ns": "1792647216699530100"
+      },
+      "finished_utc": "2026-10-22T17:57:28.311612+00:00",
+      "index": 6
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/position.cpp",
+      "archive_path": "files/0007-position.cpp",
+      "sha256": "3161c29e8c3d0a3586f9acd4357de9d0c534c242f4e89530f3a392c869e58a32",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 10493,
+      "captured_utc": "2026-10-22T17:57:28.311641+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "4503599629638300",
+        "size": 10493,
+        "mtime_ns": "1792686126389885000",
+        "ctime_ns": "1792686126389885000"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "4503599629638300",
+        "size": 10493,
+        "mtime_ns": "1792686126389885000",
+        "ctime_ns": "1792686126389885000"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "4503599629638300",
+        "size": 10493,
+        "mtime_ns": "1792686126389885000",
+        "ctime_ns": "1792686126389885000"
+      },
+      "finished_utc": "2026-10-22T17:57:28.314826+00:00",
+      "index": 7
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/search.cpp",
+      "archive_path": "files/0008-search.cpp",
+      "sha256": "a13807cdfa9e1ced5d66f948ae70245386344634e88d1c7801603991d3f2cc84",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 12237,
+      "captured_utc": "2026-10-22T17:57:28.314865+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "5348024559770295",
+        "size": 12237,
+        "mtime_ns": "1792685773853997100",
+        "ctime_ns": "1792685773853997100"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "5348024559770295",
+        "size": 12237,
+        "mtime_ns": "1792685773853997100",
+        "ctime_ns": "1792685773853997100"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "5348024559770295",
+        "size": 12237,
+        "mtime_ns": "1792685773853997100",
+        "ctime_ns": "1792685773853997100"
+      },
+      "finished_utc": "2026-10-22T17:57:28.317570+00:00",
+      "index": 8
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/tt.cpp",
+      "archive_path": "files/0009-tt.cpp",
+      "sha256": "99820a51ed5df3d899c6db152fa28c4527ec633de5fb3070bb66badf39675f39",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 779,
+      "captured_utc": "2026-10-22T17:57:28.317597+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "3659174699506361",
+        "size": 779,
+        "mtime_ns": "1792647216701543200",
+        "ctime_ns": "1792647216701543200"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "3659174699506361",
+        "size": 779,
+        "mtime_ns": "1792647216701543200",
+        "ctime_ns": "1792647216701543200"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "3659174699506361",
+        "size": 779,
+        "mtime_ns": "1792647216701543200",
+        "ctime_ns": "1792647216701543200"
+      },
+      "finished_utc": "2026-10-22T17:57:28.320431+00:00",
+      "index": 9
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/uci.cpp",
+      "archive_path": "files/0010-uci.cpp",
+      "sha256": "f8adb4e825d07afd654f82bb5df446ba7eb0d2011131e1732be79662adfdf81c",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 6543,
+      "captured_utc": "2026-10-22T17:57:28.320459+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "3659174699506365",
+        "size": 6543,
+        "mtime_ns": "1792647216702052600",
+        "ctime_ns": "1792647216702052600"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "3659174699506365",
+        "size": 6543,
+        "mtime_ns": "1792647216702052600",
+        "ctime_ns": "1792647216702052600"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "3659174699506365",
+        "size": 6543,
+        "mtime_ns": "1792647216702052600",
+        "ctime_ns": "1792647216702052600"
+      },
+      "finished_utc": "2026-10-22T17:57:28.323285+00:00",
+      "index": 10
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/bitboard.h",
+      "archive_path": "files/0011-bitboard.h",
+      "sha256": "23990775a97c365d1834c7757460dfaa597138e46bf30999a75f7aeea4445569",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 1952,
+      "captured_utc": "2026-10-22T17:57:28.323309+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "5910974513191547",
+        "size": 1952,
+        "mtime_ns": "1792647216697517900",
+        "ctime_ns": "1792647216697517900"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "5910974513191547",
+        "size": 1952,
+        "mtime_ns": "1792647216697517900",
+        "ctime_ns": "1792647216697517900"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "5910974513191547",
+        "size": 1952,
+        "mtime_ns": "1792647216697517900",
+        "ctime_ns": "1792647216697517900"
+      },
+      "finished_utc": "2026-10-22T17:57:28.325798+00:00",
+      "index": 11
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/eval.h",
+      "archive_path": "files/0012-eval.h",
+      "sha256": "67f2130d25fbea28987c9ade5de3c1dea40d4374943ee9bc53789ee2e0601ce6",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 179,
+      "captured_utc": "2026-10-22T17:57:28.325822+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "4222124652927625",
+        "size": 179,
+        "mtime_ns": "1792647216698522700",
+        "ctime_ns": "1792647216698522700"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "4222124652927625",
+        "size": 179,
+        "mtime_ns": "1792647216698522700",
+        "ctime_ns": "1792647216698522700"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "4222124652927625",
+        "size": 179,
+        "mtime_ns": "1792647216698522700",
+        "ctime_ns": "1792647216698522700"
+      },
+      "finished_utc": "2026-10-22T17:57:28.328490+00:00",
+      "index": 12
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/movegen.h",
+      "archive_path": "files/0013-movegen.h",
+      "sha256": "e2b2d99078992bb72f261eba21fe46d3e0320223b5f88a401879e859a258fcb9",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 619,
+      "captured_utc": "2026-10-22T17:57:28.328525+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "4222124652927640",
+        "size": 619,
+        "mtime_ns": "1792647216699026600",
+        "ctime_ns": "1792647216699026600"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "4222124652927640",
+        "size": 619,
+        "mtime_ns": "1792647216699026600",
+        "ctime_ns": "1792647216699026600"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "4222124652927640",
+        "size": 619,
+        "mtime_ns": "1792647216699026600",
+        "ctime_ns": "1792647216699026600"
+      },
+      "finished_utc": "2026-10-22T17:57:28.331021+00:00",
+      "index": 13
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/perft.h",
+      "archive_path": "files/0014-perft.h",
+      "sha256": "22a094ac38f3db22c937ed2e8b22c165a7d2573d86eab0bbebde34f340e30a37",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 391,
+      "captured_utc": "2026-10-22T17:57:28.331047+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "5066549583059611",
+        "size": 391,
+        "mtime_ns": "1792647216699530100",
+        "ctime_ns": "1792647216699530100"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "5066549583059611",
+        "size": 391,
+        "mtime_ns": "1792647216699530100",
+        "ctime_ns": "1792647216699530100"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "5066549583059611",
+        "size": 391,
+        "mtime_ns": "1792647216699530100",
+        "ctime_ns": "1792647216699530100"
+      },
+      "finished_utc": "2026-10-22T17:57:28.333761+00:00",
+      "index": 14
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/position.h",
+      "archive_path": "files/0015-position.h",
+      "sha256": "aa779f3134d67e49d1821dfe37fbc08c4f2ccbced226793298f9d9157796a850",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 2265,
+      "captured_utc": "2026-10-22T17:57:28.333790+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "4785074606348962",
+        "size": 2265,
+        "mtime_ns": "1792686126389885000",
+        "ctime_ns": "1792686126389885000"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "4785074606348962",
+        "size": 2265,
+        "mtime_ns": "1792686126389885000",
+        "ctime_ns": "1792686126389885000"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "4785074606348962",
+        "size": 2265,
+        "mtime_ns": "1792686126389885000",
+        "ctime_ns": "1792686126389885000"
+      },
+      "finished_utc": "2026-10-22T17:57:28.336500+00:00",
+      "index": 15
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/search.h",
+      "archive_path": "files/0016-search.h",
+      "sha256": "b3a2d1324d49d35ad0b9bb096390ca7fb1f11b0be719c033c4a00929e4c0cd84",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 675,
+      "captured_utc": "2026-10-22T17:57:28.336525+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "3659174699506360",
+        "size": 675,
+        "mtime_ns": "1792647216701543200",
+        "ctime_ns": "1792647216701543200"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "3659174699506360",
+        "size": 675,
+        "mtime_ns": "1792647216701543200",
+        "ctime_ns": "1792647216701543200"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "3659174699506360",
+        "size": 675,
+        "mtime_ns": "1792647216701543200",
+        "ctime_ns": "1792647216701543200"
+      },
+      "finished_utc": "2026-10-22T17:57:28.339130+00:00",
+      "index": 16
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/tt.h",
+      "archive_path": "files/0017-tt.h",
+      "sha256": "77f4e7179b1194c85b59baf3d56f608bf21bb851af1062ce83224bb24deeb68d",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 1197,
+      "captured_utc": "2026-10-22T17:57:28.339160+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "4222124652927674",
+        "size": 1197,
+        "mtime_ns": "1792647216702052600",
+        "ctime_ns": "1792647216702052600"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "4222124652927674",
+        "size": 1197,
+        "mtime_ns": "1792647216702052600",
+        "ctime_ns": "1792647216702052600"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "4222124652927674",
+        "size": 1197,
+        "mtime_ns": "1792647216702052600",
+        "ctime_ns": "1792647216702052600"
+      },
+      "finished_utc": "2026-10-22T17:57:28.342321+00:00",
+      "index": 17
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/types.h",
+      "archive_path": "files/0018-types.h",
+      "sha256": "551f3f08ac30b50e9b7caa77a65805582d291a0af79cf1eec82bb60f544976ae",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 1769,
+      "captured_utc": "2026-10-22T17:57:28.342356+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "4503599629638332",
+        "size": 1769,
+        "mtime_ns": "1792647216702052600",
+        "ctime_ns": "1792647216702052600"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "4503599629638332",
+        "size": 1769,
+        "mtime_ns": "1792647216702052600",
+        "ctime_ns": "1792647216702052600"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "4503599629638332",
+        "size": 1769,
+        "mtime_ns": "1792647216702052600",
+        "ctime_ns": "1792647216702052600"
+      },
+      "finished_utc": "2026-10-22T17:57:28.345246+00:00",
+      "index": 18
+    },
+    {
+      "role": "source",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/src/uci.h",
+      "archive_path": "files/0019-uci.h",
+      "sha256": "dfb040fd651692e5cd5b30aabbf60b9271faeaafbba637074bdfc21c5e002619",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 326,
+      "captured_utc": "2026-10-22T17:57:28.345276+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "3659174699506366",
+        "size": 326,
+        "mtime_ns": "1792647216703057800",
+        "ctime_ns": "1792647216703057800"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "3659174699506366",
+        "size": 326,
+        "mtime_ns": "1792647216703057800",
+        "ctime_ns": "1792647216703057800"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "3659174699506366",
+        "size": 326,
+        "mtime_ns": "1792647216703057800",
+        "ctime_ns": "1792647216703057800"
+      },
+      "finished_utc": "2026-10-22T17:57:28.348165+00:00",
+      "index": 19
+    },
+    {
+      "role": "binary_path:candidate",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/new",
+      "archive_path": "files/0020-new",
+      "sha256": "b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 144584,
+      "captured_utc": "2026-10-22T17:57:28.356825+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "1407374886144423",
+        "size": 144584,
+        "mtime_ns": "1792686405120861000",
+        "ctime_ns": "1792686405121370800"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "1407374886144423",
+        "size": 144584,
+        "mtime_ns": "1792686405120861000",
+        "ctime_ns": "1792686405121370800"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "1407374886144423",
+        "size": 144584,
+        "mtime_ns": "1792686405120861000",
+        "ctime_ns": "1792686405121370800"
+      },
+      "finished_utc": "2026-10-22T17:57:28.360276+00:00",
+      "index": 20
+    },
+    {
+      "role": "binary_path:baseline",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/base",
+      "archive_path": "files/0021-base",
+      "sha256": "819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 144512,
+      "captured_utc": "2026-10-22T17:57:28.360307+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "5910974513514976",
+        "size": 144512,
+        "mtime_ns": "1792686409846141900",
+        "ctime_ns": "1792686409846652800"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "5910974513514976",
+        "size": 144512,
+        "mtime_ns": "1792686409846141900",
+        "ctime_ns": "1792686409846652800"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "5910974513514976",
+        "size": 144512,
+        "mtime_ns": "1792686409846141900",
+        "ctime_ns": "1792686409846652800"
+      },
+      "finished_utc": "2026-10-22T17:57:28.363555+00:00",
+      "index": 21
+    },
+    {
+      "role": "config",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/config.json",
+      "archive_path": "files/0022-config.json",
+      "sha256": "698d2e77cdfdeee973664f7008048b41aff768c4ab77851dcee05ae826c58d10",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 3793,
+      "captured_utc": "2026-10-22T17:57:28.363586+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "18014398512071023",
+        "size": 3793,
+        "mtime_ns": "1792691844943499800",
+        "ctime_ns": "1792691844944011900"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "18014398512071023",
+        "size": 3793,
+        "mtime_ns": "1792691844943499800",
+        "ctime_ns": "1792691844944011900"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "18014398512071023",
+        "size": 3793,
+        "mtime_ns": "1792691844943499800",
+        "ctime_ns": "1792691844944011900"
+      },
+      "finished_utc": "2026-10-22T17:57:28.366130+00:00",
+      "index": 22
+    },
+    {
+      "role": "log",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/sprt-stc.log",
+      "archive_path": "files/0023-sprt-stc.log",
+      "sha256": "16d5e894cf880c43a5722469d4a3d3accbf40e2ea65e4b2fa25258c3407e9b44",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 105079,
+      "captured_utc": "2026-10-22T17:57:28.367584+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "1125899909433865",
+        "size": 105079,
+        "mtime_ns": "1792691846079339800",
+        "ctime_ns": "1792691846080345900"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "1125899909433865",
+        "size": 105079,
+        "mtime_ns": "1792691846079339800",
+        "ctime_ns": "1792691846080345900"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "1125899909433865",
+        "size": 105079,
+        "mtime_ns": "1792691846079339800",
+        "ctime_ns": "1792691846080345900"
+      },
+      "finished_utc": "2026-10-22T17:57:28.371007+00:00",
+      "index": 23
+    },
+    {
+      "role": "pgn",
+      "source_path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/sprt.pgn",
+      "archive_path": "files/0024-sprt.pgn",
+      "sha256": "028c7920900e92ef3cdd07625afbb32a7c0209f288ecf528197f06dcf0e29f3a",
+      "hash_scope": "initial_file",
+      "bytes_hashed": 2570912,
+      "captured_utc": "2026-10-22T17:57:28.371039+00:00",
+      "status": "ok",
+      "findings": [],
+      "source_stat_before": {
+        "device": 71,
+        "inode": "844424932723254",
+        "size": 2570912,
+        "mtime_ns": "1792691843887201300",
+        "ctime_ns": "1792691846078829800"
+      },
+      "source_stat_after_handle": {
+        "device": 71,
+        "inode": "844424932723254",
+        "size": 2570912,
+        "mtime_ns": "1792691843887201300",
+        "ctime_ns": "1792691846078829800"
+      },
+      "source_stat_after_path": {
+        "device": 71,
+        "inode": "844424932723254",
+        "size": 2570912,
+        "mtime_ns": "1792691843887201300",
+        "ctime_ns": "1792691846078829800"
+      },
+      "finished_utc": "2026-10-22T17:57:28.388816+00:00",
+      "index": 24
+    }
+  ],
+  "processes": [],
+  "findings": [],
+  "result": {
+    "decision": "not_evaluated",
+    "elo_claim": null
+  },
+  "host_core_type_verified": false,
+  "captured_source_digest": "364b921e4804c31eecae52b75c841c71c619a0d3eb1ff9cfe149dbe9a73e0016",
+  "protocol_observed": {
+    "seed_decimal": "6676192773240996276",
+    "sprt": {
+      "alpha": 0.05,
+      "beta": 0.05,
+      "elo0": 0.0,
+      "elo1": 5.0,
+      "model": "normalized",
+      "enabled": true
+    },
+    "concurrency": 5,
+    "games_per_round": 2,
+    "rounds": 100000,
+    "opening": {
+      "file": "../ChessSI/books/UHO_Lichess_4852_v1.epd",
+      "format": 0,
+      "order": 0,
+      "plies": -1,
+      "start": 1
+    },
+    "engines": [
+      {
+        "name": "new",
+        "dir": "",
+        "cmd": "engines/new",
+        "args": "",
+        "restart": false,
+        "options": [
+          [
+            "Hash",
+            "16"
+          ],
+          [
+            "Threads",
+            "1"
+          ]
+        ],
+        "limit": {
+          "tc": {
+            "increment": 100,
+            "fixed_time": 0,
+            "time": 10000,
+            "moves": 0,
+            "timemargin": 0
+          },
+          "nodes": 0,
+          "plies": 0
+        },
+        "variant": 0
+      },
+      {
+        "name": "base",
+        "dir": "",
+        "cmd": "engines/base",
+        "args": "",
+        "restart": false,
+        "options": [
+          [
+            "Hash",
+            "16"
+          ],
+          [
+            "Threads",
+            "1"
+          ]
+        ],
+        "limit": {
+          "tc": {
+            "increment": 100,
+            "fixed_time": 0,
+            "time": 10000,
+            "moves": 0,
+            "timemargin": 0
+          },
+          "nodes": 0,
+          "plies": 0
+        },
+        "variant": 0
+      }
+    ],
+    "resign": {
+      "move_count": 3,
+      "score": 400,
+      "twosided": true,
+      "enabled": true
+    },
+    "draw": {
+      "move_number": 40,
+      "move_count": 8,
+      "score": 10,
+      "enabled": true
+    },
+    "pgn": {
+      "additional_lines_rgx": [],
+      "event_name": "Fastchess Tournament",
+      "site": "?",
+      "file": "engines/sprt.pgn",
+      "notation": 0,
+      "append_file": true,
+      "track_nodes": false,
+      "track_seldepth": false,
+      "track_nps": false,
+      "track_hashfull": false,
+      "track_tbhits": false,
+      "track_timeleft": false,
+      "track_latency": false,
+      "track_pv": false,
+      "min": false,
+      "crc": false
+    },
+    "recover": true,
+    "stats_observed": {
+      "new vs base": {
+        "wins": 303,
+        "losses": 148,
+        "draws": 351,
+        "penta_WW": 44,
+        "penta_WD": 140,
+        "penta_WL": 75,
+        "penta_DD": 80,
+        "penta_LD": 51,
+        "penta_LL": 11
+      }
+    }
+  },
+  "pgn_observed": {
+    "completed_games_observed": 802,
+    "incomplete_records_observed": 0,
+    "structurally_paired_rounds": 401,
+    "duplicate_game_keys": 0,
+    "first_observed_start": "2026-10-22T09:27:08 -0700",
+    "last_observed_start": "2026-10-22T10:56:50 -0700",
+    "segmentation": "not_verified",
+    "statistics_eligible": false,
+    "findings": []
+  },
+  "finished_utc": "2026-10-22T17:57:28.458252+00:00"
+}

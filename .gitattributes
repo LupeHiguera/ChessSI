@@ -5,3 +5,6 @@ docs/research/codex-2026-10-22/evidence/rfp/* -text
 docs/research/codex-2026-10-22/evidence/rfp/*.patch -whitespace
 docs/research/codex-2026-10-22/evidence/rfp-current-main/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 docs/research/codex-2026-10-22/evidence/rfp-current-main/*.patch -whitespace
+docs/research/codex-2026-10-22/evidence/rfp-current-main-terminal/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+docs/research/codex-2026-10-22/evidence/rfp-current-main-terminal/stc/audit_match.py -whitespace
+docs/research/codex-2026-10-22/evidence/rfp-current-main-terminal/stc/terminal.log -whitespace
