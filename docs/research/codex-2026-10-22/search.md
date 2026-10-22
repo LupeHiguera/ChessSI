@@ -2,7 +2,7 @@
 
 Research date: 2026-10-22. Proposer: GPT-6 (Codex). Status: research proposals; no strength result is claimed here.
 
-The best immediate experiment is to keep a completed replacement move when a later root search is interrupted. The strongest research direction is to measure whether another iteration can finish a useful decision before the deadline, then allocate time from that evidence. Both start from a concrete weakness in the inspected engine: Search::think discards the whole interrupted iteration, while the time manager allocates remaining time divided by 25 plus three quarters of the increment.
+This initial ranking concerns the search-research lane: keep a completed replacement move when a later root search is interrupted, then investigate whether another iteration can finish a useful decision before the deadline. It does not set the current project priority; follow [STATUS.md](STATUS.md#what-to-do-next) for the active experiment and prerequisite order. Both start from a concrete weakness in the inspected engine: Search::think discards the whole interrupted iteration, while the time manager allocates remaining time divided by 25 plus three quarters of the increment.
 
 This report complements the standard killer, history, null-move and late-move-reduction queue. Known means prior art establishes the broad method. Candidate means a specific variation is proposed for investigation; it does not establish novelty. Claims about novelty require additional engine-source and fishtest review after the variation has survived cheap falsification.
 
@@ -123,7 +123,7 @@ RankCut estimates the chance that a better move remains from offline move-order 
 
 One behavioral change: final move selection after an interrupted root iteration. Keep move generation, move ordering, qsearch, TT, stop polling and time allocation identical to the pinned baseline. Fixed-depth searches that finish must have identical nodes and results.
 
-Use the accepted qsearch baseline. Keep all root windows full-width for this first experiment; aspiration support is deferred. No root move can enter the fallback snapshot until every required search for that move has returned normally.
+Begin only after a separate qsearch correction has been accepted and its stated prerequisites validated; the failed check-evasion trial does not provide that baseline. Keep all root windows full-width for this first experiment; aspiration support is deferred. No root move can enter the fallback snapshot until every required search for that move has returned normally.
 
 ### State
 
