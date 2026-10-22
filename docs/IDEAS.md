@@ -35,7 +35,7 @@ top one, test it, log it, then move on.
 2. History heuristic for quiet move ordering - *Claude Code*
 3. Null-move pruning - *Claude Code*
 4. Late move reductions - *Claude Code*
-5. Reverse futility pruning (static null move)
+5. Reverse futility pruning (static null move) - *Astra / GPT-6 (Codex)*
 6. Aspiration windows
 7. Late move pruning and futility pruning
 8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning
