@@ -12,8 +12,9 @@
 
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
-// with MVV-LVA ordering. Pruning, reductions and history heuristics are left
-// out on purpose: each is a separate experiment for the ideas log.
+// with MVV-LVA ordering, and killer moves. Pruning, reductions and history
+// heuristics are left out on purpose: each is a separate experiment for the
+// ideas log.
 
 std::atomic<bool> Search::stop{false};
 
@@ -34,6 +35,7 @@ struct Searcher {
 
     Move pv[MAX_PLY + 1][MAX_PLY + 1];
     int pvLength[MAX_PLY + 1];
+    Move killers[MAX_PLY + 1][2] = {};
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
 
@@ -61,8 +63,12 @@ struct Searcher {
             stopped = true;
     }
 
+    bool is_quiet(Move m) const {
+        return pos.piece_on(to_sq(m)) == NO_PIECE && move_type(m) != EN_PASSANT && move_type(m) != PROMOTION;
+    }
+
     // Assigns each move an ordering score, best first.
-    void score_moves(MoveList& list, int* scores, Move ttMove) {
+    void score_moves(MoveList& list, int* scores, Move ttMove, int ply) {
         for (int i = 0; i < list.size; ++i) {
             Move m = list.moves[i];
             if (m == ttMove)
@@ -73,6 +79,10 @@ struct Searcher {
                 scores[i] = 100'000 + PieceValue[type_of(pos.piece_on(to_sq(m)))] * 10 - type_of(pos.piece_on(from_sq(m)));
             else if (move_type(m) == PROMOTION && promotion_type(m) == QUEEN)
                 scores[i] = 90'000;
+            else if (ply >= 0 && m == killers[ply][0])
+                scores[i] = 80'000;
+            else if (ply >= 0 && m == killers[ply][1])
+                scores[i] = 70'000;
             else
                 scores[i] = 0;
         }
@@ -104,7 +114,7 @@ struct Searcher {
         MoveList list;
         generate(pos, list, NOISY_MOVES);
         int scores[256];
-        score_moves(list, scores, MOVE_NONE);
+        score_moves(list, scores, MOVE_NONE, -1);
 
         int best = standPat;
         for (int i = 0; i < list.size; ++i) {
@@ -165,7 +175,7 @@ struct Searcher {
         MoveList list;
         generate(pos, list, ALL_MOVES);
         int scores[256];
-        score_moves(list, scores, ttMove);
+        score_moves(list, scores, ttMove, ply);
 
         int originalAlpha = alpha;
         int best = -VALUE_INF;
@@ -201,8 +211,13 @@ struct Searcher {
                     for (int j = 0; j < pvLength[ply + 1]; ++j)
                         pv[ply][j + 1] = pv[ply + 1][j];
                     pvLength[ply] = pvLength[ply + 1] + 1;
-                    if (score >= beta)
+                    if (score >= beta) {
+                        if (is_quiet(m) && m != killers[ply][0]) {
+                            killers[ply][1] = killers[ply][0];
+                            killers[ply][0] = m;
+                        }
                         break;
+                    }
                 }
             }
         }
