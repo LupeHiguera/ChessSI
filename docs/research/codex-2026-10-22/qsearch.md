@@ -217,3 +217,26 @@ A passive call to the existing `Position::is_draw()` predicate found 12,138 quie
 The profile also checked node accounting. Sixty-three searches used one visit beyond their 131,072-node request; the others matched it. Thus multiples of the 1,024-node polling interval are not an exact final-node guarantee. The last completed UCI iterations reported only 9,883,132 nodes in total, about 58.91% of the passive build's actual visits, omitting work in interrupted iterations. Requested caps remain the declared accounting proxy for the label pilot; exact final visits are reported here only because this diagnostic emits them.
 
 The diagnostic charged 33,554,432 requested nodes across its two binaries, plus the separate unchanged-benchmark validation. The root JSONL SHA-256 is `8a197269535824b8d6dedd978cec7988e7ec94ec3eaaa3bb3e2f7ba4ec9db505`. Instrumented source SHA-256 is `472120bc32c96d91579c2cb358b4f441aec3d5be2ef98572ff09e6522c04d3ed`; binary SHA-256 is `2c923197f20dd5dae6c5889d0572b164cbd2d85826e5c2cadb227b6ffde0ba72`. The plan, selection record, per-root histories/transcripts, complete trace comparison, counters and accounting are under `engines/qsearch-validation/game-profile-01/`. Reproduce with `profile_game_roots.py` one directory above. GPT-6 (Codex) wrote and ran this diagnostic using CPU 19; no live source or match binary changed.
+
+## Prepared implementation variant: compact evasions before ordering
+
+The earlier conservative filter rejected impossible evasions after each selection-sort step. A separate implementation variant applies that same gate immediately after generating checked-quiescence moves, compacts the surviving candidates, then performs the original scoring, selection and full legality checks. This avoids scoring and sorting impossible evasions as well as their make/unmake attempts. Unchecked quiescence is unchanged. The variant starts from the original correction and is not combined with known-check reuse, quiet-tail selection or king-first ordering.
+
+Stable compaction preserves generation order among survivors, but does not necessarily preserve their eventual search order: selection-sort swaps depend on the original array slots, including removed illegal moves. The plan recorded that caveat before building. This is therefore a Known implementation variant with possible search changes, not a search-preserving refactor.
+
+All eight quiescence regressions, 35 perft cases and eight ASan/UBSan regressions passed. The instrumented benchmark made and undid every discarded move, confirming none was legal. Its node count matched the release variant. The existing 2,057 checked-position oracle retained every legal evasion and agreed with python-chess's complete legal move sets. Direct full-window qsearch agreed with the original corrected candidate on all 2,057 scores; every probe completed under its 131,072-node cap and restored FEN/key state. Aggregate direct-probe nodes changed from 225,101 to 224,785, about 0.14% fewer.
+
+The official depth-seven bench changed from `22824107` to `22820573`, about 0.0155% fewer nodes. Across all 14 fresh-TT root searches, 28 completed iterations had different node counts. Every iteration's score, bound and PV, every final best move, and all completed-iteration counts matched. These are measured agreements on the diagnostic set, not a proof of universal search equivalence.
+
+After one warm-up per binary, six alternating timing pairs ran on CPU 19 while the unchanged five-game SPRT continued. Median parent time was 2,537.5 ms; variant time was 2,419.5 ms, 4.65% lower. Median throughput was 8,991,513 versus 9,428,060 nodes/second. Every pair was faster; paired speed ratios ranged from 1.0048 to 1.1018, median 1.0473. This is a promising descriptive runtime result under shared load. It neither establishes an Elo gain nor proves that the full correction's playing-strength cost has been recovered.
+
+| Artifact | Identity |
+| --- | --- |
+| Variant source SHA-256 | `9d3ac72e21e1d1c9f2535f40fe3db0838c50695f4f3a97e230b7419b0d4f77e4` |
+| Variant binary SHA-256 | `d693d6ef264c76cf0c4d05e87d27e62f899be32ad964c9bab7cfb16992aa4065` |
+| Plan, parent-relative patch, correctness outputs | `engines/qsearch-validation/evasion-compaction-01/` |
+| All direct qsearch comparisons | `engines/qsearch-validation/evasion-compaction-01/direct-q-comparison.json` |
+| Every root trace and timing pair | `engines/qsearch-validation/evasion-compaction-01/search-timing/` |
+| Combined record | `engines/qsearch-validation/evasion-compaction-01/final-diagnostic.json` |
+
+Reproduction scripts are `prepare_evasion_compaction.py` and `time_evasion_compaction.py` in `engines/qsearch-validation/`. GPT-6 (Codex) proposed and wrote this fifth local variant of idea 9. Builds used `taskset -c 14-19 make -j6` with the compiler itself pinned to CPU 19; probes and timing also used CPU 19. The active source and match-binary hashes remained unchanged. No local variant has replaced the candidate in the running match or received a completed strength result.
