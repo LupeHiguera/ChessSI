@@ -1,0 +1,431 @@
+{
+  "plan": {
+    "recorded_utc": "2026-10-22T15:10:27.693070+00:00",
+    "model": "GPT-6 (Codex)",
+    "question": "Which legal exchange explains the known static-versus-depth-one gap?",
+    "selection": "Original one-legal-move fixture and mirror, then the sole king move, rook capture and king recapture seen in the ordinary PV.",
+    "scope": "Posthoc mechanism trace on constructed development positions. Baseline full-window qsearch is an operational reference with known limitations, not game value.",
+    "node_cap_per_call": 131072,
+    "maximum_requested_nodes": 1048576,
+    "cpu_affinity": [
+      19
+    ],
+    "cases": [
+      {
+        "fixture": "white",
+        "stage": 0,
+        "fen": "7k/4p3/4P3/p3P3/P3P3/P1b5/1Rb5/K7 w - - 1 2",
+        "history": [
+          "h7h8"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "a1a2"
+        ],
+        "legal_captures": [],
+        "side_to_move": "white"
+      },
+      {
+        "fixture": "white",
+        "stage": 1,
+        "fen": "7k/4p3/4P3/p3P3/P3P3/P1b5/KRb5/8 b - - 2 2",
+        "history": [
+          "h7h8",
+          "a1a2"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "h8g8",
+          "h8h7",
+          "h8g7",
+          "c3e5",
+          "c3d4",
+          "c3b4",
+          "c3d2",
+          "c3b2",
+          "c3e1",
+          "c2e4",
+          "c2a4",
+          "c2d3",
+          "c2b3",
+          "c2d1",
+          "c2b1"
+        ],
+        "legal_captures": [
+          "c3e5",
+          "c3b2",
+          "c2e4",
+          "c2a4"
+        ],
+        "side_to_move": "black"
+      },
+      {
+        "fixture": "white",
+        "stage": 2,
+        "fen": "7k/4p3/4P3/p3P3/P3P3/P7/Kbb5/8 w - - 0 3",
+        "history": [
+          "h7h8",
+          "a1a2",
+          "c3b2"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "a2b2"
+        ],
+        "legal_captures": [
+          "a2b2"
+        ],
+        "side_to_move": "white"
+      },
+      {
+        "fixture": "white",
+        "stage": 3,
+        "fen": "7k/4p3/4P3/p3P3/P3P3/P7/1Kb5/8 b - - 0 3",
+        "history": [
+          "h7h8",
+          "a1a2",
+          "c3b2",
+          "a2b2"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "h8g8",
+          "h8h7",
+          "h8g7",
+          "c2e4",
+          "c2a4",
+          "c2d3",
+          "c2b3",
+          "c2d1",
+          "c2b1"
+        ],
+        "legal_captures": [
+          "c2e4",
+          "c2a4"
+        ],
+        "side_to_move": "black"
+      },
+      {
+        "fixture": "black",
+        "stage": 0,
+        "fen": "k7/1rB5/p1B5/p3p3/P3p3/4p3/4P3/7K b - - 1 1",
+        "history": [
+          "h2h1"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "a8a7"
+        ],
+        "legal_captures": [],
+        "side_to_move": "black"
+      },
+      {
+        "fixture": "black",
+        "stage": 1,
+        "fen": "8/krB5/p1B5/p3p3/P3p3/4p3/4P3/7K w - - 2 2",
+        "history": [
+          "h2h1",
+          "a8a7"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "c7d8",
+          "c7b8",
+          "c7d6",
+          "c7b6",
+          "c7e5",
+          "c7a5",
+          "c6e8",
+          "c6d7",
+          "c6b7",
+          "c6d5",
+          "c6b5",
+          "c6e4",
+          "h1h2",
+          "h1g2",
+          "h1g1"
+        ],
+        "legal_captures": [
+          "c7e5",
+          "c7a5",
+          "c6b7",
+          "c6e4"
+        ],
+        "side_to_move": "white"
+      },
+      {
+        "fixture": "black",
+        "stage": 2,
+        "fen": "8/kBB5/p7/p3p3/P3p3/4p3/4P3/7K b - - 0 2",
+        "history": [
+          "h2h1",
+          "a8a7",
+          "c6b7"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "a7b7"
+        ],
+        "legal_captures": [
+          "a7b7"
+        ],
+        "side_to_move": "black"
+      },
+      {
+        "fixture": "black",
+        "stage": 3,
+        "fen": "8/1kB5/p7/p3p3/P3p3/4p3/4P3/7K w - - 0 3",
+        "history": [
+          "h2h1",
+          "a8a7",
+          "c6b7",
+          "a7b7"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "c7d8",
+          "c7b8",
+          "c7d6",
+          "c7b6",
+          "c7e5",
+          "c7a5",
+          "h1h2",
+          "h1g2",
+          "h1g1"
+        ],
+        "legal_captures": [
+          "c7e5",
+          "c7a5"
+        ],
+        "side_to_move": "white"
+      }
+    ]
+  },
+  "result": {
+    "cases": [
+      {
+        "fixture": "white",
+        "stage": 0,
+        "fen": "7k/4p3/4P3/p3P3/P3P3/P1b5/1Rb5/K7 w - - 1 2",
+        "history": [
+          "h7h8"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "a1a2"
+        ],
+        "legal_captures": [],
+        "side_to_move": "white",
+        "index": 0,
+        "static_eval": 182,
+        "qscore": 182,
+        "nodes": 1
+      },
+      {
+        "fixture": "white",
+        "stage": 1,
+        "fen": "7k/4p3/4P3/p3P3/P3P3/P1b5/KRb5/8 b - - 2 2",
+        "history": [
+          "h7h8",
+          "a1a2"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "h8g8",
+          "h8h7",
+          "h8g7",
+          "c3e5",
+          "c3d4",
+          "c3b4",
+          "c3d2",
+          "c3b2",
+          "c3e1",
+          "c2e4",
+          "c2a4",
+          "c2d3",
+          "c2b3",
+          "c2d1",
+          "c2b1"
+        ],
+        "legal_captures": [
+          "c3e5",
+          "c3b2",
+          "c2e4",
+          "c2a4"
+        ],
+        "side_to_move": "black",
+        "index": 1,
+        "static_eval": -206,
+        "qscore": 51,
+        "nodes": 8
+      },
+      {
+        "fixture": "white",
+        "stage": 2,
+        "fen": "7k/4p3/4P3/p3P3/P3P3/P7/Kbb5/8 w - - 0 3",
+        "history": [
+          "h7h8",
+          "a1a2",
+          "c3b2"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "a2b2"
+        ],
+        "legal_captures": [
+          "a2b2"
+        ],
+        "side_to_move": "white",
+        "index": 2,
+        "static_eval": -272,
+        "qscore": -51,
+        "nodes": 4
+      },
+      {
+        "fixture": "white",
+        "stage": 3,
+        "fen": "7k/4p3/4P3/p3P3/P3P3/P7/1Kb5/8 b - - 0 3",
+        "history": [
+          "h7h8",
+          "a1a2",
+          "c3b2",
+          "a2b2"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "h8g8",
+          "h8h7",
+          "h8g7",
+          "c2e4",
+          "c2a4",
+          "c2d3",
+          "c2b3",
+          "c2d1",
+          "c2b1"
+        ],
+        "legal_captures": [
+          "c2e4",
+          "c2a4"
+        ],
+        "side_to_move": "black",
+        "index": 3,
+        "static_eval": -45,
+        "qscore": 51,
+        "nodes": 3
+      },
+      {
+        "fixture": "black",
+        "stage": 0,
+        "fen": "k7/1rB5/p1B5/p3p3/P3p3/4p3/4P3/7K b - - 1 1",
+        "history": [
+          "h2h1"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "a8a7"
+        ],
+        "legal_captures": [],
+        "side_to_move": "black",
+        "index": 4,
+        "static_eval": 182,
+        "qscore": 182,
+        "nodes": 1
+      },
+      {
+        "fixture": "black",
+        "stage": 1,
+        "fen": "8/krB5/p1B5/p3p3/P3p3/4p3/4P3/7K w - - 2 2",
+        "history": [
+          "h2h1",
+          "a8a7"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "c7d8",
+          "c7b8",
+          "c7d6",
+          "c7b6",
+          "c7e5",
+          "c7a5",
+          "c6e8",
+          "c6d7",
+          "c6b7",
+          "c6d5",
+          "c6b5",
+          "c6e4",
+          "h1h2",
+          "h1g2",
+          "h1g1"
+        ],
+        "legal_captures": [
+          "c7e5",
+          "c7a5",
+          "c6b7",
+          "c6e4"
+        ],
+        "side_to_move": "white",
+        "index": 5,
+        "static_eval": -206,
+        "qscore": 51,
+        "nodes": 8
+      },
+      {
+        "fixture": "black",
+        "stage": 2,
+        "fen": "8/kBB5/p7/p3p3/P3p3/4p3/4P3/7K b - - 0 2",
+        "history": [
+          "h2h1",
+          "a8a7",
+          "c6b7"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "a7b7"
+        ],
+        "legal_captures": [
+          "a7b7"
+        ],
+        "side_to_move": "black",
+        "index": 6,
+        "static_eval": -272,
+        "qscore": -51,
+        "nodes": 4
+      },
+      {
+        "fixture": "black",
+        "stage": 3,
+        "fen": "8/1kB5/p7/p3p3/P3p3/4p3/4P3/7K w - - 0 3",
+        "history": [
+          "h2h1",
+          "a8a7",
+          "c6b7",
+          "a7b7"
+        ],
+        "in_check": false,
+        "legal_moves": [
+          "c7d8",
+          "c7b8",
+          "c7d6",
+          "c7b6",
+          "c7e5",
+          "c7a5",
+          "h1h2",
+          "h1g2",
+          "h1g1"
+        ],
+        "legal_captures": [
+          "c7e5",
+          "c7a5"
+        ],
+        "side_to_move": "white",
+        "index": 7,
+        "static_eval": -45,
+        "qscore": 51,
+        "nodes": 3
+      }
+    ],
+    "total_nodes": 32,
+    "state_restored": true,
+    "script_sha256": "3e31799c2b51bd4174c3eea2d5fe7db496f8d41dd40085613c79e5d5fa94a8e2"
+  }
+}

@@ -1,0 +1,1771 @@
+{
+  "plan": {
+    "recorded_utc": "2026-10-22T15:08:22.116559+00:00",
+    "model": "GPT-6 (Codex)",
+    "question": "Does the known private-node RFP contradiction change ordinary root choices/scores in its legal predecessor or one-move position?",
+    "selection": "Both existing fixtures and both predecessor/child stages; no outcome filtering or new policy.",
+    "roots": [
+      {
+        "id": "white-predecessor",
+        "startfen": "8/4p2k/4P3/p3P3/P3P3/P1b5/1Rb5/K7 b - - 0 1",
+        "moves": [],
+        "position_fen": "8/4p2k/4P3/p3P3/P3P3/P1b5/1Rb5/K7 b - - 0 1"
+      },
+      {
+        "id": "white-one-legal-move",
+        "startfen": "8/4p2k/4P3/p3P3/P3P3/P1b5/1Rb5/K7 b - - 0 1",
+        "moves": [
+          "h7h8"
+        ],
+        "position_fen": "7k/4p3/4P3/p3P3/P3P3/P1b5/1Rb5/K7 w - - 1 2"
+      },
+      {
+        "id": "black-predecessor",
+        "startfen": "k7/1rB5/p1B5/p3p3/P3p3/4p3/4P2K/8 w - - 0 1",
+        "moves": [],
+        "position_fen": "k7/1rB5/p1B5/p3p3/P3p3/4p3/4P2K/8 w - - 0 1"
+      },
+      {
+        "id": "black-one-legal-move",
+        "startfen": "k7/1rB5/p1B5/p3p3/P3p3/4p3/4P2K/8 w - - 0 1",
+        "moves": [
+          "h2h1"
+        ],
+        "position_fen": "k7/1rB5/p1B5/p3p3/P3p3/4p3/4P3/7K b - - 1 1"
+      }
+    ],
+    "target_depth": 8,
+    "per_call_cap": 262144,
+    "calls": 12,
+    "maximum_requested_nodes": 3145728,
+    "instrumentation": "Existing shadow auditor, gate changed to the two exact board keys; at most 32 samples/root. Preserve full history and current TT, disable RFP in shadow, restore TT before enabled control and parent resume.",
+    "shadow_cap": 131072,
+    "maximum_shadow_calls": 256,
+    "validation": "All instrumented iteration scores/bounds/nodes/PVs/bestmoves must equal frozen release; every root/history/PV/sample path replays legally; all shadow/control state restored.",
+    "interpretation": "Selected development fixtures only; a private-node contradiction need not affect root output. No strength/population/novelty claim. Existing quiescence/draw limitations apply.",
+    "cpu_affinity": [
+      19
+    ]
+  },
+  "result": {
+    "comparisons": [
+      {
+        "id": "white-predecessor",
+        "baseline_last": {
+          "depth": 8,
+          "score_type": "cp",
+          "score": 284,
+          "bounds": [],
+          "nodes": 167005,
+          "pv": [
+            "c3e5",
+            "a1a2",
+            "e5b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4"
+          ]
+        },
+        "rfp_last": {
+          "depth": 8,
+          "score_type": "cp",
+          "score": 284,
+          "bounds": [],
+          "nodes": 65790,
+          "pv": [
+            "c3e5",
+            "a1a2",
+            "e5b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4"
+          ]
+        },
+        "baseline_bestmove": "c3e5",
+        "rfp_bestmove": "c3e5",
+        "same_completed_depths": true,
+        "score_differences_by_depth": [],
+        "naturally_sampled_cutoffs": 2,
+        "completed_contradictions": 0
+      },
+      {
+        "id": "white-one-legal-move",
+        "baseline_last": {
+          "depth": 8,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 34091,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4",
+            "d5e6"
+          ]
+        },
+        "rfp_last": {
+          "depth": 8,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 15511,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4",
+            "d5e6"
+          ]
+        },
+        "baseline_bestmove": "a1a2",
+        "rfp_bestmove": "a1a2",
+        "same_completed_depths": true,
+        "score_differences_by_depth": [],
+        "naturally_sampled_cutoffs": 0,
+        "completed_contradictions": 0
+      },
+      {
+        "id": "black-predecessor",
+        "baseline_last": {
+          "depth": 8,
+          "score_type": "cp",
+          "score": 284,
+          "bounds": [],
+          "nodes": 123718,
+          "pv": [
+            "c6e4",
+            "a8a7",
+            "e4b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5"
+          ]
+        },
+        "rfp_last": {
+          "depth": 8,
+          "score_type": "cp",
+          "score": 284,
+          "bounds": [],
+          "nodes": 48435,
+          "pv": [
+            "c6e4",
+            "a8a7",
+            "e4b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5"
+          ]
+        },
+        "baseline_bestmove": "c6e4",
+        "rfp_bestmove": "c6e4",
+        "same_completed_depths": true,
+        "score_differences_by_depth": [],
+        "naturally_sampled_cutoffs": 2,
+        "completed_contradictions": 0
+      },
+      {
+        "id": "black-one-legal-move",
+        "baseline_last": {
+          "depth": 8,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 20765,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5",
+            "d4e3"
+          ]
+        },
+        "rfp_last": {
+          "depth": 8,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 10108,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5",
+            "d4e3"
+          ]
+        },
+        "baseline_bestmove": "a8a7",
+        "rfp_bestmove": "a8a7",
+        "same_completed_depths": true,
+        "score_differences_by_depth": [],
+        "naturally_sampled_cutoffs": 0,
+        "completed_contradictions": 0
+      }
+    ],
+    "exact_observer_traces": true,
+    "sum_last_completed_nodes": 625267,
+    "shadow_nodes": 66,
+    "control_nodes": 4,
+    "script_sha256": "d37c7186c4d36677baefec8d4eb23aded03ebcfcfb022e23d2d5da9e4422c891",
+    "instrumented_source_sha256": "02c33c03f0032d34886b86af6922485cd9bdd55f3329902ee13b11a111fd0772"
+  },
+  "bench_observation": {
+    "observed_utc": "2026-10-22T15:14:05.047245+00:00",
+    "command": "taskset -c 19 engines/rfp-validation/counterexample-root-01/chesssi-observer bench",
+    "observed_stdout": "Time: 1065 ms\n11112214 nodes 10424215 nps\n",
+    "bench": 11112214,
+    "scope": "Observed tool output; signature verification only, no timing comparison."
+  },
+  "searches": [
+    {
+      "id": "white-predecessor",
+      "engine": "baseline",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": 75,
+          "bounds": [],
+          "nodes": 22,
+          "pv": [
+            "c3b2",
+            "a1b2"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 152,
+          "pv": [
+            "c3e5",
+            "a1a2"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 559,
+          "pv": [
+            "c3e5",
+            "a1a2",
+            "e5b2"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 1806,
+          "pv": [
+            "c3e5",
+            "a1a2",
+            "e5b2",
+            "a2b2"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 7365,
+          "pv": [
+            "c2e4",
+            "a1a2",
+            "e4d5",
+            "a2b1",
+            "c3b2",
+            "b1b2"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 20671,
+          "pv": [
+            "c2e4",
+            "a1a2",
+            "e4d5",
+            "a2b1",
+            "c3b2",
+            "b1b2",
+            "d5e6"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": 225,
+          "bounds": [],
+          "nodes": 65379,
+          "pv": [
+            "c2e4",
+            "a1a2",
+            "e4d5",
+            "a2b1",
+            "c3b2",
+            "b1b2",
+            "h7g6",
+            "b2c3"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": 284,
+          "bounds": [],
+          "nodes": 167005,
+          "pv": [
+            "c3e5",
+            "a1a2",
+            "e5b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4"
+          ]
+        }
+      ],
+      "bestmove": "c3e5",
+      "samples": [],
+      "profile": [],
+      "transcript": "white-predecessor-baseline.txt"
+    },
+    {
+      "id": "white-one-legal-move",
+      "engine": "baseline",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 9,
+          "pv": [
+            "a1a2"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 33,
+          "pv": [
+            "a1a2",
+            "c3b2"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 117,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 398,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": -31,
+          "bounds": [],
+          "nodes": 1322,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": -67,
+          "bounds": [],
+          "nodes": 4664,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "h8g7"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 11980,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 34091,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4",
+            "d5e6"
+          ]
+        }
+      ],
+      "bestmove": "a1a2",
+      "samples": [],
+      "profile": [],
+      "transcript": "white-one-legal-move-baseline.txt"
+    },
+    {
+      "id": "black-predecessor",
+      "engine": "baseline",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": 75,
+          "bounds": [],
+          "nodes": 22,
+          "pv": [
+            "c6b7",
+            "a8b7"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 151,
+          "pv": [
+            "c6e4",
+            "a8a7"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 560,
+          "pv": [
+            "c6e4",
+            "a8a7",
+            "e4b7"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 1719,
+          "pv": [
+            "c6e4",
+            "a8a7",
+            "e4b7",
+            "a7b7"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 6452,
+          "pv": [
+            "c7e5",
+            "a8a7",
+            "e5d4",
+            "a7b8",
+            "c6b7",
+            "b8b7"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 16988,
+          "pv": [
+            "c7e5",
+            "a8a7",
+            "e5d4",
+            "a7b8",
+            "c6b7",
+            "b8b7",
+            "d4e3"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": 225,
+          "bounds": [],
+          "nodes": 49081,
+          "pv": [
+            "c7e5",
+            "a8a7",
+            "e5d4",
+            "a7b8",
+            "c6b7",
+            "b8b7",
+            "h2g3",
+            "b7c6"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": 284,
+          "bounds": [],
+          "nodes": 123718,
+          "pv": [
+            "c6e4",
+            "a8a7",
+            "e4b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5"
+          ]
+        }
+      ],
+      "bestmove": "c6e4",
+      "samples": [],
+      "profile": [],
+      "transcript": "black-predecessor-baseline.txt"
+    },
+    {
+      "id": "black-one-legal-move",
+      "engine": "baseline",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 9,
+          "pv": [
+            "a8a7"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 33,
+          "pv": [
+            "a8a7",
+            "c6b7"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 103,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 334,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": -31,
+          "bounds": [],
+          "nodes": 942,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": -67,
+          "bounds": [],
+          "nodes": 2676,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "h1g2"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 7694,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 20765,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5",
+            "d4e3"
+          ]
+        }
+      ],
+      "bestmove": "a8a7",
+      "samples": [],
+      "profile": [],
+      "transcript": "black-one-legal-move-baseline.txt"
+    },
+    {
+      "id": "white-predecessor",
+      "engine": "rfp",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": 75,
+          "bounds": [],
+          "nodes": 22,
+          "pv": [
+            "c3b2",
+            "a1b2"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 73,
+          "pv": [
+            "c3e5",
+            "a1a2"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 200,
+          "pv": [
+            "c3e5",
+            "a1a2",
+            "e5b2"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 961,
+          "pv": [
+            "c3e5",
+            "a1a2",
+            "e5b2",
+            "a2b2"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 3416,
+          "pv": [
+            "c2e4",
+            "a1a2",
+            "e4d5",
+            "a2a1",
+            "c3b2",
+            "a1b2",
+            "d5e6"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 9733,
+          "pv": [
+            "c2e4",
+            "a1a2",
+            "e4d5",
+            "a2b1",
+            "c3b2",
+            "b1b2",
+            "d5e6"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": 225,
+          "bounds": [],
+          "nodes": 23126,
+          "pv": [
+            "c2e4",
+            "a1a2",
+            "e4d5",
+            "a2b1",
+            "c3b2",
+            "b1b2",
+            "h7g6",
+            "b2c3"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": 284,
+          "bounds": [],
+          "nodes": 65790,
+          "pv": [
+            "c3e5",
+            "a1a2",
+            "e5b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4"
+          ]
+        }
+      ],
+      "bestmove": "c3e5",
+      "samples": [],
+      "profile": [],
+      "transcript": "white-predecessor-rfp.txt"
+    },
+    {
+      "id": "white-one-legal-move",
+      "engine": "rfp",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 9,
+          "pv": [
+            "a1a2"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 33,
+          "pv": [
+            "a1a2",
+            "c3b2"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 75,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 343,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": -31,
+          "bounds": [],
+          "nodes": 823,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": -67,
+          "bounds": [],
+          "nodes": 2542,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "h8g7"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 5500,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 15511,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4",
+            "d5e6"
+          ]
+        }
+      ],
+      "bestmove": "a1a2",
+      "samples": [],
+      "profile": [],
+      "transcript": "white-one-legal-move-rfp.txt"
+    },
+    {
+      "id": "black-predecessor",
+      "engine": "rfp",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": 75,
+          "bounds": [],
+          "nodes": 22,
+          "pv": [
+            "c6b7",
+            "a8b7"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 65,
+          "pv": [
+            "c6e4",
+            "a8a7"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 192,
+          "pv": [
+            "c6e4",
+            "a8a7",
+            "e4b7"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 980,
+          "pv": [
+            "c6e4",
+            "a8a7",
+            "e4b7",
+            "a7b7"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 3036,
+          "pv": [
+            "c7e5",
+            "a8a7",
+            "e5d4",
+            "a7a8",
+            "c6b7",
+            "a8b7",
+            "d4e3"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 8510,
+          "pv": [
+            "c7e5",
+            "a8a7",
+            "e5d4",
+            "a7b8",
+            "c6b7",
+            "b8b7",
+            "d4e3"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": 225,
+          "bounds": [],
+          "nodes": 19330,
+          "pv": [
+            "c7e5",
+            "a8a7",
+            "e5d4",
+            "a7b8",
+            "c6b7",
+            "b8b7",
+            "h2g3",
+            "b7c6"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": 284,
+          "bounds": [],
+          "nodes": 48435,
+          "pv": [
+            "c6e4",
+            "a8a7",
+            "e4b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5"
+          ]
+        }
+      ],
+      "bestmove": "c6e4",
+      "samples": [],
+      "profile": [],
+      "transcript": "black-predecessor-rfp.txt"
+    },
+    {
+      "id": "black-one-legal-move",
+      "engine": "rfp",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 9,
+          "pv": [
+            "a8a7"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 33,
+          "pv": [
+            "a8a7",
+            "c6b7"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 75,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 248,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": -31,
+          "bounds": [],
+          "nodes": 636,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": -67,
+          "bounds": [],
+          "nodes": 1302,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "h1g2"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 3560,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 10108,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5",
+            "d4e3"
+          ]
+        }
+      ],
+      "bestmove": "a8a7",
+      "samples": [],
+      "profile": [],
+      "transcript": "black-one-legal-move-rfp.txt"
+    },
+    {
+      "id": "white-predecessor",
+      "engine": "observer",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": 75,
+          "bounds": [],
+          "nodes": 22,
+          "pv": [
+            "c3b2",
+            "a1b2"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 73,
+          "pv": [
+            "c3e5",
+            "a1a2"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 200,
+          "pv": [
+            "c3e5",
+            "a1a2",
+            "e5b2"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 961,
+          "pv": [
+            "c3e5",
+            "a1a2",
+            "e5b2",
+            "a2b2"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 3416,
+          "pv": [
+            "c2e4",
+            "a1a2",
+            "e4d5",
+            "a2a1",
+            "c3b2",
+            "a1b2",
+            "d5e6"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 9733,
+          "pv": [
+            "c2e4",
+            "a1a2",
+            "e4d5",
+            "a2b1",
+            "c3b2",
+            "b1b2",
+            "d5e6"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": 225,
+          "bounds": [],
+          "nodes": 23126,
+          "pv": [
+            "c2e4",
+            "a1a2",
+            "e4d5",
+            "a2b1",
+            "c3b2",
+            "b1b2",
+            "h7g6",
+            "b2c3"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": 284,
+          "bounds": [],
+          "nodes": 65790,
+          "pv": [
+            "c3e5",
+            "a1a2",
+            "e5b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4"
+          ]
+        }
+      ],
+      "bestmove": "c3e5",
+      "samples": [
+        {
+          "depth": 1,
+          "ply": 1,
+          "alpha": -169,
+          "beta": -168,
+          "static_eval": 182,
+          "shadow_score": -51,
+          "shadow_nodes": 9,
+          "shadow_stopped": 0,
+          "control_score": 182,
+          "control_nodes": 1,
+          "control_stopped": 0,
+          "shadow_restored": 1,
+          "control_restored": 1,
+          "parent_nodes": 73,
+          "sample_key": "13809880754983139434",
+          "fen": "7k/4p3/4P3/p3P3/P3P3/P1b5/1Rb5/K7 w - - 1 2",
+          "path": [
+            "h7h8"
+          ]
+        },
+        {
+          "depth": 2,
+          "ply": 1,
+          "alpha": -169,
+          "beta": -168,
+          "static_eval": 182,
+          "shadow_score": -51,
+          "shadow_nodes": 24,
+          "shadow_stopped": 0,
+          "control_score": 182,
+          "control_nodes": 1,
+          "control_stopped": 0,
+          "shadow_restored": 1,
+          "control_restored": 1,
+          "parent_nodes": 200,
+          "sample_key": "1364845002752563536",
+          "fen": "7k/4p3/4P3/p3P3/P3P3/P1b5/1Rb5/K7 w - - 1 2",
+          "path": [
+            "h7h8"
+          ]
+        }
+      ],
+      "profile": [],
+      "transcript": "white-predecessor-observer.txt"
+    },
+    {
+      "id": "white-one-legal-move",
+      "engine": "observer",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 9,
+          "pv": [
+            "a1a2"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 33,
+          "pv": [
+            "a1a2",
+            "c3b2"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 75,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 343,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": -31,
+          "bounds": [],
+          "nodes": 823,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": -67,
+          "bounds": [],
+          "nodes": 2542,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "h8g7"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 5500,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 15511,
+          "pv": [
+            "a1a2",
+            "c3b2",
+            "a2b2",
+            "c2e4",
+            "b2c3",
+            "e4d5",
+            "c3d4",
+            "d5e6"
+          ]
+        }
+      ],
+      "bestmove": "a1a2",
+      "samples": [],
+      "profile": [],
+      "transcript": "white-one-legal-move-observer.txt"
+    },
+    {
+      "id": "black-predecessor",
+      "engine": "observer",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": 75,
+          "bounds": [],
+          "nodes": 22,
+          "pv": [
+            "c6b7",
+            "a8b7"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 65,
+          "pv": [
+            "c6e4",
+            "a8a7"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 192,
+          "pv": [
+            "c6e4",
+            "a8a7",
+            "e4b7"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": 168,
+          "bounds": [],
+          "nodes": 980,
+          "pv": [
+            "c6e4",
+            "a8a7",
+            "e4b7",
+            "a7b7"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 3036,
+          "pv": [
+            "c7e5",
+            "a8a7",
+            "e5d4",
+            "a7a8",
+            "c6b7",
+            "a8b7",
+            "d4e3"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": 223,
+          "bounds": [],
+          "nodes": 8510,
+          "pv": [
+            "c7e5",
+            "a8a7",
+            "e5d4",
+            "a7b8",
+            "c6b7",
+            "b8b7",
+            "d4e3"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": 225,
+          "bounds": [],
+          "nodes": 19330,
+          "pv": [
+            "c7e5",
+            "a8a7",
+            "e5d4",
+            "a7b8",
+            "c6b7",
+            "b8b7",
+            "h2g3",
+            "b7c6"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": 284,
+          "bounds": [],
+          "nodes": 48435,
+          "pv": [
+            "c6e4",
+            "a8a7",
+            "e4b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5"
+          ]
+        }
+      ],
+      "bestmove": "c6e4",
+      "samples": [
+        {
+          "depth": 1,
+          "ply": 1,
+          "alpha": -169,
+          "beta": -168,
+          "static_eval": 182,
+          "shadow_score": -51,
+          "shadow_nodes": 9,
+          "shadow_stopped": 0,
+          "control_score": 182,
+          "control_nodes": 1,
+          "control_stopped": 0,
+          "shadow_restored": 1,
+          "control_restored": 1,
+          "parent_nodes": 62,
+          "sample_key": "12161573961888285023",
+          "fen": "k7/1rB5/p1B5/p3p3/P3p3/4p3/4P3/7K b - - 1 1",
+          "path": [
+            "h2h1"
+          ]
+        },
+        {
+          "depth": 2,
+          "ply": 1,
+          "alpha": -169,
+          "beta": -168,
+          "static_eval": 182,
+          "shadow_score": -51,
+          "shadow_nodes": 24,
+          "shadow_stopped": 0,
+          "control_score": 182,
+          "control_nodes": 1,
+          "control_stopped": 0,
+          "shadow_restored": 1,
+          "control_restored": 1,
+          "parent_nodes": 189,
+          "sample_key": "1963011821978207051",
+          "fen": "k7/1rB5/p1B5/p3p3/P3p3/4p3/4P3/7K b - - 1 1",
+          "path": [
+            "h2h1"
+          ]
+        }
+      ],
+      "profile": [],
+      "transcript": "black-predecessor-observer.txt"
+    },
+    {
+      "id": "black-one-legal-move",
+      "engine": "observer",
+      "iterations": [
+        {
+          "depth": 1,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 9,
+          "pv": [
+            "a8a7"
+          ]
+        },
+        {
+          "depth": 2,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 33,
+          "pv": [
+            "a8a7",
+            "c6b7"
+          ]
+        },
+        {
+          "depth": 3,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 75,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7"
+          ]
+        },
+        {
+          "depth": 4,
+          "score_type": "cp",
+          "score": -51,
+          "bounds": [],
+          "nodes": 248,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5"
+          ]
+        },
+        {
+          "depth": 5,
+          "score_type": "cp",
+          "score": -31,
+          "bounds": [],
+          "nodes": 636,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6"
+          ]
+        },
+        {
+          "depth": 6,
+          "score_type": "cp",
+          "score": -67,
+          "bounds": [],
+          "nodes": 1302,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "h1g2"
+          ]
+        },
+        {
+          "depth": 7,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 3560,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5"
+          ]
+        },
+        {
+          "depth": 8,
+          "score_type": "cp",
+          "score": -167,
+          "bounds": [],
+          "nodes": 10108,
+          "pv": [
+            "a8a7",
+            "c6b7",
+            "a7b7",
+            "c7e5",
+            "b7c6",
+            "e5d4",
+            "c6d5",
+            "d4e3"
+          ]
+        }
+      ],
+      "bestmove": "a8a7",
+      "samples": [],
+      "profile": [],
+      "transcript": "black-one-legal-move-observer.txt"
+    }
+  ]
+}

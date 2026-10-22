@@ -159,3 +159,24 @@ The median changed from 1,204.5 to 1,152 ms, a 4.36% reduction, with the variant
 The first diagnostic attempt passed the engine tests, then python-chess rejected a constructed diagonal-pin fixture because its white rook on h1 also checked the black king on h8 while White was to move. Moving that king to a8 corrected the fixture while retaining the intended pin. The original generator, failure explanation and corrected inputs are preserved. The remaining checks resumed against the unchanged build; already completed tests were not needlessly repeated. `reproduction.json` distinguishes the corrected setup script from the initially executed generator and the successful resume script.
 
 Variant source SHA-256: `c90b8528db3c61597054eb672cc5766405c73dce4ffb0ce1f0837437b784a26f`. Binary: `f8a903d6acda4b6ad860c4f2138151a9ab5274779380199a148800b32e7207be`. Successful continuation script `resume_first_pawn_witness.py`: `afc3a465c271ee8a1e500e9fc39862d1f04e9844da73a12f0fd6c7b8ee8132d3`. The archive retains the patch, plan, all test/build logs, input positions, exact search comparisons, warmups and raw timing pairs.
+
+## Does the positive control change ordinary root search?
+
+A follow-up kept both known one-legal-move fixtures and their legal predecessor positions, without an outcome filter. Baseline, frozen RFP and an isolated observer each searched all four full-history roots to depth 8 with a 262,144-node cap per call and fresh TT. The observer reused the validated shadow auditor, replacing its random gate with the two exact fixture keys and allowing at most 32 samples per root. No search window or node counter was forced in these ordinary searches.
+
+All twelve calls completed depth 8. At every completed depth, baseline and RFP returned the same score; their final moves matched. The observer exactly matched the frozen candidate's iteration scores, bounds, nodes, PVs and final moves, and retained bench `11112214`.
+
+| Root | Baseline depth-8 nodes | RFP depth-8 nodes | Final move | Final score, side to move |
+| --- | ---: | ---: | --- | ---: |
+| White fixture predecessor, Black to move | 167,005 | 65,790 | `c3e5` | +284 cp |
+| White one-legal-move position | 34,091 | 15,511 | `a1a2` | -167 cp |
+| Color-mirrored predecessor, White to move | 123,718 | 48,435 | `c6e4` | +284 cp |
+| Black one-legal-move position | 20,765 | 10,108 | `a8a7` | -167 cp |
+
+The observer encountered four target cutoffs naturally: depths 1 and 2 after `h7h8`, and the mirrored paths. Each used beta **-168**, static evaluation +182, and a completed RFP-disabled result of **-51**. That result still exceeds the operative threshold, so these four cutoffs were not contradictions. The earlier deliberately constructed beta **+1** call remains a valid contradiction. A large static-versus-search difference is therefore insufficient to label the pruning decision wrong; the actual window matters. This is a concrete development example for a future bound-aware diagnostic target, not evidence that a new controller improves play.
+
+The tactical trace also clarifies the score gap. At the original white-to-move position there are no legal captures, so baseline qsearch returns its +182 stand-pat evaluation. The sole legal move `Ka2` gives Black a qsearch result of +51, or -51 for White. The legal `...Bxb2 Kxb2` exchange preserves that qsearch value; remaining bishop captures of pawns also contribute, so the entire drop should not be attributed to the rook exchange alone. The mirror reproduces the same scores. All traced positions are outside check, each move was independently validated, and FEN/key/draw state was restored. This traces the existing baseline's operational evaluation, not a proven chess value or a diagnosis that removes its other known limitations.
+
+The twelve root calls used 625,267 visits, including the repeated observer runs. The four disabled/control pairs added 66/4 visits; eight qsearch trace calls added 32. The observer bench was an additional 11,112,214 visits. These constructed, selected cases cannot establish a population error rate, general safety or Elo. The live match and candidate remained unchanged.
+
+Complete inputs, iterations, sampled windows, node accounting and exchange observations are in the [reviewable evidence bundle](evidence/rfp/README.md). Full local transcripts and builds are under `engines/rfp-validation/counterexample-root-01/` and `counterexample-qtrace-01/`. Collectors: `trace_counterexample_root.py`, SHA-256 `d37c7186c4d36677baefec8d4eb23aded03ebcfcfb022e23d2d5da9e4422c891`; `trace_counterexample_qsearch.py`, SHA-256 `3e31799c2b51bd4174c3eea2d5fe7db496f8d41dd40085613c79e5d5fa94a8e2`. GPT-6 (Codex) designed and ran these diagnostics on CPU 19.

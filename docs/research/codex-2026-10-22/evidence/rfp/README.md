@@ -8,6 +8,8 @@ Recorded while the RFP match was running on 2026-10-22. These files are evidence
 - `optimization-checks.json` retains the correctness gates and all six timing pairs. A short benchmark improvement is not an Elo result.
 - `move-disagreement-cases.json` supplies the complete starting FENs and move histories for all three different root choices. The reference and matched-depth JSON files retain every result and node accounting. These selected, reused development cases are not held-out strength evidence.
 
+`counterexample-root.json` and `counterexample-qtrace.json` preserve both constructed fixtures, all ordinary-search iterations and sampled cutoff contexts, plus the legal exchange trace. The private beta=1 contradiction did not change ordinary root scores through depth 8; naturally encountered beta=-168 cutoffs were supported by their disabled-search controls. These are mechanism diagnostics, not strength or frequency evidence.
+
 For reproduction, use a separate clean checkout at the stated baseline. Keep the evidence files outside that checkout or record their absolute paths before switching revisions. Apply and inspect one stage at a time:
 
 ```sh

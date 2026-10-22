@@ -1,10 +1,18 @@
 {
   "schema_version": 1,
-  "recorded_utc": "2026-10-22T14:37:58.253002+00:00",
+  "recorded_utc": "2026-10-22T15:14:05.065459+00:00",
   "files": {
     "README.md": {
-      "sha256": "ed8674569f42b1a0e3dcac5877e6960d05185d3ef848049349089f91b62b410a",
-      "bytes": 2365
+      "sha256": "f5c377c4fa549a20711f01b53d1878d0f6aa74096ceb55c040da31466c3da1fc",
+      "bytes": 2798
+    },
+    "counterexample-qtrace.json": {
+      "sha256": "3fc1643527ce7981c45370c6e38254c051b906adcd42f5453b8ff680c356c28d",
+      "bytes": 9229
+    },
+    "counterexample-root.json": {
+      "sha256": "7d5eba00a86723c1093073c87605cf6ba841add55295a5c388fb066dad7400e7",
+      "bytes": 37799
     },
     "experiment.json": {
       "sha256": "f65c22eb6a4f66586f7d2847aa8a4780b665233c85761b597a598cd897be1fbc",
