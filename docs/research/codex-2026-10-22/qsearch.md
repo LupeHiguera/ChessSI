@@ -68,3 +68,23 @@ These generated artifacts are intentionally under ignored `engines/` and remain 
 - `engines/qsearch-validation/initial-snapshot/manifest.json`
 
 The initial snapshot verified 37 archived files and recorded a whole-file hash for the shared book without copying it. The process executable hashes matched the frozen binary paths. Snapshot integrity establishes which bytes were captured; it does not establish a strength result. Preserve a final snapshot and the manager's completed verdict before filling the benchmark log.
+## Cost diagnostic while the strength test runs
+
+On 2026-10-22 UTC, a separate diagnostic used only WSL CPU 19 while the five-game match continued. The release binaries were hash-checked before and after. Each received one warm-up and six measured runs of the unchanged official depth-seven benchmark, alternating base/candidate and candidate/base order. These timings describe this shared-load environment; they are not a strength result or an isolated-machine speed estimate.
+
+| Measure | Baseline | Candidate |
+| --- | --- | --- |
+| Nodes, every run | 20,648,203 | 22,824,107 |
+| Median search time | 2,113.5 ms | 2,541.0 ms |
+| Median nodes/second | 9,765,576.5 | 8,978,811.0 |
+
+The candidate searched 10.54% more nodes, took 20.23% longer and had 8.06% lower median throughput. Both tree size and cost per node contribute. A separate instrumented executable retained the candidate bench signature `22824107` and counted:
+
+- 20,130,872 quiescence nodes, of which 11,186,162 entered directly from normal search.
+- 935,713 checked quiescence nodes (4.65% of quiescence nodes).
+- 335,296 searched quiet evasions and 2,860 quiescence checkmates.
+- Maximum quiescence ply 30; no maximum-ply fallbacks in these 14 positions.
+
+Normal search computes check status before calling quiescence, which then computes it again. Thus 55.57% of these quiescence calls repeat an existing check-status query. A possible follow-up is to pass that known value into quiescence and compute it for recursive children. This is an untested implementation variant of the same correction, not an explanation established by the counts alone. Its fixed-depth nodes and scores must match the corrected engine, and the complete candidate still needs its own strength test. Do not assume the passed value is always false: future reductions can enter quiescence at negative depth while checked.
+
+The instrumentation changed no match source or binary. Its timings are not used for the release comparison. Reproduction script: `engines/qsearch-validation/profile_current.py`; plan, raw outputs, compiler command, source/binary hashes and counter totals: `engines/qsearch-validation/profile-01/`. The active SPRT continues to its stopping condition regardless of these diagnostic observations.

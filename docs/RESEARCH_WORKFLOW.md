@@ -76,7 +76,7 @@ Negative utility is a loss. Freeze selections before looking at audit scores; do
 | Evaluation-call data | Does a controlled mixture of actual search leaves improve a fixed evaluator? | Different position difficulty, teacher cost and model capacity |
 | Test efficiency | How much time does adjudication save without changing paired results? | Mixed PGN sessions and unvalidated resignation thresholds |
 
-See [search research](research/codex-2026-10-22/search.md) and [testing research](research/codex-2026-10-22/testing.md) for prior art, falsification gates and implementation details. These are hypotheses, not measured improvements.
+See [search research](research/codex-2026-10-22/search.md) and [testing research](research/codex-2026-10-22/testing.md) for prior art, falsification gates and implementation details. These are hypotheses, not measured improvements. A [recent-evidence review](research/codex-2026-10-22/recent-evidence.md) checks the current Stockfish target and newer self-play results, including cases where better search labels did not improve learning.
 
 ## Preserve runs without mixing them
 
