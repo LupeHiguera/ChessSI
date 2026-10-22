@@ -206,6 +206,7 @@ bool Position::do_move(Move m) {
     StateInfo& st = states.back();
     st.captured = NO_PIECE;
     ++st.rule50;
+    ++st.pliesFromNull;
 
     Color us = stm, them = ~us;
     Square from = from_sq(m), to = to_sq(m);
@@ -301,12 +302,32 @@ void Position::undo_move(Move m) {
     states.pop_back();
 }
 
+void Position::do_null_move() {
+    StateInfo prev = states.back();
+    states.push_back(prev);
+    StateInfo& st = states.back();
+    st.captured = NO_PIECE;
+    ++st.rule50;
+    st.pliesFromNull = 0;
+    if (st.ep != SQ_NONE) {
+        st.key ^= Zobrist::epFile[file_of(st.ep)];
+        st.ep = SQ_NONE;
+    }
+    stm = ~stm;
+    st.key ^= Zobrist::side;
+}
+
+void Position::undo_null_move() {
+    stm = ~stm;
+    states.pop_back();
+}
+
 bool Position::is_draw() const {
     const StateInfo& st = states.back();
     if (st.rule50 >= 100)
         return true;
 
-    int lookback = std::min<int>(st.rule50, int(states.size()) - 1);
+    int lookback = std::min(std::min(st.rule50, st.pliesFromNull), int(states.size()) - 1);
     for (int i = 4; i <= lookback; i += 2)
         if (states[states.size() - 1 - i].key == st.key)
             return true;
