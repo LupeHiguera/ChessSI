@@ -17,11 +17,11 @@ The five cards below are ranked by usefulness to this project. "Candidate distin
 
 ## 1 Allocate deeper labels using cheap search diagnostics
 
-**Hypothesis.** At a fixed relabeling budget, cheap iterative-deepening diagnostics can select positions whose replacement labels reduce error against an independent, more expensive reference better than uniform selection, raw and bounded score volatility, and a context-only selector.
+**Hypothesis.** At a fixed relabeling budget, cheap iterative-deepening diagnostics can select positions whose replacement labels reduce error against a separately searched, larger-budget reference from the same frozen engine better than uniform selection, raw and bounded score volatility, and a context-only selector.
 
 **Prior art and distinction.** Cost-sensitive active learning already treats labeling cost as part of the objective. Minic already rescores data. The candidate distinction is an evaluator-independent selector based on parity-aware search instability, evaluated by the improvement of replacement labels against a third search budget. It explicitly permits deeper replacement labels to be worse. Generic uncertainty divided by cost is not new. [Cost-sensitive active learning](https://burrsettles.com/pub/settles.nips08ws.pdf), [Minic](https://github.com/tryingsomestuff/Minic).
 
-**Minimal prototype.** Use the existing UCI interface and a small ridge regression. No neural network or search modification is required. Predict the magnitude of a cheap-to-moderate search-score change from cheap-search features. Spend the same number of moderate labels under the learned policy, uniform sampling, raw and bounded volatility policies, and a context-only ridge selector. Evaluate the learned selector and all four allocation controls against a larger independent search budget, also requiring positive utility over retaining the cheap labels.
+**Minimal prototype.** Use the existing UCI interface and a small ridge regression. No neural network or search modification is required. Predict the magnitude of a cheap-to-moderate search-score change from cheap-search features. Spend the same number of moderate labels under the learned policy, uniform sampling, raw and bounded volatility policies, and a context-only ridge selector. Evaluate the learned selector and all four allocation controls against a separately searched, larger-budget reference from the same frozen engine, also requiring positive utility over retaining the cheap labels.
 
 **Data and cost.** The frozen corpus has 1,024 positions: 507 training, 248 calibration and 269 test roots, grouped into 88, 42 and 49 connected components respectively. Two label budgets apply to all positions and one audit budget to the 269 test positions, totaling 54,132,736 requested nodes. The earlier 256-test-root figure was a nominal split illustration. This is a count of requested search budgets, not a measured runtime or exact node consumption. One process, one assigned CPU, fixed binary/hash and fresh TT for each search are sufficient.
 
@@ -162,7 +162,7 @@ Train the selector on `y = abs(f(s1) - f(s0))`, where `s0` and `s1` are complete
 
 For each test root with centipawn scores at all tiers, define `L(a,b) = (f(a) - f(b))^2` and realized replacement utility `g = L(s0,s2) - L(s1,s2)`. Negative g means the replacement moved away from the audit reference; preserve it. Because the transformed losses lie in [0,1], an unavailable g can conservatively lie anywhere in [-1,1].
 
-Let M be the number of test roots with a valid cheap centipawn score. Select exactly `k = floor(q * M)` roots under every policy, using only cheap information. The effective fraction is `k/M`. Freeze those index sets within analysis before reading replacement or audit values for the test roots. Never refill or rerank after later exclusions.
+Let M be the number of test roots with a valid cheap centipawn score. Select exactly `k = floor(q * M)` roots under every allocation policy, using only cheap information. The effective fraction is `k/M`. Freeze those index sets within analysis before reading replacement or audit values for the test roots. Never refill or rerank after later exclusions.
 
 Compare these policies:
 

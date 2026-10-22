@@ -65,12 +65,20 @@ def inspect_log(text, protocol):
     if not text.endswith('\n'):
         issue('Log has an incomplete final line')
     started, finished = {}, {}
+    start_lines = {}
     wld, penta = [0, 0, 0], [0] * 5
     reports, decisions, endings = [], [], Counter()
     current = None
     last_game_line = 0
     finish_markers = []
     for line_no, line in enumerate(text.splitlines(), 1):
+        # Retain late records as evidence, but never accept events after the
+        # manager's final marker as a clean terminal session.
+        if finish_markers:
+            if line.startswith(('Started game ', 'Finished game ')):
+                issue('Game event after final match marker')
+            if line.startswith(('Results of ', 'Elo: ', 'LOS: ', 'Games: ', 'Ptnml(0-2): ', 'LLR: ')):
+                issue('Statistics event after final match marker')
         match = START.fullmatch(line)
         if match:
             ident, total, white, black = match.groups()
@@ -79,6 +87,7 @@ def inspect_log(text, protocol):
                     white == black or (ident % 2 == 1) != (white == 'new')):
                 issue('Invalid, duplicate or mixed-session game start')
             started[ident] = (white, black)
+            start_lines[ident] = line_no
             last_game_line = line_no
         elif line.startswith('Started game '):
             issue('Unrecognized game-start record')
@@ -167,11 +176,12 @@ def inspect_log(text, protocol):
     if len(decisions) != 1:
         issue('Expected exactly one explicit SPRT decision')
     selected = decisions[0] if len(decisions) == 1 else None
-    late_games, late_reports = [], []
+    late_starts, late_games, late_reports = [], [], []
     if selected:
+        late_starts = [ident for ident, line in start_lines.items() if line > selected['line']]
         late_games = [ident for ident, game in finished.items() if game['line'] > selected['line']]
         late_reports = [r['header_line'] for r in reports if r['header_line'] > selected['line']]
-        if late_games or late_reports:
+        if late_starts or late_games or late_reports:
             issue('Post-decision games or statistics require independent reconciliation')
         if len(finish_markers) != 1 or finish_markers[0] <= selected['line']:
             issue('Missing or misplaced final match marker')
@@ -185,6 +195,7 @@ def inspect_log(text, protocol):
                                    'draws': wld[2], 'pentanomial': penta},
             'unpaired_completed_game_ids': unpaired,
             'started_without_finish': sorted(set(started)-set(finished)),
+            'late_started_game_ids': late_starts,
             'late_finished_game_ids': late_games, 'late_statistics_lines': late_reports,
             'termination_reasons': dict(endings), 'issues': issues}
 

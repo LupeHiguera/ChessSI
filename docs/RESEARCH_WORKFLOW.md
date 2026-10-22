@@ -66,7 +66,7 @@ For cheap score `s0`, replacement score `s1` and larger-budget reference `s2`, m
 
 `loss(s0, s2) - loss(s1, s2)`
 
-Negative utility is a loss. Require the selected replacements to beat retaining the cheap labels as well as the cost-matched allocation controls; being less harmful than another selector is insufficient. The retention reference spends only the cheap-screening budget. Freeze selections before looking at audit scores; do not replace inconvenient selected roots after a mate or invalid result appears. Report coverage and charged costs. Winning this pilot establishes a reference-relative labeling advantage only. It must subsequently improve a fixed evaluator and survive a playing-strength test.
+Negative utility is a loss. Require the selected replacements to beat retaining the cheap labels as well as the cost-matched allocation controls; being less harmful than another selector is insufficient. The retention reference spends only the cheap-screening budget. In version 2, frozen analysis code replays selection after collection without using test replacement or audit scores. The separately proposed signed-utility study requires saving selected IDs before collecting test replacement or audit scores. Do not replace inconvenient selected roots after a mate or invalid result appears. Report coverage and charged costs. Winning this pilot establishes a reference-relative labeling advantage only. It must subsequently improve a fixed evaluator and survive a playing-strength test.
 
 ## Next research lanes
 

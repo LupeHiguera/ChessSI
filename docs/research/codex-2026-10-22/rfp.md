@@ -1,6 +1,6 @@
 # Shallow reverse futility pruning trial
 
-Prepared by GPT-6 (Codex), 2026-10-22 UTC. **Status: running; no strength result.** This is idea 5, classified Known. The separate check-evasion experiment ended with H0 accepted, was logged as Failed, and its engine changes were reverted before this trial began.
+Prepared by GPT-6 (Codex), 2026-10-22 UTC. **Status: running; no strength result.** Main advanced during this frozen comparison; see [baseline transition](#accepted-main-advanced-during-the-run). This is idea 5, classified Known. The separate check-evasion experiment ended with H0 accepted, was logged as Failed, and its engine changes were reverted before this trial began.
 
 ## Question and frozen implementation
 
@@ -207,4 +207,17 @@ The preflight checked all 22 source/build/test inputs against the published cand
 
 After an explicit H1 result, the terminal archive, candidate/baseline identities, protocol, normal runner exit and independent PGN/count audit must all reconcile before launch. Re-fetch current main and rerun the preflight into a new directory; if main moved, rebase and retest the changed comparison rather than relabeling the old result. Preserve the completed STC outputs before the standard runner writes fresh files, force a rebuild, verify binary/bench identities, then attach the existing identity-checked deadline guard to the new manager. A missing LTC decision at the deadline stays Inconclusive even if STC passed.
 
-This is preparation, not a started or passed confirmation. The live/waiting branch was exercised; terminal eligibility will be checked against the actual completed run. Local records: `engines/rfp-validation/confirmation-preflight-02/preflight.json` and its frozen helper copy. Current helper `prepare_confirmation.py` SHA-256: `7f2ad1d7888f6d7b3e3da1f962dada9501a5da60a50eced736263b3baa9c49e7`. The earlier `confirmation-preflight-01` is retained; the second version adds explicit terminal binary/protocol binding before that path is used.
+This is preparation, not a started or passed confirmation. Versions `confirmation-preflight-01` and `-02` are retained as historical records. Manual review then identified incomplete protocol/provenance bindings, corrected before use as described in the [terminal-check review](testing.md#review-of-terminal-audit-and-confirmation-readiness). Current `confirmation-preflight-03/preflight.json` binds the earlier launch/process/config observations and the revised independent audit schema. Helper `prepare_confirmation.py` SHA-256: `b3010849d5271620f4498f2a071c839f7a429591bbf4336a39c1c948be74a5b9`. Nineteen focused regression checks passed. The actual refusal path was exercised; no eligible H1 terminal launch has been exercised.
+
+
+## Accepted main advanced during the run
+
+A fresh remote check at approximately 15:57 UTC found accepted main `f801f8c519b0fe5b3d009b8f0664b049409a1188`, merging Claude's killer moves, null-move pruning and late move reductions. The current RFP comparison remains frozen against `a8eebea`; its result will be attributed only to that comparison. The new main changes pruning and reduction contexts, so an old-baseline STC pass cannot substitute for a fresh test on it. [Accepted merge](https://github.com/LupeHiguera/ChessSI/commit/f801f8c519b0fe5b3d009b8f0664b049409a1188)
+
+The read-only confirmation preflight correctly rejected the obsolete baseline even while still waiting for the live manager. Under `AGENTS.md`, the next strength test must rebase onto the then-current main and begin a new comparison, with its own validation, signatures and evidence. No old statistics will be carried over. The original experiment will be audited and logged before that transition, and the 19:53 UTC deadline remains unchanged.
+
+An isolated copy of the newly accepted main passed all 35 perft cases and reproduced bench `864538` on CPU 19. Its binary SHA-256 is `819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da`. This only verifies the accepted baseline; it is not another RFP test or a strength claim. Evidence: `engines/rfp-validation/new-main-preparation-01/`, collector `prepare_new_main.py` SHA-256 `ef39de711210912dbc00ea92c23c8be2bbad40c9f4b6f06100b59ec1d3d0e1f6`.
+
+The separate research review branch incorporates the new accepted main while preserving both agents' log rows and the active RFP claim. Its engine files match main; the tested RFP patch remains an unapplied historical evidence artifact. The live worktree and binaries were not changed.
+
+A second live-prefix integrity audit at 15:44 UTC legally replayed 1,272 saved games and 126,041 plies, reconciled all 63 statistics reports and every saved game result, and found no missing cross-source games or suspect terminations. `engines/rfp-validation/match-audit-02/` preserves the frozen snapshot and audit. This is a prefix integrity check, not the eventual terminal result.

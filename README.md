@@ -1,18 +1,19 @@
 # ChessSI
 My own personal benchmark of AGI, building the best possible chess engine.
 
-AI writes most of the code. Every idea is tested with thousands of games and logged, so the log measures
+AI writes most of the code. Ideas are tested in controlled matches and logged, so the log measures
 what each AI model can actually do in research.
 
 ## Status
 
-Phase 1 of 5 (working engine). Done so far:
+Working engine, with classical search improvements underway. Accepted main `f801f8c` includes:
 
 - Move generation with magic bitboards, verified against known perft counts
 - UCI protocol, so it plays in any chess GUI
-- Baseline search: iterative deepening, principal variation search, transposition table, quiescence
+- Search: iterative deepening, principal variation search, transposition table, quiescence
+- Killer moves, null-move pruning and late move reductions
 - PeSTO piece-square evaluation (to be replaced by a neural network in phase 3)
-- Bench: `20648203` nodes
+- Accepted-main bench: `864538` nodes
 
 ## Quick start
 

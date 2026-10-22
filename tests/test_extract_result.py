@@ -111,6 +111,63 @@ class LogEvidenceTests(unittest.TestCase):
         self.assertEqual(out['late_finished_game_ids'], [3, 4])
         self.assertTrue(out['issues'])
 
+    def test_start_between_decision_and_final_marker_requires_review(self):
+        text = fixture().replace('Finished match\n', start(3)+'Finished match\n')
+        out = self.inspect(text)
+        self.assertEqual(out['late_started_game_ids'], [3])
+        self.assertEqual(out['started_without_finish'], [3])
+        self.assertIn('Post-decision games or statistics require independent reconciliation', out['issues'])
+        self.assertNotIn('Game event after final match marker', out['issues'])
+
+    def test_start_after_final_marker_is_rejected(self):
+        out = self.inspect(fixture()+start(3))
+        self.assertEqual(out['late_started_game_ids'], [3])
+        self.assertEqual(out['started_without_finish'], [3])
+        self.assertIn('Game event after final match marker', out['issues'])
+
+    def test_finish_after_final_marker_is_rejected_and_retained(self):
+        out = self.inspect(start(3)+fixture()+finish(3))
+        self.assertEqual(out['late_started_game_ids'], [])
+        self.assertEqual(out['late_finished_game_ids'], [3])
+        self.assertEqual(out['completed_log_games'], 3)
+        self.assertIn('Game event after final match marker', out['issues'])
+
+    def test_report_after_final_marker_is_rejected_and_retained(self):
+        out = self.inspect(fixture()+report())
+        self.assertEqual(out['statistics_reports'], 2)
+        self.assertEqual(len(out['late_statistics_lines']), 1)
+        self.assertIn('Statistics event after final match marker', out['issues'])
+
+    def test_earlier_unfinished_starts_remain_allowed(self):
+        out = self.inspect(start(3)+start(4)+fixture())
+        self.assertEqual(out['started_without_finish'], [3, 4])
+        self.assertEqual(out['late_started_game_ids'], [])
+        self.assertEqual(out['completed_log_games'], 2)
+        self.assertEqual(out['issues'], [])
+
+    def test_late_finish_before_final_marker_still_requires_reconciliation(self):
+        text = start(3)+fixture().replace('Finished match\n', finish(3)+'Finished match\n')
+        out = self.inspect(text)
+        self.assertEqual(out['late_finished_game_ids'], [3])
+        self.assertIn('Post-decision games or statistics require independent reconciliation', out['issues'])
+        self.assertNotIn('Game event after final match marker', out['issues'])
+
+    def test_final_marker_before_decision_is_rejected(self):
+        text = fixture().replace('SPRT ([', 'Finished match\nSPRT ([')
+        text = text.removesuffix('Finished match\n')
+        self.assertIn('Missing or misplaced final match marker', self.inspect(text)['issues'])
+
+    def test_duplicate_final_markers_are_rejected(self):
+        self.assertIn('Missing or misplaced final match marker',
+                      self.inspect(fixture()+'Finished match\n')['issues'])
+
+    def test_final_marker_inside_statistics_is_rejected(self):
+        text = fixture().removesuffix('Finished match\n')
+        text = text.replace('Games: ', 'Finished match\nGames: ')
+        out = self.inspect(text)
+        self.assertIn('Statistics event after final match marker', out['issues'])
+        self.assertIn('Missing or misplaced final match marker', out['issues'])
+
     def test_log_counts_must_reconcile(self):
         for before, after in [('Wins: 1', 'Wins: 2'), ('[0, 0, 1, 0, 0]', '[1, 0, 0, 0, 0]')]:
             with self.subTest(before=before):
