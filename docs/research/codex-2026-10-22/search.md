@@ -321,3 +321,48 @@ The important target is a future reduced fail-low that full-depth verification w
 Compare the conflict feature against current bound/depth/window alone, static trend, bound-aware TT-to-static discrepancy, an available correction-history baseline, and a same-frequency random guard. Reject the policy if conflict adds no held-out predictive value, its signal disappears in the rule50-zero/equal-depth domain, or only the two-bit persistence wins after post-hoc tuning. A positive diagnostic still requires the ordinary single-idea correctness checks and SPRT; it establishes no Elo gain by itself.
 
 Preserved rejections: generic TT disagreement is not novel; dual-bound storage is not novel; error-sensitive LMR is not novel; a full-key match is not full chess-state identity; low rule50 or nonzero scores do not establish path independence. The exact temporal warning remains Candidate, with a materially narrower domain than the initial shortlist.
+
+## Score uncertainty versus decision uncertainty
+
+This audit sharpens the existing deadline-allocation proposal; it is not another claimed engine experiment. The broad principle is Known. [Hay, Russell, Tolpin and Shimony, 2012](https://people.eecs.berkeley.edu/~russell/papers/uai12-meta.pdf) choose computations by their expected effect on the eventual decision. [Kaufmann and Koolen, 2017](https://arxiv.org/abs/1706.02986v2) apply best-arm identification at the root of stochastic game trees. [Saad, Blanchard and Verzelen, 2023](https://arxiv.org/abs/2306.02630v2) show how covariance can improve best-arm identification when dependent rewards can be sampled together. These establish prior art, not guarantees for deterministic, selectively searched chess evaluations.
+
+### Why a value-error head alone is insufficient
+
+For two action-value errors, the variance of their difference is `Var(eA) + Var(eB) - 2 Cov(eA,eB)`. Large individual errors can cancel in the ordering. A head predicting only each move's marginal error cannot distinguish all joint cases.
+
+An exact synthetic calculation makes the issue explicit. Let the current expected values be A=20 and B=0, with each error taking values -100 or +100 equally often. These are arbitrary linear utility units, not calibrated chess winning probabilities.
+
+| Joint error model | Variance of each error | Error covariance | Probability B is better | Expected regret from choosing A | Value of perfect information |
+| --- | --- | --- | --- | --- | --- |
+| Identical errors | 10,000 | 10,000 | 0 | 0 | 0 |
+| Independent errors | 10,000 | 0 | 1/4 | 45 | 45 |
+| Opposite errors | 10,000 | -10,000 | 1/2 | 90 | 90 |
+
+The individual means, marginal distributions and initial score gap are identical across rows. Only their dependence changes. Exact enumeration with rational arithmetic verifies every entry. Perfect information is an upper benchmark under these specified distributions; a finite extra chess search can still select a worse move. This example does not establish the actual covariance or value of computation in ChessSI.
+
+### What the saved ChessSI traces show
+
+An exploratory audit reused the 128 development roots from [the passive qsearch profile](qsearch.md). It added no engine searches. Eligible transitions connect completed exact-centipawn iterations with a nonempty PV. Mate transitions were excluded and counted separately. Thresholds were fixed in the analysis record before enumeration: small score movement is at most 10 cp, large movement at least 100 cp. Adjacent depths and two-ply gaps were tabulated separately.
+
+| Transition type | Eligible transitions | Changed first PV move | Small score movement: changed / total | Large score movement: unchanged / total |
+| --- | --- | --- | --- | --- |
+| Adjacent completed depths | 598 | 188 | 102 / 339 | 6 / 12 |
+| Same-parity depths two apart | 470 | 184 | 92 / 246 | 8 / 16 |
+
+Each row covers 128 roots, 118 games and 101 opening positions; four additional transitions per row involved a non-CP score. Among adjacent-depth transitions with exactly unchanged scores, 9 of 88 changed the first PV move. These overlapping observations are correlated, and no independent-sample confidence interval is claimed.
+
+Examples were selected by first root-ID/depth order within each category, not by maximizing an effect. In game 1351, depth 3 to 4 changes `e3f4` to `a6c6` while the score moves from 18 to 20 cp. In game 1612, depth 1 to 2 retains `g8g7` while its score falls from -201 to -306 cp; depth 3 retains the move at -390 cp. Full histories and transcripts remain in the original profile archive.
+
+These observations show that score movement and move movement are different targets. They do not show that the changed move is better, that stable moves are correct, or that volatility has no predictive value. The score change over the same transition uses future information and cannot be used to predict that transition prospectively. Root-best scores can also refer to different moves, so this trace does not estimate sibling error covariance. The known draw omission limits any quality claim from this baseline.
+
+Evidence: `engines/qsearch-validation/decision-uncertainty-01/` contains the plan, exact synthetic states, all eligible transitions, summaries and source. Input trace SHA-256: `93fecc4eaa42d5dc590723517fb7be39e3c27ff9fb58b83eb81e4f2aefc7f79f`. Analysis source SHA-256: `22cf4e546b7748181d5ef4043f7c83d9458480fea6de3919ecc2a61d1faf5a78`. GPT-6 (Codex) ran it on CPU 19. The label-pilot corpus and live engine remained untouched.
+
+### A more direct target for the future allocation screen
+
+After the correctness prerequisites, freeze two root budgets and a third independent reference budget. Let m0 be the cheaper root search's choice and m1 the larger root search's choice. Replay both child positions with complete history, equal reference budgets and fresh TT, converting scores to the same root-player perspective. A predeclared bounded utility transform gives the signed target `g = u(reference(m1)) - u(reference(m0))`. If the moves coincide, g is exactly zero without a child comparison.
+
+This measures the reference-relative value of the actual replacement, including negative outcomes. It does not require claiming that either move is globally best: the unknown best-action reference value cancels in the regret difference. It also avoids labeling every legal child solely to compare these two realized choices. Terminal/draw handling must be correct in the replay adapter; mate and missing-reference outcomes need separate categories and conservative bounds, not invented centipawn values.
+
+Freeze selections from cheap information before test reference collection. Compare against retaining m0, uniform extra work, score-volatility, move-stability and depth/cost controls. Charge both root searches, both reference searches where needed, training/calibration and any extra feature probes. Fresh runs at budgets B0 and B1 cost B0+B1 in the diagnostic; they are not automatically a deployable B1-B0 continuation. A continuation policy needs separately verified checkpoint/prefix semantics and deadline accounting.
+
+For a later covariance-aware feature experiment, obtain repeated equal-context scores for the same frozen sibling pair. Do not call root-PVS fail-low bounds exact runner-up values, or use an unseen future challenger as a cheap feature. ChessSI currently lacks MultiPV and `searchmoves`, so the required child adapter or diagnostic interface and its extra screening cost must be explicit. A covariance feature earns further work only if it improves held-out signed decision utility beyond the simpler controls. No inference-time head or engine policy has been implemented or promoted by this audit.
