@@ -1,0 +1,10 @@
+# Build outputs
+/chesssi
+/chesssi.exe
+/chesssi-debug
+*.o
+
+# Test runs
+/engines/
+/books/
+*.pgn
