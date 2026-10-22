@@ -1,7 +1,28 @@
 # Quiescence check-evasion experiment
 
-Proposer and implementer: GPT-6 (Codex). Kind: Known. Started 2026-10-21 at approximately 22:47 America/Phoenix (2026-10-22 UTC). Status: full short-time-control SPRT running; no Elo gain or acceptance is claimed.
+Proposer and implementer: GPT-6 (Codex). Kind: Known. Started 2026-10-21 at approximately 22:47 America/Phoenix (2026-10-22 UTC). Status: Failed. The completed 4,026-game STC test accepted H0; the experimental code was reverted.
 
+## Final result
+
+The manager stopped naturally on 2026-10-22 at 12:53:21 UTC after accepting H0 in the prescribed normalized-Elo `[0,5]` SPRT at `10+0.1`, alpha/beta 0.05. The displayed logistic estimate was **-11.83 +/- 8.36 Elo**; normalized Elo was **-15.19 +/- 10.73**. The printed LLR was -2.95, beyond the negative boundary of approximately -2.94444. Manager elapsed time was 6:39:03. No deadline signal was sent.
+
+The decision used 4,026 games (2,013 complete opening pairs): 1,423 wins, 1,560 losses and 1,043 draws for the candidate, with pentanomial counts `[238,394,832,365,184]`. The PGN contains 4,027 completed games because game 4027 finished without its partner. That unpaired game is preserved and excluded from the decision totals. There was one explicit H0 message and no later finished-game or statistics record.
+
+Independent audit replayed all 398,577 plies of all 4,027 saved games legally, reconciled all 202 printed statistics reports, matched every completed game between PGN and log, and matched final config totals to the decision report. Recorded endings included no crashes, illegal moves, time forfeits, disconnections or stalls. This validates the recorded game/accounting evidence; it does not independently certify adjudication thresholds or reinterpret the manager's statistical model.
+
+The guard's terminal archive verified all 25 captured files, with no binary drift. A separate preterminal archive verified 29 source, binary and regression-evidence files, including the final eight-case harness. The qsearch source change and its build integration were then reverted. A forced baseline rebuild passed all 35 perft cases and reproduced bench `20648203`; the rebuilt executable exactly matched the original baseline SHA-256 `b55b4dac011664fe03f068b31ef7868e7413d064338b2d0b6eb3a0001e21520b`.
+
+The outcome is **Failed**, despite the targeted correctness cases passing. The six isolated implementation variants remain diagnostics with no strength-test acceptance; none was promoted as a substitute. This result measures the complete original patch against the stated baseline and time control, not the value of every possible check-evasion implementation or a general conclusion about AI research.
+
+Terminal evidence remains in the Astra worktree:
+
+- `engines/qsearch-validation/live-watch-01/terminal-snapshot/`
+- `engines/qsearch-validation/terminal-audit-01/` and `terminal-result.json`
+- `engines/qsearch-validation/source-final-tests-01/`
+- `engines/qsearch-validation/reverted-baseline-test.txt` and `reverted-baseline-bench.txt`
+- `engines/qsearch-validation/failed-search-tests.cpp` and `failed-search-tests-binary`
+
+The remaining sections preserve the original hypothesis, frozen run identity and diagnostics gathered while the match was running. Their references to the then-active candidate describe that historical state.
 ## Hypothesis and minimal change
 
 After a capture gives check, the baseline quiescence search can use static evaluation as stand-pat and omit every quiet legal evasion. Suppressing stand-pat in check, searching all evasions and returning mate when none are legal should correct those tactical scores. The strength test measures whether the additional search is worth its cost at the specified time control.
@@ -25,7 +46,7 @@ The first compiled baseline regression run reproduced six failures and one passi
 
 `make test` passed all 35 perft cases and the then-seven search cases. The final eighth case passed in `make test-search`. AddressSanitizer and UndefinedBehaviorSanitizer passed the seven-case suite before the eighth test-only addition. The engine code was unchanged by that test addition.
 
-Baseline bench: `20648203`. Candidate bench: `22824107`. A changed search signature is expected for this change. The tested `./chesssi` executable and the match's `engines/new` executable have identical SHA-256 hashes.
+Baseline bench: `20648203`. Candidate bench: `22824107`. A changed search signature is expected for this change. At launch, the tested `./chesssi` executable and the match's `engines/new` executable had identical SHA-256 hashes.
 
 ## Frozen match identity
 
