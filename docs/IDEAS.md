@@ -11,9 +11,12 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 
 | Date | Model | Kind | Idea | Result | Elo | Games | Pre-screen |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (original baseline; STC only) | Passed | +39.39 +/- 13.98 | 1,568 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | GPT-6 (Codex) | Known | Check evasions in quiescence | Failed | -11.83 +/- 8.36 | 4,026 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 
 Baseline before the first idea: bench `20648203`.
+
+The RFP short-time test passed against original baseline `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`: normalized SPRT `[0,5]` at `10+0.1`, explicit H1, nElo +48.89 +/- 17.20, printed LLR 2.95. All 1,569 saved games and 79 reports reconciled; unpaired game 1568 is excluded. This is an STC-only result, not an accepted engine promotion. Main advanced during the match, so the next comparison must use the new baseline before longer-time confirmation. [Audited result](research/codex-2026-10-22/rfp.md#final-result-on-the-original-baseline).
 
 The qsearch test used normalized SPRT `[0,5]` at `10+0.1` against `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`; H0 was accepted with nElo -15.19 +/- 10.73 and printed LLR -2.95. The table gives the manager's logistic Elo estimate. One unpaired completed game is excluded. The experimental code was reverted and baseline bench `20648203` reverified. [Audited result and preserved diagnostics](research/codex-2026-10-22/qsearch.md#final-result).
 

@@ -12,8 +12,8 @@
 
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
-// with MVV-LVA ordering. Pruning, reductions and history heuristics are left
-// out on purpose: each is a separate experiment for the ideas log.
+// with MVV-LVA ordering, plus the shallow reverse futility pruning trial.
+// Further pruning, reductions and history remain separate experiments.
 
 std::atomic<bool> Search::stop{false};
 
@@ -160,6 +160,18 @@ struct Searcher {
                 || (tte->bound == BOUND_LOWER && ttScore >= beta)
                 || (tte->bound == BOUND_UPPER && ttScore <= alpha))
                 return ttScore;
+        }
+
+        // Reverse futility pruning: at shallow null-window nodes, a large
+        // static advantage may make the remaining search unnecessary.
+        if (!root && !pvNode && !inCheck && depth <= 3
+            && pos.rule50() + depth < 100
+            && std::abs(beta) < VALUE_MATE_IN_MAX_PLY
+            && (pos.pieces(pos.side_to_move()) & ~(pos.pieces(PAWN) | pos.pieces(KING)))) {
+            const int staticEval = evaluate(pos);
+            if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 150 * depth >= beta)
+                // A static advantage cannot override stalemate.
+                return first_legal_move() == MOVE_NONE ? 0 : staticEval;
         }
 
         MoveList list;

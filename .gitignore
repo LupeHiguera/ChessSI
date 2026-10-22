@@ -2,6 +2,7 @@
 /chesssi
 /chesssi.exe
 /chesssi-debug
+/chesssi-rfp-tests
 *.o
 
 # Test runs
