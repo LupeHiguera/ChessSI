@@ -366,3 +366,33 @@ This measures the reference-relative value of the actual replacement, including 
 Freeze selections from cheap information before test reference collection. Compare against retaining m0, uniform extra work, score-volatility, move-stability and depth/cost controls. Charge both root searches, both reference searches where needed, training/calibration and any extra feature probes. Fresh runs at budgets B0 and B1 cost B0+B1 in the diagnostic; they are not automatically a deployable B1-B0 continuation. A continuation policy needs separately verified checkpoint/prefix semantics and deadline accounting.
 
 For a later covariance-aware feature experiment, obtain repeated equal-context scores for the same frozen sibling pair. Do not call root-PVS fail-low bounds exact runner-up values, or use an unseen future challenger as a cheap feature. ChessSI currently lacks MultiPV and `searchmoves`, so the required child adapter or diagnostic interface and its extra screening cost must be explicit. A covariance feature earns further work only if it improves held-out signed decision utility beyond the simpler controls. No inference-time head or engine policy has been implemented or promoted by this audit.
+
+## Reverse futility pruning: next-experiment boundary audit
+
+Queue item 5 remained unclaimed in both working folders when checked on 2026-10-22 around 10:48 UTC. This section prepares a possible next experiment after idea 9 reaches a terminal result. It neither claims a second concurrent idea nor installs a pruning policy.
+
+Reverse futility pruning (RFP), also called static null-move pruning, is Known. It assumes that a sufficiently favorable static evaluation at shallow depth will remain above beta, then skips the subtree. [Ethereal's pinned search implementation](https://github.com/AndyGrant/Ethereal/blob/0e47e9b67f345c75eb965d9fb3e2493b6a11d09a/src/search.c) uses non-PV/non-check eligibility, a depth-dependent margin and a static-evaluation return; [Stockfish 19's search](https://github.com/official-stockfish/Stockfish/blob/sf_19/src/search.cpp) adds its own TT, trend, correction and decisive-score conditions. Neither engine's parameters or historical gains are measurements for ChessSI. The first ChessSI trial should stay small instead of importing those surrounding mechanisms.
+
+### A material guard does not establish legal mobility
+
+The audit constructed this position and its color mirror:
+
+`7k/4p3/4P3/p3P3/P3P3/P1b5/PRb5/K7 w - - 0 1`
+
+White is not checked, has a rook and six pawns, and has no legal move. The rook on b2 is pinned diagonally by the bishop on c3; b1 is covered by the other bishop, a2 is occupied, and the pawns are blocked. Pinned python-chess independently reports stalemate and an empty legal-move list. These are locally valid FEN positions; no full reachability proof from the standard starting position is claimed.
+
+Both unchanged match binaries give a static evaluation of +279 cp from the side to move. Normal root search at depths one and two correctly returns zero with `bestmove 0000`. A verified private probe of the unchanged candidate also returns zero at non-root requested depth one. Thus a hypothetical non-root/non-PV RFP test with beta=1, depth=1 and margin=150 would satisfy `279 - 150 >= 1`, despite the exact terminal result being below beta. Excluding checked nodes and requiring non-pawn material would not prevent this error. No hypothetical cutoff was installed in either engine.
+
+Removing only the a2 pawn gives White exactly one legal move, `a1a2`; the mirror similarly has only `a8a7`. These controls have static evaluation +182 cp, but both engines return -51 cp at depths one and two. The hypothetical inequality still holds. Here there is no terminal-state error: the example demonstrates that even a legal-move witness does not turn the pruning assumption into a certified bound. The bounded search score is not a proof of the position's eventual game value.
+
+All sixteen ordinary-UCI searches used fresh TT and together reported 180 nodes. Twelve non-root calls used another 28 nodes and restored FEN/key/draw state. The two terminal fixtures also reproduce the already documented unchecked-qsearch stalemate omission: direct qsearch reports +279. That existing limitation must remain separately identified; it does not justify introducing another terminal error at positive depth.
+
+### Minimal first-trial contract
+
+After completing and archiving the current test, check the shared queue again, claim item 5, and rebase onto the latest accepted engine. A proposed conservative first version uses only non-root, non-PV, non-check nodes at depths one through three, with a fixed 150-cp-per-ply margin, non-pawn material for the side to move, and beta/static values outside the mate band. Keep existing draw/maximum-ply and applicable TT exits ahead of the new rule. No improving flag, tuning sweep, TT-evaluation change, null move, qsearch variant or learned margin belongs in this first comparison.
+
+When the static threshold qualifies, verify that a legal move exists before returning the static evaluation. Generate pseudo-legal moves and use paired make/unmake until the first legal move; if none exists, return the existing stalemate value zero. This check is limited to would-be RFP cutoffs, rather than every node. Its cost is part of the candidate and must be measured. The terminal guarantee concerns this new cutoff path; existing TT/history and qsearch limitations are not thereby solved. The one-legal-move control remains an explicitly known heuristic miss, not a case to claim the guard fixes or to tune away after the match.
+
+Validate root move output, checked and pawn-only exclusions, mate-band windows, the two stalemates and their escape controls, full state restoration, perft, and stop behavior. Record the changed bench signature. Run the prescribed independent `[0,5]` SPRT at `10+0.1`; confirm a pass at `60+0.6`. These fixtures constrain correctness and interpretation, not an expected Elo gain. If the accepted baseline or ownership changes before implementation, revise and record the plan before gathering candidate results.
+
+Evidence is preserved in `engines/qsearch-validation/rfp-boundary-audit-01/`, including the plan written before probes, independent legal lists, all sixteen UCI transcripts, non-root outputs and result summary. Reproduce with `engines/qsearch-validation/audit_rfp_boundaries.py`, SHA-256 `ecb489a882b062e2c98dbfc9f259ab2effbf88b9b4a6f4ddabb93b4a91d84480`. GPT-6 (Codex) designed and ran this read-only audit on CPU 19; source, live binaries and match rules remained unchanged.
