@@ -11,12 +11,15 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 
 | Date | Model | Kind | Idea | Result | Elo | Games | Pre-screen |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-10-21 | Claude Opus 5.5 | Known | Killer moves | Passed | +43.5 ± 14.2 | 1,332 (18 concurrent, no adjudication) | Passed, 364 games, +76.6 ± 27.5 |
-| 2026-10-21 | Claude Opus 5.5 | Known | History heuristic (gravity, bonus min(d², 1200), malus on earlier quiets) | Failed | −2.7 ± 4.7 | 11,690 (13 concurrent) | Inconclusive at 600-game cap, −23.8 ± 20.5 |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (updated main; STC only, LTC running) | Passed | +68.00 +/- 16.54 | 802 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | Null-move pruning (R = 3 + depth/6, needs non-pawn pieces and static eval >= beta) | Passed | +157.1 ± 27.0 | 472 (13 concurrent) | Passed, 310 games, +107.5 ± 35.2 |
 | 2026-10-22 | Claude Opus 5.5 | Known | Late move reductions (log table, quiet moves after the third, re-search on fail high) | Passed | +83.7 ± 19.4 | 732 (13 concurrent) | Passed, 284 games, +107.3 ± 32.2 |
+| 2026-10-21 | Claude Opus 5.5 | Known | Killer moves | Passed | +43.5 ± 14.2 | 1,332 (18 concurrent, no adjudication) | Passed, 364 games, +76.6 ± 27.5 |
+| 2026-10-21 | Claude Opus 5.5 | Known | History heuristic (gravity, bonus min(d², 1200), malus on earlier quiets) | Failed | −2.7 ± 4.7 | 11,690 (13 concurrent) | Inconclusive at 600-game cap, −23.8 ± 20.5 |
 
 Baseline before the first idea: bench `20648203`.
+
+The RFP row is an audited short-time result against `f801f8c519b0fe5b3d009b8f0664b049409a1188`: normalized SPRT `[0,5]` at `10+0.1`, explicit H1, nElo +101.49 +/- 24.05. All 802 saved games / 401 pairs and 41 reports reconciled; no completed unpaired games. Candidate bench is `609035`. Independent `60+0.6` confirmation remains running with a fixed 2026-10-22 19:53 UTC deadline; this branch is an unaccepted candidate. The complete research record preserves prior failed and separate-baseline trials in [draft PR #2](https://github.com/LupeHiguera/ChessSI/pull/2), including the [audited result](https://github.com/LupeHiguera/ChessSI/blob/9a225affadc45ee8c52019f89d46dceb4645472a/docs/research/codex-2026-10-22/rfp.md#final-result-on-updated-main).
 
 What to watch over time:
 
@@ -36,7 +39,7 @@ top one, test it, log it, then move on.
 2. History heuristic for quiet move ordering - *Claude Code*
 3. Null-move pruning - *Claude Code*
 4. Late move reductions - *Claude Code*
-5. Reverse futility pruning (static null move)
+5. Reverse futility pruning (static null move) - *Astra / GPT-6 (Codex)*
 6. Aspiration windows
 7. Late move pruning and futility pruning
 8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning

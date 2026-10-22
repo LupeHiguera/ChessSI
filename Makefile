@@ -20,7 +20,7 @@ endif
 SRCS := $(wildcard src/*.cpp)
 HDRS := $(wildcard src/*.h)
 
-.PHONY: all debug test bench clean
+.PHONY: all debug test test-rfp bench clean
 
 all: $(EXE)
 
@@ -32,11 +32,19 @@ debug:
 	$(CXX) -std=c++20 -O1 -g -fsanitize=address,undefined -Wall -Wextra $(SRCS) -o $(EXE)-debug $(LDFLAGS)
 
 # Move generator correctness: every count in tests/perft.epd up to depth 5.
-test: $(EXE)
+test: $(EXE) $(EXE)-rfp-tests
 	./$(EXE) perftsuite tests/perft.epd 5
+	./$(EXE)-rfp-tests
+
+# Search boundaries for the shallow reverse futility trial.
+$(EXE)-rfp-tests: tests/rfp.cpp $(SRCS) $(HDRS)
+	$(CXX) $(CXXFLAGS) tests/rfp.cpp $(filter-out src/main.cpp src/uci.cpp src/search.cpp,$(SRCS)) -o $@ $(LDFLAGS)
+
+test-rfp: $(EXE)-rfp-tests
+	./$(EXE)-rfp-tests
 
 bench: $(EXE)
 	./$(EXE) bench
 
 clean:
-	rm -f $(EXE) $(EXE).exe $(EXE)-debug
+	rm -f $(EXE) $(EXE).exe $(EXE)-debug $(EXE)-rfp-tests
