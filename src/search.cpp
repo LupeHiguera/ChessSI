@@ -13,9 +13,9 @@
 
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
-// with MVV-LVA ordering, killer moves, null-move pruning and late move
-// reductions. Other pruning and history heuristics are left out on purpose:
-// each is a separate experiment for the ideas log.
+// with MVV-LVA ordering, killer moves, a history heuristic, null-move pruning,
+// late move reductions, late move pruning and aspiration windows. Other pruning
+// is left out on purpose: each is a separate experiment for the ideas log.
 
 std::atomic<bool> Search::stop{false};
 
@@ -48,6 +48,7 @@ struct Searcher {
     Move pv[MAX_PLY + 1][MAX_PLY + 1];
     int pvLength[MAX_PLY + 1];
     Move killers[MAX_PLY + 1][2] = {};
+    int history[2][64][64] = {}; // [side to move][from][to], quiet moves only
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
@@ -96,9 +97,19 @@ struct Searcher {
                 scores[i] = 80'000;
             else if (ply >= 0 && m == killers[ply][1])
                 scores[i] = 70'000;
+            else if (ply >= 0)
+                scores[i] = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
             else
                 scores[i] = 0;
         }
+    }
+
+    // Moves the entry toward +/-MaxHistory so it never leaves the quiet band
+    // of the move ordering (below killers at 70,000).
+    void update_history(Move m, int bonus) {
+        constexpr int MaxHistory = 16384;
+        int& h = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
+        h += bonus - h * std::abs(bonus) / MaxHistory;
     }
 
     // Selection sort step: brings the best remaining move to index i.
@@ -212,10 +223,19 @@ struct Searcher {
         int best = -VALUE_INF;
         Move bestMove = MOVE_NONE;
         int legalMoves = 0;
+        Move quietsTried[256];
+        int quietCount = 0;
 
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
             bool quiet = is_quiet(m);
+
+            // Late move pruning: near the leaves, quiet moves this far down
+            // the ordering almost never matter, so skip them once a move has
+            // kept us out of a mate score.
+            if (!pvNode && !inCheck && quiet && depth <= 8 && best > -VALUE_MATE_IN_MAX_PLY
+                && quietCount >= 3 + depth * depth)
+                continue;
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
@@ -256,14 +276,22 @@ struct Searcher {
                         pv[ply][j + 1] = pv[ply + 1][j];
                     pvLength[ply] = pvLength[ply + 1] + 1;
                     if (score >= beta) {
-                        if (is_quiet(m) && m != killers[ply][0]) {
-                            killers[ply][1] = killers[ply][0];
-                            killers[ply][0] = m;
+                        if (quiet) {
+                            if (m != killers[ply][0]) {
+                                killers[ply][1] = killers[ply][0];
+                                killers[ply][0] = m;
+                            }
+                            int bonus = std::min(depth * depth, 1200);
+                            update_history(m, bonus);
+                            for (int j = 0; j < quietCount; ++j)
+                                update_history(quietsTried[j], -bonus);
                         }
                         break;
                     }
                 }
             }
+            if (quiet)
+                quietsTried[quietCount++] = m;
         }
 
         if (legalMoves == 0)
@@ -306,7 +334,27 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
     SearchResult result;
 
     for (int depth = 1; depth <= std::min(limits.depth, MAX_PLY - 1); ++depth) {
-        int score = s.search(-VALUE_INF, VALUE_INF, depth, 0);
+        // Aspiration windows: search a narrow window around the last score and
+        // widen whichever side fails until the score lands inside it.
+        int delta = 25;
+        int alpha = -VALUE_INF, beta = VALUE_INF;
+        if (depth >= 5) {
+            alpha = std::max(result.score - delta, -VALUE_INF);
+            beta = std::min(result.score + delta, int(VALUE_INF));
+        }
+        int score;
+        while (true) {
+            score = s.search(alpha, beta, depth, 0);
+            if (s.stopped)
+                break;
+            if (score <= alpha)
+                alpha = std::max(score - delta, -VALUE_INF);
+            else if (score >= beta)
+                beta = std::min(score + delta, int(VALUE_INF));
+            else
+                break;
+            delta *= 2;
+        }
         if (s.stopped)
             break;
 
