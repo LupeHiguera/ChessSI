@@ -2,6 +2,10 @@
 
 Repo copy of the "Chess Engine Plan of Attack" doc (2026-10-21), so every agent can read it.
 
+This preserves the original 2026-10-21 plan. Its timelines, rating ranges and checkboxes are historical planning assumptions. The engine, test infrastructure and experiment log are now in use; see [research status](research/codex-2026-10-22/STATUS.md) for completed work, measured results and next decisions. The "1 year+" row does not provide an evidence-based estimate for matching Stockfish.
+
+Apply the evidence distinctions in the [research workflow](RESEARCH_WORKFLOW.md): controlled matches measure playing strength under a declared protocol; novelty requires a precise mechanism and comparison with prior art. A strength gain can reproduce a known method, and a novel proposal can fail. Establishing AGI would require evidence beyond chess, even if an engine matched or improved Stockfish.
+
 ## Goal and success criteria
 
 Build a chess engine with AI doing most of the development, and use it as a personal benchmark of what AI
