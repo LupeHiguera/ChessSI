@@ -14,6 +14,7 @@ struct StateInfo {
     Square ep;
     int rule50;
     Piece captured;
+    int pliesFromNull = 0; // repetitions cannot reach back past a null move
 };
 
 class Position {
@@ -44,6 +45,10 @@ public:
     // king is not left in check). Always pair with undo_move, legal or not.
     bool do_move(Move m);
     void undo_move(Move m);
+
+    // Passes the turn. Only for null-move pruning; never while in check.
+    void do_null_move();
+    void undo_null_move();
 
     // Fifty-move rule or any repetition since the last irreversible move.
     bool is_draw() const;

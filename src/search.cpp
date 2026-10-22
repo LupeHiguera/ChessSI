@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <sstream>
 #include <thread>
 
@@ -12,8 +13,9 @@
 
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
-// with MVV-LVA ordering. Pruning, reductions and history heuristics are left
-// out on purpose: each is a separate experiment for the ideas log.
+// with MVV-LVA ordering, killer moves, null-move pruning and late move
+// reductions. Other pruning and history heuristics are left out on purpose:
+// each is a separate experiment for the ideas log.
 
 std::atomic<bool> Search::stop{false};
 
@@ -22,6 +24,17 @@ namespace {
 using Clock = std::chrono::steady_clock;
 
 constexpr int PieceValue[7] = {100, 320, 330, 500, 900, 0, 0};
+
+// Late move reduction in plies, by depth and move number (both capped at 63).
+struct ReductionTable {
+    int r[64][64] = {};
+    ReductionTable() {
+        for (int d = 1; d < 64; ++d)
+            for (int n = 1; n < 64; ++n)
+                r[d][n] = int(0.75 + std::log(d) * std::log(n) / 2.25);
+    }
+};
+const ReductionTable Reductions;
 
 struct Searcher {
     Position& pos;
@@ -34,6 +47,8 @@ struct Searcher {
 
     Move pv[MAX_PLY + 1][MAX_PLY + 1];
     int pvLength[MAX_PLY + 1];
+    Move killers[MAX_PLY + 1][2] = {};
+    Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
 
@@ -61,8 +76,12 @@ struct Searcher {
             stopped = true;
     }
 
+    bool is_quiet(Move m) const {
+        return pos.piece_on(to_sq(m)) == NO_PIECE && move_type(m) != EN_PASSANT && move_type(m) != PROMOTION;
+    }
+
     // Assigns each move an ordering score, best first.
-    void score_moves(MoveList& list, int* scores, Move ttMove) {
+    void score_moves(MoveList& list, int* scores, Move ttMove, int ply) {
         for (int i = 0; i < list.size; ++i) {
             Move m = list.moves[i];
             if (m == ttMove)
@@ -73,6 +92,10 @@ struct Searcher {
                 scores[i] = 100'000 + PieceValue[type_of(pos.piece_on(to_sq(m)))] * 10 - type_of(pos.piece_on(from_sq(m)));
             else if (move_type(m) == PROMOTION && promotion_type(m) == QUEEN)
                 scores[i] = 90'000;
+            else if (ply >= 0 && m == killers[ply][0])
+                scores[i] = 80'000;
+            else if (ply >= 0 && m == killers[ply][1])
+                scores[i] = 70'000;
             else
                 scores[i] = 0;
         }
@@ -104,7 +127,7 @@ struct Searcher {
         MoveList list;
         generate(pos, list, NOISY_MOVES);
         int scores[256];
-        score_moves(list, scores, MOVE_NONE);
+        score_moves(list, scores, MOVE_NONE, -1);
 
         int best = standPat;
         for (int i = 0; i < list.size; ++i) {
@@ -162,10 +185,28 @@ struct Searcher {
                 return ttScore;
         }
 
+        // Null-move pruning: if passing the turn still fails high, a real move
+        // almost surely would too. Skipped in check, without pieces (zugzwang)
+        // and right after another null move.
+        Color us = pos.side_to_move();
+        bool hasPieces = pos.pieces(us) & ~pos.pieces(PAWN) & ~pos.pieces(KING);
+        if (!pvNode && !inCheck && !root && depth >= 3 && hasPieces && moveStack[ply - 1] != MOVE_NONE
+            && evaluate(pos) >= beta) {
+            int R = 3 + depth / 6;
+            moveStack[ply] = MOVE_NONE;
+            pos.do_null_move();
+            int score = -search(-beta, -beta + 1, depth - 1 - R, ply + 1);
+            pos.undo_null_move();
+            if (stopped)
+                return 0;
+            if (score >= beta)
+                return score >= VALUE_MATE_IN_MAX_PLY ? beta : score;
+        }
+
         MoveList list;
         generate(pos, list, ALL_MOVES);
         int scores[256];
-        score_moves(list, scores, ttMove);
+        score_moves(list, scores, ttMove, ply);
 
         int originalAlpha = alpha;
         int best = -VALUE_INF;
@@ -174,17 +215,30 @@ struct Searcher {
 
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
+            bool quiet = is_quiet(m);
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
             }
             ++legalMoves;
+            moveStack[ply] = m;
 
             int score;
             if (legalMoves == 1)
                 score = -search(-beta, -alpha, depth - 1, ply + 1);
             else {
-                score = -search(-alpha - 1, -alpha, depth - 1, ply + 1);
+                // Late quiet moves are searched shallower first, and only
+                // re-searched at full depth if they beat alpha.
+                int r = 0;
+                if (depth >= 3 && legalMoves > 3 && quiet && !inCheck && !pos.in_check()) {
+                    r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
+                    if (pvNode)
+                        --r;
+                    r = std::clamp(r, 0, depth - 2);
+                }
+                score = -search(-alpha - 1, -alpha, depth - 1 - r, ply + 1);
+                if (score > alpha && r > 0)
+                    score = -search(-alpha - 1, -alpha, depth - 1, ply + 1);
                 if (score > alpha && score < beta)
                     score = -search(-beta, -alpha, depth - 1, ply + 1);
             }
@@ -201,8 +255,13 @@ struct Searcher {
                     for (int j = 0; j < pvLength[ply + 1]; ++j)
                         pv[ply][j + 1] = pv[ply + 1][j];
                     pvLength[ply] = pvLength[ply + 1] + 1;
-                    if (score >= beta)
+                    if (score >= beta) {
+                        if (is_quiet(m) && m != killers[ply][0]) {
+                            killers[ply][1] = killers[ply][0];
+                            killers[ply][0] = m;
+                        }
                         break;
+                    }
                 }
             }
         }
