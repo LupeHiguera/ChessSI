@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <sstream>
 #include <thread>
 
@@ -12,9 +13,9 @@
 
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
-// with MVV-LVA ordering, killer moves and null-move pruning. Other pruning,
-// reductions and history heuristics are left out on purpose: each is a
-// separate experiment for the ideas log.
+// with MVV-LVA ordering, killer moves, null-move pruning and late move
+// reductions. Other pruning and history heuristics are left out on purpose:
+// each is a separate experiment for the ideas log.
 
 std::atomic<bool> Search::stop{false};
 
@@ -23,6 +24,17 @@ namespace {
 using Clock = std::chrono::steady_clock;
 
 constexpr int PieceValue[7] = {100, 320, 330, 500, 900, 0, 0};
+
+// Late move reduction in plies, by depth and move number (both capped at 63).
+struct ReductionTable {
+    int r[64][64] = {};
+    ReductionTable() {
+        for (int d = 1; d < 64; ++d)
+            for (int n = 1; n < 64; ++n)
+                r[d][n] = int(0.75 + std::log(d) * std::log(n) / 2.25);
+    }
+};
+const ReductionTable Reductions;
 
 struct Searcher {
     Position& pos;
@@ -203,6 +215,7 @@ struct Searcher {
 
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
+            bool quiet = is_quiet(m);
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
@@ -214,7 +227,18 @@ struct Searcher {
             if (legalMoves == 1)
                 score = -search(-beta, -alpha, depth - 1, ply + 1);
             else {
-                score = -search(-alpha - 1, -alpha, depth - 1, ply + 1);
+                // Late quiet moves are searched shallower first, and only
+                // re-searched at full depth if they beat alpha.
+                int r = 0;
+                if (depth >= 3 && legalMoves > 3 && quiet && !inCheck && !pos.in_check()) {
+                    r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
+                    if (pvNode)
+                        --r;
+                    r = std::clamp(r, 0, depth - 2);
+                }
+                score = -search(-alpha - 1, -alpha, depth - 1 - r, ply + 1);
+                if (score > alpha && r > 0)
+                    score = -search(-alpha - 1, -alpha, depth - 1, ply + 1);
                 if (score > alpha && score < beta)
                     score = -search(-beta, -alpha, depth - 1, ply + 1);
             }
