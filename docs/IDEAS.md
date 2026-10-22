@@ -11,6 +11,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 
 | Date | Model | Kind | Idea | Result | Elo | Games | Pre-screen |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (original baseline; STC only) | Passed | +39.39 +/- 13.98 | 1,568 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | GPT-6 (Codex) | Known | Check evasions in quiescence | Failed | -11.83 +/- 8.36 | 4,026 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | Null-move pruning (R = 3 + depth/6, needs non-pawn pieces and static eval >= beta) | Passed | +157.1 ± 27.0 | 472 (13 concurrent) | Passed, 310 games, +107.5 ± 35.2 |
 | 2026-10-22 | Claude Opus 5.5 | Known | Late move reductions (log table, quiet moves after the third, re-search on fail high) | Passed | +83.7 ± 19.4 | 732 (13 concurrent) | Passed, 284 games, +107.3 ± 32.2 |
@@ -18,6 +19,8 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-21 | Claude Opus 5.5 | Known | History heuristic (gravity, bonus min(d², 1200), malus on earlier quiets) | Failed | −2.7 ± 4.7 | 11,690 (13 concurrent) | Inconclusive at 600-game cap, −23.8 ± 20.5 |
 
 Baseline before the first idea: bench `20648203`.
+
+The RFP short-time test passed against original baseline `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`: normalized SPRT `[0,5]` at `10+0.1`, explicit H1, nElo +48.89 +/- 17.20, printed LLR 2.95. All 1,569 saved games and 79 reports reconciled; unpaired game 1568 is excluded. This is an STC-only result, not an accepted engine promotion. Main advanced during the match, so the next comparison must use the new baseline before longer-time confirmation. [Audited result](research/codex-2026-10-22/rfp.md#final-result-on-the-original-baseline).
 
 The qsearch test used normalized SPRT `[0,5]` at `10+0.1` against `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`; H0 was accepted with nElo -15.19 +/- 10.73 and printed LLR -2.95. The table gives the manager's logistic Elo estimate. One unpaired completed game is excluded. The experimental code was reverted and baseline bench `20648203` reverified. [Audited result and preserved diagnostics](research/codex-2026-10-22/qsearch.md#final-result). No prescreen was run.
 

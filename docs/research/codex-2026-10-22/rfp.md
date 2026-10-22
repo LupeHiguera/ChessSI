@@ -1,6 +1,6 @@
 # Shallow reverse futility pruning trial
 
-Prepared by GPT-6 (Codex), 2026-10-22 UTC. **Status: running; no strength result.** Main advanced during this frozen comparison; see [baseline transition](#accepted-main-advanced-during-the-run). This is idea 5, classified Known. The separate check-evasion experiment ended with H0 accepted, was logged as Failed, and its engine changes were reverted before this trial began.
+Prepared by GPT-6 (Codex), 2026-10-22 UTC. **Status: STC Passed on the original baseline; unpromoted, with no LTC confirmation. A fresh STC comparison on updated main is now running.** See [the new run](#fresh-stc-comparison-on-updated-main). See the [audited final result](#final-result-on-the-original-baseline). Main advanced during this frozen comparison; see [baseline transition](#accepted-main-advanced-during-the-run). This is idea 5, classified Known. The separate check-evasion experiment ended with H0 accepted, was logged as Failed, and its engine changes were reverted before this trial began.
 
 ## Question and frozen implementation
 
@@ -21,7 +21,7 @@ RFP is an established heuristic, not a certified lower bound. The previously con
 
 ## Baseline, validation and match
 
-The branch is `astra/rfp-shallow`, rebased on accepted `main` before implementation. The claim was committed before editing engine code. Baseline: `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`; branch claim HEAD: `6fa06567f47edb2eb5fed927c115a67744a1645b`. The candidate is that HEAD plus the archived working-tree patch and `tests/rfp.cpp`.
+The original trial used `astra/rfp-shallow`, rebased on accepted `main` before implementation. The claim was committed before editing engine code. Baseline: `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`; branch claim HEAD: `6fa06567f47edb2eb5fed927c115a67744a1645b`. The candidate is that HEAD plus the archived working-tree patch and `tests/rfp.cpp`.
 
 A forced `taskset -c 14-19 make -j6 -B test` passed all 35 perft cases and 15 RFP boundary cases. The latter cover positive eligibility, both colors, root PV preservation, wide windows, check evasions, pawn-only material, depth four, mate-band windows, insufficient static margin, the fifty-move horizon, both stalemate fixtures, draw priority and stop priority. All cases check restored position state. The same 15 cases passed with AddressSanitizer and UBSan. These are specified boundary checks, not a complete chess-correctness proof.
 
@@ -34,19 +34,39 @@ A forced `taskset -c 14-19 make -j6 -B test` passed all 35 perft cases and 15 RF
 | Candidate `src/search.cpp` SHA-256 | `ef411444d19350e8903f40069f2657acd8b4dca4a0b227ed12698af4f97cbeeb` |
 | Fastchess SHA-256 | `3d0a8f3c8b837a96366ac838f3ddf6fe87b813abb4ad2852284c0ce409132566` |
 
-The runner uses `scripts/sprt.sh` with `CPUS=14-19`, `CONCURRENCY=5`, the shared `BOOK=../ChessSI/books/UHO_Lichess_4852_v1.epd`, `MAKEFLAGS='-j6 -B'`, `TC=10+0.1`, `ELO0=0`, `ELO1=5`, alpha/beta 0.05, Hash 16 and Threads 1. This is the prescribed normalized-Elo SPRT; no prescreen was run. The unchanged resign/draw adjudication settings remain enabled. The opening book is shared and read-only; its previously verified SHA-256 is `7a7f6470615a69c6cf23d565417701d38732876f480af90d67b42abade35644a`.
+The original runner used `scripts/sprt.sh` with `CPUS=14-19`, `CONCURRENCY=5`, the shared `BOOK=../ChessSI/books/UHO_Lichess_4852_v1.epd`, `MAKEFLAGS='-j6 -B'`, `TC=10+0.1`, `ELO0=0`, `ELO1=5`, alpha/beta 0.05, Hash 16 and Threads 1. This is the prescribed normalized-Elo SPRT; no prescreen was run. The unchanged resign/draw adjudication settings remain enabled. The opening book is shared and read-only; its previously verified SHA-256 is `7a7f6470615a69c6cf23d565417701d38732876f480af90d67b42abade35644a`.
 
-The match manager is PID 1850159, start ticks `3934763`, on CPUs 14-19. Its identity and executable were verified before attaching the existing pidfd-based guard at `2026-10-22T13:25:00.289568+00:00`. That guard is pinned to CPU 19 and will request one interrupt at **2026-10-22 19:53 UTC / 12:53 PM America/Phoenix**, then archive the run. A deadline interruption or exhausted game cap without a unique terminal decision is Inconclusive. A passed short-time-control test still needs independent `60+0.6` confirmation under the project plan.
+The original match manager was PID 1850159, start ticks `3934763`, on CPUs 14-19. Its identity and executable were verified before attaching the existing pidfd-based guard at `2026-10-22T13:25:00.289568+00:00`. That guard was pinned to CPU 19 and configured to request one interrupt at **2026-10-22 19:53 UTC / 12:53 PM America/Phoenix**, then archive the run. The manager instead exited normally before the deadline; the guard archived it without sending a signal. A deadline interruption or exhausted game cap without a unique terminal decision is Inconclusive. A passed short-time-control test still needs independent `60+0.6` confirmation under the project plan.
+
+## Final result on the original baseline
+
+The frozen `10+0.1` comparison accepted **H1** at log line **3779**, after **1,568 counted games**. This is an audited **STC Passed** result only against `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`. It is not an accepted or promoted gain on the newer main, and no LTC confirmation has started.
+
+| Terminal statistic | Value |
+| --- | --- |
+| Candidate wins / losses / draws | 653 / 476 / 439 |
+| Completed pairs | 784 |
+| Pentanomial, LL / LD / DD-or-WL / WD / WW | 60 / 134 / 281 / 187 / 122 |
+| Logistic Elo estimate | +39.39 +/- 13.98 |
+| Normalized Elo estimate | +48.89 +/- 17.20 |
+| Printed LLR | 2.95, for normalized SPRT [0,5], alpha/beta 0.05 |
+| Original candidate / baseline bench | 11112214 / 20648203 |
+
+The independent audit legally replayed all **1,569 saved games and 156,543 plies**, reconciled all **79 statistics reports**, the final configuration and every saved game result, and found no report-count mismatches, missing cross-source games or suspect termination reasons. Completed game **1568** was unpaired and excluded from the SPRT counts. Games **1567, 1571, 1572 and 1573** had started but had no recorded finish; there were no late starts, finishes or statistics after the decision.
+
+The runner and guard completed with exit code 0. The guard recorded normal manager exit at approximately 16:16:52 UTC, sent no signal and found no candidate/baseline binary drift. Archive verification checked 25 files with no integrity errors or unarchived artifacts. These integrity checks support the recorded result; they do not independently calibrate adjudication or establish longer-time strength.
+
+Evidence under `engines/rfp-validation/`: `terminal-extraction.json`, `terminal-audit-01/result.json`, `live-watch-01/state.json`, `runner-exit.json` and `live-watch-01/terminal-snapshot/`. The terminal log SHA-256 is `be9cac475882b2c3dfba68c7591203b46db7128f150fbed40f65f39191eb8c7f`; PGN SHA-256 is `26439b23eb932e0c1b105e0538b2e1ed9ffc3efeeaf85070cbbe3b28a582cfca`. The original candidate, tests and result log are preserved in [commit e6fee6f](https://github.com/LupeHiguera/ChessSI/commit/e6fee6f) on `astra/rfp-shallow`, explicitly STC-only and unpromoted.
 
 ## Evidence and next decision
 
 A [compact, reviewable evidence bundle](evidence/rfp/README.md) now includes complete candidate and isolated-optimization patches, the regression test, per-file hashes, six timing pairs, and the three move-disagreement histories/results. Both patches were applied in sequence to a separate copy of the accepted baseline and reconstructed all 22 listed source/build/test files byte for byte. They are stored as unapplied evidence artifacts; the research review branch engine remains the accepted baseline. Full local archives remain available as described below.
 
-Local evidence is under ignored `engines/rfp-validation/`: `launch-plan.json`, `candidate.patch`, `release-tests-tail.txt`, `sanitizer-tests.txt`, `bench.txt`, `sprt-stc.log`, and the running guard's `live-watch-01/`. The source archive `source-snapshot-01/` verified 34 files with no integrity errors or findings. It includes engine sources, tests, instructions, claim, launch settings, binaries and the observed manager executable. As with all snapshots, source capture itself does not prove source-to-binary correspondence; the forced builds, recorded commands and hashes provide the surrounding evidence.
+Local evidence is under ignored `engines/rfp-validation/`: `launch-plan.json`, `candidate.patch`, `release-tests-tail.txt`, `sanitizer-tests.txt`, `bench.txt`, `sprt-stc.log`, and the completed guard's `live-watch-01/`. The source archive `source-snapshot-01/` verified 34 files with no integrity errors or findings. It includes engine sources, tests, instructions, claim, launch settings, binaries and the observed manager executable. As with all snapshots, source capture itself does not prove source-to-binary correspondence; the forced builds, recorded commands and hashes provide the surrounding evidence.
 
 The previous match's original `config.json`, PGN, binaries and baseline source were moved into `engines/qsearch-validation/original-run-files/` before the runner reused their paths. Its independent terminal snapshot and audit remain intact.
 
-After a terminal decision, replay the PGN legally, reconcile every reported count and paired result, inspect abnormal terminations, then log the actual result. Failed code is reverted; an unresolved deadline result is retained as Inconclusive. Interim estimates and the smaller benchmark node count are not evidence of an Elo gain. Engine sources and match binaries remain frozen while the match runs.
+The terminal decision and independent audit are complete. The next strength test must use the then-current accepted main and fresh statistics; the old-baseline pass does not transfer to it. A fresh STC pass would still require independent longer-time confirmation. The original source, binaries and completed-run evidence remain preserved.
 
 ## Shadow audit of sampled cutoff assumptions
 
@@ -139,7 +159,7 @@ The six calls reported 657,107 visits. Evidence: `engines/rfp-validation/choice-
 
 An implementation-only variant tries the generator's exact first ordinary pawn push before constructing the full move list in `first_legal_move()`. The bitboard expression, exclusion of promotion-rank pawns and least-significant-target ordering match the existing generator. A legal push is returned immediately; an illegal push is undone and the original routine runs. With no such push, the original routine runs directly. Thus the intended invariant is the exact first legal move, including the search's fallback choice, rather than only a legal-move existence test. This is a Known optimization technique, not a new search heuristic.
 
-The variant lives only in `engines/rfp-validation/first-pawn-witness-01/`. It retains all RFP conditions and margins. The live match uses the original candidate throughout.
+The variant lives only in `engines/rfp-validation/first-pawn-witness-01/`. It retains all RFP conditions and margins. The completed original match used the original candidate throughout.
 
 Validation passed: 35 perft cases, 15 RFP boundary cases, the same 15 cases with AddressSanitizer/UBSan, and an additional sanitizer-enabled comparison on 2,203 positions. Those positions combine the existing check-evasion corpus, all 128 development roots, the RFP stalemate/escape controls and constructed pawn-edge fixtures with color mirrors. The fast routine returned exactly the same first move as complete generation, agreed with independent python-chess legality, and restored FEN, key and draw state. All 128 full-history search traces matched the frozen candidate's iteration scores, bounds, nodes, PVs and final move. Bench remained `11112214`.
 
@@ -207,17 +227,47 @@ The preflight checked all 22 source/build/test inputs against the published cand
 
 After an explicit H1 result, the terminal archive, candidate/baseline identities, protocol, normal runner exit and independent PGN/count audit must all reconcile before launch. Re-fetch current main and rerun the preflight into a new directory; if main moved, rebase and retest the changed comparison rather than relabeling the old result. Preserve the completed STC outputs before the standard runner writes fresh files, force a rebuild, verify binary/bench identities, then attach the existing identity-checked deadline guard to the new manager. A missing LTC decision at the deadline stays Inconclusive even if STC passed.
 
-This is preparation, not a started or passed confirmation. Versions `confirmation-preflight-01` and `-02` are retained as historical records. Manual review then identified incomplete protocol/provenance bindings, corrected before use as described in the [terminal-check review](testing.md#review-of-terminal-audit-and-confirmation-readiness). Current `confirmation-preflight-03/preflight.json` binds the earlier launch/process/config observations and the revised independent audit schema. Helper `prepare_confirmation.py` SHA-256: `b3010849d5271620f4498f2a071c839f7a429591bbf4336a39c1c948be74a5b9`. Nineteen focused regression checks passed. The actual refusal path was exercised; no eligible H1 terminal launch has been exercised.
+No LTC confirmation started. Versions `confirmation-preflight-01` through `-03` are retained as historical records. Manual review identified incomplete protocol/provenance bindings, corrected before use as described in the [terminal-check review](testing.md#review-of-terminal-audit-and-confirmation-readiness). After the audited H1 result, `confirmation-preflight-04/preflight.json` at 16:18 UTC found no active manager and no remaining terminal-evidence wait, but correctly refused launch because accepted main and its local tracking reference differed from the original baseline. It binds the earlier launch/process/config observations and the revised independent audit schema. Helper `prepare_confirmation.py` SHA-256: `b3010849d5271620f4498f2a071c839f7a429591bbf4336a39c1c948be74a5b9`. Nineteen focused regression checks passed. The actual post-H1 refusal path was exercised; no eligible LTC launch has been exercised.
 
 
 ## Accepted main advanced during the run
 
-A fresh remote check at approximately 15:57 UTC found accepted main `f801f8c519b0fe5b3d009b8f0664b049409a1188`, merging Claude's killer moves, null-move pruning and late move reductions. The current RFP comparison remains frozen against `a8eebea`; its result will be attributed only to that comparison. The new main changes pruning and reduction contexts, so an old-baseline STC pass cannot substitute for a fresh test on it. [Accepted merge](https://github.com/LupeHiguera/ChessSI/commit/f801f8c519b0fe5b3d009b8f0664b049409a1188)
+A fresh remote check at approximately 15:57 UTC found accepted main `f801f8c519b0fe5b3d009b8f0664b049409a1188`, merging Claude's killer moves, null-move pruning and late move reductions. The completed original RFP comparison remained frozen against `a8eebea`; its STC pass is attributed only to that comparison. The new main changes pruning and reduction contexts, so an old-baseline STC pass cannot substitute for a fresh test on it. [Accepted merge](https://github.com/LupeHiguera/ChessSI/commit/f801f8c519b0fe5b3d009b8f0664b049409a1188)
 
-The read-only confirmation preflight correctly rejected the obsolete baseline even while still waiting for the live manager. Under `AGENTS.md`, the next strength test must rebase onto the then-current main and begin a new comparison, with its own validation, signatures and evidence. No old statistics will be carried over. The original experiment will be audited and logged before that transition, and the 19:53 UTC deadline remains unchanged.
+The read-only confirmation preflight first rejected the obsolete baseline while waiting for the manager, and continued to reject it after the terminal audit. Under `AGENTS.md`, the next strength test must rebase onto the then-current main and begin a new comparison, with its own validation, signatures and evidence. No old statistics will be carried over. The original experiment is now audited and logged as STC Passed on its original baseline; the 19:53 UTC deadline remains unchanged.
 
-An isolated copy of the newly accepted main passed all 35 perft cases and reproduced bench `864538` on CPU 19. Its binary SHA-256 is `819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da`. This only verifies the accepted baseline; it is not another RFP test or a strength claim. Evidence: `engines/rfp-validation/new-main-preparation-01/`, collector `prepare_new_main.py` SHA-256 `ef39de711210912dbc00ea92c23c8be2bbad40c9f4b6f06100b59ec1d3d0e1f6`.
+An isolated copy of the newly accepted main passed all 35 perft cases and reproduced bench `864538`. Compilation and bench were explicitly pinned to CPU 19; the perft recipe inherited the prescribed make affinity, CPUs 14-19. All stayed within the assigned allocation. Its binary SHA-256 is `819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da`. This only verifies the accepted baseline; it is not another RFP test or a strength claim. Evidence: `engines/rfp-validation/new-main-preparation-01/`, collector `prepare_new_main.py` SHA-256 `ef39de711210912dbc00ea92c23c8be2bbad40c9f4b6f06100b59ec1d3d0e1f6`.
 
-The separate research review branch incorporates the new accepted main while preserving both agents' log rows and the active RFP claim. Its engine files match main; the tested RFP patch remains an unapplied historical evidence artifact. The live worktree and binaries were not changed.
+The separate research review branch incorporates the new accepted main while preserving both agents' log rows and RFP queue ownership. Its engine files match main; the tested RFP patch remains an unapplied historical evidence artifact. The live worktree and binaries were not changed.
 
 A second live-prefix integrity audit at 15:44 UTC legally replayed 1,272 saved games and 126,041 plies, reconciled all 63 statistics reports and every saved game result, and found no missing cross-source games or suspect terminations. `engines/rfp-validation/match-audit-02/` preserves the frozen snapshot and audit. This is a prefix integrity check, not the eventual terminal result.
+
+### Isolated RFP preparation on the new accepted main
+
+An isolated candidate on `f801f8c519b0fe5b3d009b8f0664b049409a1188` passed **35 perft cases, 17 boundary cases and the same 17 cases under AddressSanitizer/UBSan**. Candidate bench is **609035**, against the new baseline's **864538**. The RFP block retains the same predicates and 150-cp-per-ply margin, sits after TT exits and before null-move pruning, and allows eligible reduced-depth calls and null descendants. The two added boundary cases cover a real predecessor and a null-then-real predecessor with populated move-stack entries. No first-pawn shortcut, evaluation caching, NMP/LMR tuning or draw/position repair is bundled.
+
+The isolated candidate binary SHA-256 is `b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab`; patch SHA-256 is `e914b1d4b932993238fb4a3c7112ab03b314dedafdd2a96c8c63d155f26c737e`. Source, plan, build/test logs and results are under `engines/rfp-validation/new-main-preparation-01/rfp-candidate/`. Remote main still matched `f801f8c` at **16:17:43 UTC**, recorded in `main-check.json`. The original live inputs and isolated baseline were unchanged.
+
+This is preparation only: no new-baseline match has started in this record. Before launch, recheck accepted main, move to the properly rebased experiment branch, perform the required branch validation and freeze a new run identity. Fresh STC and any subsequent LTC are separate comparisons with no inherited games or statistics. The local checks establish the specified behavior, not pruning safety or a gain.
+
+
+## Fresh STC comparison on updated main
+
+After the original manager and deadline guard completed and its terminal result was audited, seven old output paths were moved into `engines/rfp-validation/original-run-files/`. Resolved source and destination paths were checked to remain inside the Astra workspace; files were rehashed after moving. The exact old candidate is also preserved in commit `e6fee6f` on `astra/rfp-shallow`. No old match statistics were reused.
+
+The next experiment branch, `astra/rfp-current-main`, starts from accepted main `f801f8c519b0fe5b3d009b8f0664b049409a1188`. Commit `d1de9d0314cf9b18ae27bb3d61237dd1df57cb05` records the retained idea claim before applying the candidate. The branch's forced `taskset -c 14-19 make -j6 -B test` then passed all 35 perft and 17 boundary cases. Its release binary exactly matched the separately validated candidate; the unchanged isolated 17-case sanitizer result remains applicable to those identical inputs.
+
+Remote main was rechecked at **16:26:36 UTC**. The fresh launcher recorded its plan at **16:26:41.927354 UTC**, and the standard `scripts/sprt.sh` runner rebuilt both sides and reproduced candidate/base benches **609035 / 864538**. This is another STC test, not LTC. It retains `10+0.1`, normalized SPRT `[0,5]`, alpha/beta 0.05, 100,000-pair cap, Hash 16, Threads 1, unchanged adjudication, the shared book, CPUs 14-19 and concurrency 5. No prescreen or first-pawn optimization is included.
+
+| New-run identity | Value |
+| --- | --- |
+| Candidate binary SHA-256 | `b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab` |
+| Baseline binary SHA-256 | `819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da` |
+| Candidate search SHA-256 | `a13807cdfa9e1ced5d66f948ae70245386344634e88d1c7801603991d3f2cc84` |
+| Manager PID / start ticks | `2319846` / `4928613` |
+| New opening seed | `6676192773240996276` |
+| Original-trial opening seed | `2695864851825789344` |
+
+The verified deadline guard attached at **16:27:07.947761 UTC** and retains the fixed **19:53 UTC / 12:53 PM Arizona** cutoff. The manager and all ten engine processes were observed inside CPUs 14-19; the watcher uses CPU 19. The source/process snapshot verified all 34 archived files with no findings, including a near-launch book-path/digest observation. The first frozen configuration confirms the intended settings and distinct seed. Its independent PGN audit legally replayed 33 games and 3,321 plies, reconciled the first statistics report and every saved result, and found no missing cross-source games or suspect terminations.
+
+All new-run evidence is separated under `engines/rfp-current-main-validation/`: launch/guard plans, source snapshot, process audit, first protocol/match audit, runner log and subsequent terminal records. The candidate and its test inputs are now frozen. No strength verdict exists for this comparison. An STC winner still needs independent 60+0.6 confirmation; no decision by the deadline remains Inconclusive.
