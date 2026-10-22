@@ -444,3 +444,26 @@ Observed median incremental ChessSI nodes for the four cells were 4,687.5, 6,034
 Evidence is in `engines/qsearch-validation/continuation-reference-01/`: the plan recorded at 11:39:33 UTC before queries, selected cases, both reference budgets, all transcripts, legality/affinity observations and summaries. Reproduce with `engines/qsearch-validation/reference_continuation_value.py`, SHA-256 `ceae6f7c25c1b41a6b97442f59c2bc0a9c2fc4d70916fdb028dd1b660f0c437a`. The checksum-verified reference binary is the same official Stockfish 19 dependency recorded in the opening-reference audit. GPT-6 (Codex) ran this work on CPU 19; live match source and binary hashes remained unchanged.
 
 A post-reference history check replayed all 32 selected roots and both proposed child positions independently. None was automatically terminal, currently fifty-move drawable, twofold/threefold repeated, or claimable by the fifty-move/threefold rules, including claims by an announced move. This rules out those immediate-history categories in this selected sample only; it does not certify deeper reference continuations. No cases or labels were replaced and no extra engine query was made. Evidence: `engines/qsearch-validation/continuation-history-01/`; script `audit_continuation_history.py`, SHA-256 `5983767b42b92c6a0d8c345483612374f3b6b70605de5e5f46dc9321d62fbb36`.
+
+## Iteration-cost controls and interrupted tails
+
+A separate read-only audit on 2026-10-22 used the saved 128 development searches to examine completion cost. Unlike the earlier move-change analysis, it retained every completed depth d >= 2 regardless of score type and included the last completed iteration in each run. There were 602 decision points: 474 with an observed completed next iteration and 128 whose next iteration was interrupted by the original 131,072-node cap. Release and instrumented completed traces matched exactly; instrumented final visits were 131,072 or 131,073 for every root.
+
+Let `I_d = N_d - N_(d-1)` be the visits used by completed iteration d. Four controls were declared before computing results: next-cost estimates of `2*I_d`, `4*I_d`, `8*I_d`, and `I_d*I_d/I_(d-1)`. The last is an unfitted geometric extrapolation with no clipping. Each uses only counts available at depth d. Its local decision is to start when its estimate is no larger than `131072 - N_d`.
+
+| Cost estimate | Start, next iteration completed | Start, next iteration interrupted | Stop, next iteration completed | Stop, next iteration interrupted |
+| --- | --- | --- | --- | --- |
+| 2 times last increment | 471 | 35 | 3 | 93 |
+| 4 times last increment | 452 | 8 | 22 | 120 |
+| 8 times last increment | 399 | 0 | 75 | 128 |
+| Previous growth ratio extrapolated | 446 | 22 | 28 | 106 |
+
+These are local decisions along already observed search traces, not outcomes from running four stopping policies. A policy that stopped at an earlier depth would not reach later decision points, and the table neither measures saved game time nor assigns value to foregone move improvements. Transitions share 128 roots, 118 games and 101 openings. No fitting, significance test, independent validation or policy promotion was performed.
+
+Among the 474 completed transitions, the median exact next/current iteration-cost ratio was 3.459. For interrupted transitions, the observed tail visits are only a lower bound on the work needed to complete the next iteration. Their median lower-bound ratio was 1.032; treating that as an exact ratio would make unfinished iterations look misleadingly cheap. At ratio thresholds 2, 4 and 8, respectively, 35, 8 and 0 interrupted cases were definitely above the threshold; the other 93, 120 and 128 remained unresolved. In particular, observing no interrupted lower bound above 8 does not establish that all actual completion costs were below 8.
+
+The interrupted tails consumed 6,894,147 of 16,777,279 instrumented visits (41.1%), agreeing with the previously recorded gap between total work and last-completed UCI counts. These visits can contain useful partial search information, but this audit neither values that information nor assumes it is recoverable. Counts also omit the cost of a proposed prediction mechanism and are not wall-clock deadlines.
+
+The next compute-allocation study therefore needs two distinct targets: signed value of the resulting decision and probability/cost of obtaining it within the allowance. Retain strong simple cost controls, censored observations and explicit deadline accounting. A constant that looks conservative on these reused traces must not be selected here and then described as validated on the same records. The current engine and its time manager are unchanged.
+
+Evidence is in `engines/qsearch-validation/iteration-cost-01/`, including the pre-analysis plan, all 602 records, exact versus censored quantities and all four controls. Reproduce with `engines/qsearch-validation/audit_iteration_cost.py`, SHA-256 `545d1c89c6b32a6159d6e8ada617a721905d9650f03d799d233d3aee6e732f24`. GPT-6 (Codex) ran it on CPU 19; no engine search or real pilot label was added.
