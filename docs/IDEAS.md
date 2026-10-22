@@ -11,7 +11,8 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 
 | Date | Model | Kind | Idea | Result | Elo | Games | Pre-screen |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (updated main; STC only, LTC running) | Passed | +68.00 +/- 16.54 | 802 (5 concurrent, CPUs 14-19, adjudication) | Not run |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (updated main; LTC 60+0.6) | Inconclusive | Not established (deadline) | 146 (5 concurrent, CPUs 14-19, adjudication) | Not run |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (updated main; STC only) | Passed | +68.00 +/- 16.54 | 802 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | Null-move pruning (R = 3 + depth/6, needs non-pawn pieces and static eval >= beta) | Passed | +157.1 ± 27.0 | 472 (13 concurrent) | Passed, 310 games, +107.5 ± 35.2 |
 | 2026-10-22 | Claude Opus 5.5 | Known | Late move reductions (log table, quiet moves after the third, re-search on fail high) | Passed | +83.7 ± 19.4 | 732 (13 concurrent) | Passed, 284 games, +107.3 ± 32.2 |
 | 2026-10-21 | Claude Opus 5.5 | Known | Killer moves | Passed | +43.5 ± 14.2 | 1,332 (18 concurrent, no adjudication) | Passed, 364 games, +76.6 ± 27.5 |
@@ -19,7 +20,9 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 
 Baseline before the first idea: bench `20648203`.
 
-The RFP row is an audited short-time result against `f801f8c519b0fe5b3d009b8f0664b049409a1188`: normalized SPRT `[0,5]` at `10+0.1`, explicit H1, nElo +101.49 +/- 24.05. All 802 saved games / 401 pairs and 41 reports reconciled; no completed unpaired games. Candidate bench is `609035`. Independent `60+0.6` confirmation remains running with a fixed 2026-10-22 19:53 UTC deadline; this branch is an unaccepted candidate. The complete research record preserves prior failed and separate-baseline trials in [draft PR #2](https://github.com/LupeHiguera/ChessSI/pull/2), including the [audited result](https://github.com/LupeHiguera/ChessSI/blob/9a225affadc45ee8c52019f89d46dceb4645472a/docs/research/codex-2026-10-22/rfp.md#final-result-on-updated-main).
+The STC RFP row is an audited short-time result against `f801f8c519b0fe5b3d009b8f0664b049409a1188`: normalized SPRT `[0,5]` at `10+0.1`, explicit H1, nElo +101.49 +/- 24.05. All 802 saved games / 401 pairs and 41 reports reconciled; no completed unpaired games. Candidate bench is `609035`. Independent `60+0.6` confirmation ended Inconclusive at the fixed 2026-10-22 19:53 UTC deadline, without an SPRT decision; this branch remains an unpromoted candidate in [draft PR #4](https://github.com/LupeHiguera/ChessSI/pull/4). The complete research record preserves prior failed and separate-baseline trials in [draft PR #2](https://github.com/LupeHiguera/ChessSI/pull/2), including the [audited result](https://github.com/LupeHiguera/ChessSI/blob/9a225affadc45ee8c52019f89d46dceb4645472a/docs/research/codex-2026-10-22/rfp.md#final-result-on-updated-main).
+
+The separate LTC run saved and counted 146 games / 73 complete pairs: 48 wins, 28 losses and 70 draws, with no completed unpaired games. Unfinished games 147-151 are excluded. Independent replay reconciled all 146 games, 17,375 legal plies and seven reports without issues. The guard sent SIGINT at 19:53:00.007678 UTC; the manager ended at 19:53:01.521443 UTC, with no binary drift. The last printed Elo estimate covered 138 games and is not assigned to the final 146-game count. Neither this deadline stop nor the earlier STC pass establishes LTC acceptance. [LTC terminal evidence](https://github.com/LupeHiguera/ChessSI/tree/astra/research-workflow/docs/research/codex-2026-10-22/evidence/rfp-current-main-ltc-terminal).
 
 What to watch over time:
 
