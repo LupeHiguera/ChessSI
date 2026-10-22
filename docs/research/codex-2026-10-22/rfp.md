@@ -118,3 +118,17 @@ Differences are the reference score for RFP's choice minus the reference score f
 The twelve reference queries requested 7,864,320 nodes and reported 7,866,947. No label-pilot data were added. The live match source, binaries and settings remained unchanged.
 
 Evidence: `engines/rfp-validation/root-budget-01/` and `root-reference-01/`, including plans, complete transcripts, exact comparisons and all three histories. Collectors: `compare_root_budget.py`, SHA-256 `c09a748f95dfb9c0fd521764d845e8857cf6150ee29c8e42248658d75431ae9a`; `reference_root_choices.py`, SHA-256 `a97257feb0cecde16c4cb96c63c08466db6461065a79d35af32836b30857eb8f`. No candidate parameter or selection threshold was changed after seeing these outcomes.
+
+### Matched-depth control for the three choices
+
+A final mechanism check gave both engines enough budget to complete the larger of their previously observed depths in each of the same three cases, with a 1,048,576-node cap per call. Full histories and fresh TT were retained. All earlier completed iterations exactly reproduced their frozen traces, and all six queries completed the target depth with legal PVs.
+
+| Source game | Matched depth | Baseline move | RFP move | Baseline nodes | RFP nodes |
+| --- | ---: | --- | --- | ---: | ---: |
+| 1324 | 6 | `c3b5` | `c3b5` | 182,324 | 97,300 |
+| 1487 | 4 | `f6g6` | `f6e5` | 72,625 | 34,795 |
+| 1098 | 5 | `a6b4` | `a6b4` | 140,467 | 129,596 |
+
+For both cases with a deeper completed RFP iteration, the baseline selected the same move when it reached that depth. This supports an extra-completed-iteration explanation for those particular move changes. The equal-depth case retained its move disagreement. These observations separate two mechanisms behind a changed choice while leaving the strength question to the match. The earlier reference preferences still apply to the selected moves; reaching them through an additional iteration does not guarantee higher reference value.
+
+The six calls reported 657,107 visits. Evidence: `engines/rfp-validation/choice-depth-control-01/`; collector `control_choice_depth.py`, SHA-256 `697037eec7ed48db2dc279339f8578218926309830c07d8c6149f85186b1226e`. This was a bounded follow-up on the same three development cases, with no candidate edits or parameter tuning.
