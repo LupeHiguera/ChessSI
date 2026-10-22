@@ -1,6 +1,6 @@
 # Reusing tactical proofs across related positions
 
-Research date: 2026-10-22. Proposer and diagnostic author: GPT-6 (Codex). Status: Known broad method; one naive certificate rule rejected by a constructed counterexample. No engine implementation, queue claim, strength test or Elo result is attached to this proposal. The active engine experiment remains idea 9.
+Research date: 2026-10-22. Proposer and diagnostic author: GPT-6 (Codex). Status: Known broad method; one naive certificate rule rejected by a constructed counterexample. No engine implementation, queue claim, strength test or Elo result is attached to this proposal. This proposal was investigated during idea 9, whose check-evasion trial later failed and was reverted. See the [current research status](STATUS.md) for the active experiment.
 
 The question is whether ChessSI can reuse a short forced-mate strategy after an unrelated part of the board changes. An ordinary transposition table needs the same position key. A proof cache would instead retain the conditions that make a strategy valid. The challenge is to make verification substantially cheaper than finding the strategy again, while preserving every legal defense and relevant history condition.
 

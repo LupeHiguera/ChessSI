@@ -1,6 +1,6 @@
 # Evaluation and training experiments for ChessSI
 
-Author: GPT-6 Codex. Research date: 2026-10-22. Source baseline: `90e172cc010f3ca6121e8f4c975138590729322b`; working-tree changes are separate. Status: hypotheses and experiment specifications, with no measured Elo claims.
+Author: GPT-6 Codex. Research date: 2026-10-22. Source baseline: `90e172cc010f3ca6121e8f4c975138590729322b`; working-tree changes are separate. Status: hypotheses and experiment specifications, with no measured Elo claims. The [current research status](STATUS.md) distinguishes completed tests, the active RFP experiment and unresolved teacher prerequisites.
 
 The best first research experiment is to test whether cheap search diagnostics can identify positions that benefit from expensive relabeling. This can be falsified before building an NNUE trainer. A small, conventional NNUE is the next useful foundation; larger teachers and uncertainty heads should follow only when their added labels or predictions beat inexpensive controls.
 
@@ -21,13 +21,13 @@ The five cards below are ranked by usefulness to this project. "Candidate distin
 
 **Prior art and distinction.** Cost-sensitive active learning already treats labeling cost as part of the objective. Minic already rescores data. The candidate distinction is an evaluator-independent selector based on parity-aware search instability, evaluated by the improvement of replacement labels against a third search budget. It explicitly permits deeper replacement labels to be worse. Generic uncertainty divided by cost is not new. [Cost-sensitive active learning](https://burrsettles.com/pub/settles.nips08ws.pdf), [Minic](https://github.com/tryingsomestuff/Minic).
 
-**Minimal prototype.** Use the existing UCI interface and a small ridge regression. No neural network or search modification is required. Predict the magnitude of a cheap-to-moderate search-score change from cheap-search features. Spend the same number of moderate labels under the learned policy, uniform sampling, raw and bounded volatility policies, and a context-only ridge selector. Evaluate all three against a larger independent search budget.
+**Minimal prototype.** Use the existing UCI interface and a small ridge regression. No neural network or search modification is required. Predict the magnitude of a cheap-to-moderate search-score change from cheap-search features. Spend the same number of moderate labels under the learned policy, uniform sampling, raw and bounded volatility policies, and a context-only ridge selector. Evaluate the learned selector and all four allocation controls against a larger independent search budget, also requiring positive utility over retaining the cheap labels.
 
-**Data and cost.** The pilot below uses 1,024 positions, two label budgets on all positions and one audit budget on the 256 test positions. Its planned node-cap total is 52,428,800. This is a count of requested search budgets, not a measured runtime or exact node consumption. One process, one assigned CPU, fixed binary/hash and fresh TT for each search are sufficient.
+**Data and cost.** The frozen corpus has 1,024 positions: 507 training, 248 calibration and 269 test roots, grouped into 88, 42 and 49 connected components respectively. Two label budgets apply to all positions and one audit budget to the 269 test positions, totaling 54,132,736 requested nodes. The earlier 256-test-root figure was a nominal split illustration. This is a count of requested search budgets, not a measured runtime or exact node consumption. One process, one assigned CPU, fixed binary/hash and fresh TT for each search are sufficient.
 
 **Failure modes.** Score changes can be noisy, odd/even effects can masquerade as learning value, and selected positions may be tactical cases a small evaluator cannot represent. A better label is not automatically a better training example. Cheap screening and selector training costs can erase savings.
 
-**Cheap falsification.** Reject the pilot if the selected labels do not improve held-out reference error more than all four allocation controls at equal budget, and if it does not beat retaining the cheap labels. If that gate passes, compare identically sized evaluation models trained with the selected versus uniform labels before any match claim. The full protocol follows the cards.
+**Cheap falsification.** The pilot can pass only if selected replacements improve held-out reference error over every allocation control at equal budget and over retaining the cheap labels. If that gate passes, compare identically sized evaluation models trained with the selected versus uniform labels before any match claim. The full protocol follows the cards.
 
 ## 2 Establish a small NNUE with a strict inference contract
 
@@ -213,12 +213,12 @@ All N1 test labels are collected to compare policies offline, and all N2 test la
 
 ### Resource accounting and stopping
 
-With exactly 1,024 roots and 256 test roots, the planned audit caps are:
+For the frozen 1,024-root corpus with 269 test roots, the planned audit caps are:
 
 - Cheap searches: `1,024 * 2,048 = 2,097,152`.
 - Replacement searches: `1,024 * 16,384 = 16,777,216`.
-- Test audit searches: `256 * 131,072 = 33,554,432`.
-- Total: `52,428,800` requested nodes, plus feature extraction and fitting.
+- Test audit searches: `269 * 131,072 = 35,258,368`.
+- Total: `54,132,736` requested nodes, plus feature extraction and fitting. These counts were recomputed from the unchanged version-2 source and frozen input on 2026-10-22; the record is `engines/rfp-validation/status-audit-01/pilot-plan-recheck.json`. No labels were collected.
 
 For a hypothetical 256-root deployment batch with all roots in the cheap-CP domain and 64 selected, charge `256 * N0 + 64 * N1 = 1,572,864` requested nodes. In general charge **all test roots** times N0, including those excluded after cheap screening, plus k times N1. Charge the same budget to all selection controls; include screening, I/O and selector cost in measured CPU time. Compare deployment savings separately from the one-time pilot's complete audit cost. These figures imply no runtime forecast on the 265K, M2 Max or GPUs.
 

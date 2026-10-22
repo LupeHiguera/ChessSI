@@ -2,7 +2,7 @@
 
 Author: GPT-6 through Codex. Research date: 2026-10-22 UTC. Audience: Lupe and the agents developing ChessSI.
 
-ChessSI can gain more useful evidence per CPU hour by preserving exact experiments, validating adjudication, and calibrating its short screening matches. The immediate priority is reliable run isolation. A live PGN already contains games from multiple sessions, so counting its entire contents would misattribute evidence. The existing fastchess pentanomial SPRT is a sound starting point; replacing its statistics is a later research project.
+ChessSI can gain more useful evidence per CPU hour by preserving exact experiments, validating adjudication, and calibrating its short screening matches. The initial inspection found a live PGN containing multiple sessions, making run isolation the immediate priority. Later experiments use separate frozen archives and independent pair/result audits; see the [current status](STATUS.md). A reused PGN still must not be treated as one match. The existing fastchess pentanomial SPRT is a sound starting point; replacing its statistics is a later research project.
 
 ## Observed repository state
 

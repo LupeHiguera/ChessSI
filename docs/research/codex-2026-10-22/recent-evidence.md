@@ -24,7 +24,7 @@ Joshi's 2025 search-contempt paper uses asymmetric MCTS to seek positions a shal
 
 ## What these findings change now
 
-1. Keep the current correctness experiment and its strength test separate from speculative training work.
+1. Keep each active engine experiment and its strength test separate from speculative training work.
 2. Retain the label pilot as an inexpensive rejection test, with downstream learning and playing-strength gates already required by the workflow.
 3. Treat end-to-end throughput, data quality and the cost of failed development attempts as measurements, not incidental details.
 4. Use these studies to narrow claims and improve experiments; do not extrapolate their hardware, costs or historical rating scales into a Stockfish-matching date for this repository.
