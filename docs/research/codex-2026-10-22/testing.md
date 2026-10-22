@@ -282,3 +282,25 @@ The auditor was then exercised on one valid two-game fixture and six intentional
 Artifacts are in `engines/qsearch-validation/game-audit-01/` (snapshot, original analysis, and the extended `analysis-v2/` that checks every completed-pair boundary) and `game-audit-fixtures-01/`. Reproduction scripts are `audit_match.py` and `validate_match_audit.py` one directory above. The extended auditor's SHA-256 is `567fc6c868f9df7bfa8da871815f75d046c6b17f4eee93bfc83098fa2101bdac`; each extended analysis preserves its own source copy. The original audit source is retained as `analysis/audit_match.v1.py`.
 
 The original match and stopping rule continued unchanged. This is a validity observation of frozen live prefixes, not a terminal result, acceptance, Elo gain or novelty claim. Repeat the audit on the final guarded snapshot before logging the experiment outcome.
+
+## Adjudication reference screen, 2026-10-22
+
+A small stronger-reference screen examined recorded adjudications from Astra's frozen, independently audited 1,613-game snapshot. It does not calibrate the adjudicator: the original games stopped early, and a bounded reference evaluation is not their unplayed continuation result. The ongoing SPRT's rules and recorded outcomes were left unchanged.
+
+The plan was written before reference searches. It considered complete opening pairs with game IDs above 1,000, excluded any pair overlapping a reserved labeling opening or recorded board/side state, and retained only adjudicated games whose final positions were not naturally terminal. There were 489 eligible games. A deterministic hash with seed `20261022` first chose at most one game per pair. That pool contained 142 White wins, 132 Black wins and 17 draws. A second fixed hash selected eight from each result stratum, for 24 cases from distinct pairs. This sampling targets varied diagnostic cases, not the match's population outcome proportions.
+
+The reference used the same checksum-verified Stockfish 19 release described in [the qsearch report](qsearch.md). Each case was searched independently at 262,144 and 1,048,576 requested nodes, with fresh TT, one thread, Hash 16 MB, MultiPV 1, full strength, no pondering and `NumaPolicy=none`. All recorded moves from the original opening FEN were replayed, and the resulting six-field FEN was verified before search. Every reported PV was replayed for legality. All checked thread affinities remained on CPU 19.
+
+The preset triage rules flagged a decisive result when Stockfish's CP score from the declared winner's perspective was zero or negative, or when it reported mate against that winner. A draw was flagged for an absolute CP score above 100 or a nonzero mate report. Missing and zero-mate categories were retained separately. These are deliberately explicit diagnostic thresholds, not calibrated probabilities of adjudication error.
+
+| Recorded result | Selected cases | Flags at 262,144 nodes | Flags at 1,048,576 nodes |
+| --- | --- | --- | --- |
+| White win | 8 | 0 | 0 |
+| Black win | 8 | 0 | 0 |
+| Draw | 8 | 0 | 0 |
+
+At the larger budget, twelve decisive cases had reference scores between +697 and +1236 cp from the declared winner's perspective; four had mate reports favoring that winner. Seven draw cases had reference scores of zero and one had +4 cp from White's perspective. None of the selected final positions had a presently available fifty-move or threefold claim according to the independent replay. All scores are Stockfish's operational search outputs, not ChessSI's evaluation scale or proven game values.
+
+No sampled discrepancy crossed the preset thresholds. This supplies limited reassurance about these cases, not a zero error rate, a false-positive bound, or permission to treat resignation settings as calibrated. The small stratified sample, heuristic reference, two correlated budgets and selected completed-game snapshot all limit inference. A negative screen cannot replace the separately proposed validation on games played to completion without adjudication, followed by exact replay of the installed manager's trigger semantics on a fresh cohort.
+
+The screen charged 31,457,280 requested nodes; the largest reported node counts summed to 31,469,106. No additional match games were played, no reserved pilot labels were collected, and no source or live match binary changed. The sampling plan, pool counts, selected full histories, all 48 transcripts, score conversions, affinity observations and result summary are preserved in `engines/qsearch-validation/adjudication-reference-01/`. Reproduce with `engines/qsearch-validation/triage_adjudication.py`, SHA-256 `6c132ee814810c5bdc0803328fa5706e40668e66f1eb3571fc5eb1d65604e845`. GPT-6 (Codex) designed and ran this diagnostic.
