@@ -45,3 +45,30 @@ Local evidence is under ignored `engines/rfp-validation/`: `launch-plan.json`, `
 The previous match's original `config.json`, PGN, binaries and baseline source were moved into `engines/qsearch-validation/original-run-files/` before the runner reused their paths. Its independent terminal snapshot and audit remain intact.
 
 After a terminal decision, replay the PGN legally, reconcile every reported count and paired result, inspect abnormal terminations, then log the actual result. Failed code is reverted; an unresolved deadline result is retained as Inconclusive. Interim estimates and the smaller benchmark node count are not evidence of an Elo gain. Engine sources and match binaries remain frozen while the match runs.
+
+## Shadow audit of sampled cutoff assumptions
+
+A separate instrumented copy examined the frozen RFP candidate on all 128 previously selected game-profile roots. These are reused development positions, not new held-out evidence. Each parent search had a 131,072-node cap. At a legal RFP cutoff, a fixed hash gate selected an event with probability-like density 1/256, capped at the first eight selected events per root. The deterministic gate and visit-order cap do not constitute a representative random sample of game play.
+
+For each selected event, the auditor copied the complete `Position` history and current transposition table, searched with RFP disabled throughout that shadow subtree, restored the table, and repeated the same call with RFP enabled as a control. It restored the original table before continuing the parent search. Both searches used the original null window, depth and ply, with a 131,072-node cap. A completed disabled return below beta is a contradiction of the proposed cutoff under that search context. It is not a solved chess value: the inherited table can already contain bounds produced by RFP, and the same evaluation, quiescence and draw logic remain in use.
+
+The instrumented benchmark stayed `11112214`. Across all 128 roots, every completed parent iteration's score, bounds, node count, PV and final best move matched the release candidate exactly. Every selected path replayed legally from the full recorded game history to its six-field FEN. All shadow and control calls restored position state.
+
+| Remaining depth | Selected and completed shadows | Returns below beta |
+| --- | ---: | ---: |
+| 1 | 818 | 0 |
+| 2 | 122 | 0 |
+| 3 | 11 | 0 |
+| Total | 951 | 0 |
+
+The instrumented parents visited 16,777,263 nodes and encountered 1,132,034 RFP returns, none a stalemate. The sampler gate fired 4,337 times; 110 roots reached the eight-sample cap. The 951 retained observations covered 99 openings. Disabled shadows used 8,995 visits total (median four, maximum 2,373); enabled controls used one visit each. These local work counts do not predict net speed or Elo when the whole search tree changes.
+
+Coverage is narrow: only 64 samples were within 25 cp of the pruning inequality, none at depth three, and the maximum sampled halfmove clock was 12. No shadow hit its node cap. Zero observed contradictions here does not establish that RFP is safe, supply a game-level error rate, or justify reducing its margin.
+
+### Positive controls and harness corrections
+
+The auditor was also tested on the previously constructed one-legal-move counterexample and its color mirror, with legal predecessor moves `h7h8` / `h2h1` to supply an actual search path. At depth one and beta 1, both RFP controls returned +182 cp; both disabled shadows returned -50 in five visits. An independently compiled accepted-baseline probe reproduced -50/five visits with the same null window, and -51/nine visits with a full window. The differing negative returns illustrate why a null-window bound should not be asserted equal to a full-window score. Both contradict the +182 cutoff in this context.
+
+These two deliberately forced controls are excluded from the 951 sampled observations. The first control-build attempt failed because a template replacement also replaced part of `ALL_MOVES`; the second executed correctly but failed an overstrict -51 assertion inherited from the full-window diagnostic. Both attempts and their outputs are retained. The third attempt corrected the check to require a completed return below beta and independently verified the bound and node count against the baseline.
+
+Evidence: `engines/rfp-validation/shadow-audit-01/` contains the pre-query plan, source copy, transcripts, exact trace comparisons, sampled histories and descriptive statistics. Collector `audit_shadow.py` SHA-256: `92f0ca7c28964fea71f91f46776c4d296414e286e9264777aa4514ec0cdb216c`. Positive-control attempts are `shadow-positive-control-01/` through `-03/`; final validator `validate_shadow.py` SHA-256: `ab2eac200010a33dc6cb4dd03ec66b57f8dbc6af446f3d48268fcc5ea2ab61a9`. All work ran on CPU 19; live engine files and match settings were unchanged.
