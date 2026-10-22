@@ -1,0 +1,11 @@
+{
+  "ended_utc": "2026-10-22T19:53:01.523744+00:00",
+  "runner_exit_code": 1,
+  "raw_runner_exit_code": 1,
+  "deadline_observed": false,
+  "backup_signal_sent": false,
+  "cleanup": null,
+  "stop_reason": "runner_completed",
+  "launch_plan_sha256": "cc230c37a70388f7249900cb72c3b1c40fcc208731ee07db91393e325330c6c5",
+  "result": "Requires independent terminal audit; interrupted/cleanup attempts never imply H1."
+}

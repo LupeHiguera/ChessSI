@@ -11,7 +11,8 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 
 | Date | Model | Kind | Idea | Result | Elo | Games | Pre-screen |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (updated main; STC only, LTC running) | Passed | +68.00 +/- 16.54 | 802 (5 concurrent, CPUs 14-19, adjudication) | Not run |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (updated main; LTC 60+0.6) | Inconclusive | Not established (deadline) | 146 (73 pairs; 5 concurrent, CPUs 14-19, adjudication) | Not run |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (updated main; STC only) | Passed | +68.00 +/- 16.54 | 802 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (original baseline; STC only) | Passed | +39.39 +/- 13.98 | 1,568 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | GPT-6 (Codex) | Known | Check evasions in quiescence | Failed | -11.83 +/- 8.36 | 4,026 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | Null-move pruning (R = 3 + depth/6, needs non-pawn pieces and static eval >= beta) | Passed | +157.1 ± 27.0 | 472 (13 concurrent) | Passed, 310 games, +107.5 ± 35.2 |
@@ -21,7 +22,9 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 
 Baseline before the first idea: bench `20648203`.
 
-The updated-main RFP short-time test passed against `f801f8c519b0fe5b3d009b8f0664b049409a1188`: normalized SPRT `[0,5]` at `10+0.1`, explicit H1, nElo +101.49 +/- 24.05, printed LLR 2.94. The table gives the manager's logistic Elo estimate. All 802 saved games form 401 complete pairs; all 41 reports reconciled. Four games started before the decision remained unfinished. Independent `60+0.6` confirmation is running; its outcome is pending, and this is not an accepted engine change. [Audited updated-main result](research/codex-2026-10-22/rfp.md#final-result-on-updated-main).
+The updated-main RFP short-time test passed against `f801f8c519b0fe5b3d009b8f0664b049409a1188`: normalized SPRT `[0,5]` at `10+0.1`, explicit H1, nElo +101.49 +/- 24.05, printed LLR 2.94. The table gives the manager's logistic Elo estimate. All 802 saved games form 401 complete pairs; all 41 reports reconciled. Four games started before the decision remained unfinished. Independent `60+0.6` confirmation ended Inconclusive at the fixed deadline; this is not an accepted engine change. [Audited updated-main result](research/codex-2026-10-22/rfp.md#final-result-on-updated-main).
+
+The independent `60+0.6` RFP confirmation against `f801f8c` was interrupted at the declared 19:53 UTC / 12:53 PM Arizona cutoff without an explicit SPRT decision. All 146 saved games form 73 complete pairs (48 wins, 28 losses, 70 draws); 17,375 legal plies and seven reports reconciled with no gaps, mismatches or suspect terminations. Games 147-151 remained unfinished and are excluded; no completed game is unpaired. The last printed Elo/LLR block describes 138 games, so it is not a final estimate for the 146-game archive. No LTC Elo gain or engine acceptance is established. The STC and LTC records remain separate. [Terminal outcome](research/codex-2026-10-22/rfp.md#ltc-terminal-outcome-on-updated-main), [selected evidence subset](research/codex-2026-10-22/evidence/rfp-current-main-ltc-terminal/README.md).
 
 The RFP short-time test passed against original baseline `a8eebea2e6ec78d223745d7ee64fe8b0dd777325`: normalized SPRT `[0,5]` at `10+0.1`, explicit H1, nElo +48.89 +/- 17.20, printed LLR 2.95. All 1,569 saved games and 79 reports reconciled; unpaired game 1568 is excluded. This is an STC-only result, not an accepted engine promotion. Main advanced during that match. The updated-baseline result above is a separate comparison; its Elo estimate and games are not combined with this original-baseline trial. [Audited result](research/codex-2026-10-22/rfp.md#final-result-on-the-original-baseline).
 

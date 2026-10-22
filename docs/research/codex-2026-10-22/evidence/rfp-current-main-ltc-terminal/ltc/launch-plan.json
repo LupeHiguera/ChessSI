@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-22T18:07:32.533178+00:00",
+  "baseline": "f801f8c519b0fe5b3d009b8f0664b049409a1188",
+  "head": "d1de9d0314cf9b18ae27bb3d61237dd1df57cb05",
+  "branch": "astra/rfp-current-main",
+  "source_files_sha256": {
+    "Makefile": "9421a0539adfa4215e989e7ca1e9f79cb38178797450a08a93f5b40cdc2a9258",
+    "tests/rfp.cpp": "0350253bba4d77f01198a8779d12f8e3fe07f71fbfdcee859a693d1fe1e567d6",
+    "tests/perft.epd": "8421dbafc5254aeba1631cc7548992cc8e227ee072ee859f89acd337e0126d6f",
+    "src/bitboard.cpp": "c1013ad95f87aa3907f0ef00872f38b4ceb957ac3501af75103399d4dad79ee8",
+    "src/bitboard.h": "23990775a97c365d1834c7757460dfaa597138e46bf30999a75f7aeea4445569",
+    "src/eval.cpp": "9a79b233d86f24ed96d55440f97d1623dcf0e9cb04eed945ef0421eab9cdfff3",
+    "src/eval.h": "67f2130d25fbea28987c9ade5de3c1dea40d4374943ee9bc53789ee2e0601ce6",
+    "src/main.cpp": "7975b5c5c0bc235d393ddf6cc6b69fa6d4eb70df079b6a9547a42744f009ce74",
+    "src/movegen.cpp": "7640271920c14cc1eac291b167b4a25c9f46c830f35045da06320e9b36473839",
+    "src/movegen.h": "e2b2d99078992bb72f261eba21fe46d3e0320223b5f88a401879e859a258fcb9",
+    "src/perft.cpp": "5f05b85fc5be21b5b009c893fa6eda01550a3ca7805d4a29ddddd08d405de5d9",
+    "src/perft.h": "22a094ac38f3db22c937ed2e8b22c165a7d2573d86eab0bbebde34f340e30a37",
+    "src/position.cpp": "3161c29e8c3d0a3586f9acd4357de9d0c534c242f4e89530f3a392c869e58a32",
+    "src/position.h": "aa779f3134d67e49d1821dfe37fbc08c4f2ccbced226793298f9d9157796a850",
+    "src/search.cpp": "a13807cdfa9e1ced5d66f948ae70245386344634e88d1c7801603991d3f2cc84",
+    "src/search.h": "b3a2d1324d49d35ad0b9bb096390ca7fb1f11b0be719c033c4a00929e4c0cd84",
+    "src/tt.cpp": "99820a51ed5df3d899c6db152fa28c4527ec633de5fb3070bb66badf39675f39",
+    "src/tt.h": "77f4e7179b1194c85b59baf3d56f608bf21bb851af1062ce83224bb24deeb68d",
+    "src/types.h": "551f3f08ac30b50e9b7caa77a65805582d291a0af79cf1eec82bb60f544976ae",
+    "src/uci.cpp": "f8adb4e825d07afd654f82bb5df446ba7eb0d2011131e1732be79662adfdf81c",
+    "src/uci.h": "dfb040fd651692e5cd5b30aabbf60b9271faeaafbba637074bdfc21c5e002619"
+  },
+  "candidate_binary_sha256": "b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab",
+  "expected_baseline_binary_sha256": "819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da",
+  "candidate_bench": 609035,
+  "baseline_bench": 864538,
+  "candidate_sha256": "b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab",
+  "baseline_binary_sha256": "819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da",
+  "fastchess_sha256": "3d0a8f3c8b837a96366ac838f3ddf6fe87b813abb4ad2852284c0ce409132566",
+  "book_sha256": "7a7f6470615a69c6cf23d565417701d38732876f480af90d67b42abade35644a",
+  "environment": {
+    "CPUS": "14-19",
+    "CONCURRENCY": "5",
+    "MAKEFLAGS": "-j6 -B",
+    "CXX": "taskset -c 19 g++",
+    "BOOK": "../ChessSI/books/UHO_Lichess_4852_v1.epd",
+    "FASTCHESS": "/home/lupe/.local/bin/fastchess",
+    "TC": "60+0.6",
+    "ELO0": "0",
+    "ELO1": "5",
+    "ALPHA": "0.05",
+    "BETA": "0.05",
+    "ROUNDS": "100000"
+  },
+  "argv": [
+    "taskset",
+    "-c",
+    "14-19",
+    "bash",
+    "scripts/sprt.sh",
+    "f801f8c519b0fe5b3d009b8f0664b049409a1188"
+  ],
+  "deadline_utc": "2026-10-22T19:53:00+00:00",
+  "minimum_launch_margin_seconds": 300,
+  "boot_id": "cf2046b8-25a2-4f5a-9586-9a2819e573bd",
+  "launcher": {
+    "pid": 2738666,
+    "start_ticks": "5478143"
+  },
+  "stc_preflight": {
+    "sha256": "30bd525f0330e86e440b84c0a17b7074ac0d547ce6aa748c057b71d7e377ea3b",
+    "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/confirmation-validation-01/terminal-preflight-01/preflight.json"
+  },
+  "stc_archive_proof": {
+    "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-validation/stc-run-files/archive-proof.json",
+    "sha256": "3c364ede5f74e28dfce22d559e9322eda72d930f85c1c877540fb39fbf29f95f"
+  },
+  "script_sha256": "50e01a74ec79b31e79ecb3d35437f728314a22cd984534707d443f6bfcefa425",
+  "guard_adapter_sha256": "0cea3c7747522932377b31e5733b8f3b10aa8aceed80f0e96fd40b1e8a365b92",
+  "sprt_runner_sha256": "6a6b10fab87f5324cf19611e88ea6c19b223c0d39c6fea279c78e577868a649c",
+  "preflight_implementation_sha256": "0d849d627e66f6f198aa2371b7307b0d4b9cb3f60ac6561461962c1fa0b5e31b",
+  "build_environment": "Explicit allowlist; inherited overrides rejected; MAKEFLAGS=-j6 -B; compiler CPU19; runner CPUs14-19.",
+  "result": "Not assigned. Fresh LTC statistics require independent terminal audit. No first-pawn optimization.",
+  "post_launch": "Verify rebuilt binary hashes/bench and attach pinned guard; any mismatch invalidates this attempt.",
+  "deadline_backup": "If live bound guard exists, defer at most210s for its60s drain+120s archive. Otherwise stop own new process group; retain interruption."
+}

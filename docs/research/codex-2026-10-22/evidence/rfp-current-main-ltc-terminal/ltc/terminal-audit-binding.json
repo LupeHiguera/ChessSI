@@ -1,0 +1,31 @@
+{
+  "created_utc": "2026-10-22T19:53:21.394216+00:00",
+  "collector_sha256": "f41e03be1f2e07fa88bcba0c1a1109a14e5997a7185b7ebcbbe5fe4f663c9a4f",
+  "implementation_sha256": {
+    "scripts/research/extract_result.py": "a54c652046f74f0b8209d7fa66a00568a1f11a1af0ee0706025c877f52b9785c",
+    "scripts/research/snapshot_run.py": "e502f4982165c4e1833d66c97a9d521b55f2a23740f64765deef10a309e73991",
+    "scripts/research/prepare_corpus.py": "bca6c249dbe68ec127c09e749acf05b4e947dbf32ddbd1420322c7d6ed9578b3",
+    "engines/qsearch-validation/audit_match.py": "e67123fa57194ed4dc700a4614ec3a73fc2bf3a7b23f094e6485c2f284a1dac9"
+  },
+  "launch_guard_provenance_sha256": {
+    "launch-plan.json": "cc230c37a70388f7249900cb72c3b1c40fcc208731ee07db91393e325330c6c5",
+    "runner-identity.json": "461f577377a9681a558d4f16d324582f6ab6f93fadcf004078a89e772c58d5cf",
+    "guard-attachment.json": "dc47e739d3739b19366591571cc40fcd8ade8ccf61845fac8dac62b571bc80c1",
+    "live-watch-01/plan.json": "8da101c8637ae9cb16a017c2742241b19748fe7a2439b1239a954b4718d73652"
+  },
+  "terminal_control_sha256": {
+    "runner-exit.json": "33175070144999e2211cfa3a6bad7ea571cf7b81e30375cd38bed052e7fc8431",
+    "guard-exit.json": "94d18c11bcdaada9a45b852c52bd9d593a213a70fb942ed4cbbe429cf5cf3504"
+  },
+  "terminal_state_sha256": "f22c9ec61c430538160c37fcba21ae08712581d25e3d0a6330e92513b66d844e",
+  "extraction_sha256": "bcb8d74f15dafc5ee15100d0f6390bc9664fbbb30c22b67f72c04bc7feed2b8c",
+  "audit_status": "succeeded",
+  "audit_exit_code": 0,
+  "audit_issues": [],
+  "collector_exit_code": 0,
+  "audit_log_sha256": "eb39ad43e98ce4a279b3624c59f8604273c220241ecc02d930f261944812a48e",
+  "audit_result_sha256": "729e6291345eb648409bcdb1ed68bb0f0343a6db3ab17d0342cbfb3e8eaf8f58",
+  "audit_result_scope": "Validated replay result",
+  "benchmark_result": "not_assigned",
+  "scope": "Bound LTC extraction and independent replay; interrupted/unresolved evidence is retained; no result promotion or launch"
+}

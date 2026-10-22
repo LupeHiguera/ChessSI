@@ -1,0 +1,114 @@
+All PGN games legally replayed; checking report boundaries
+{
+  "schema_version": 2,
+  "observed_utc": "2026-10-22T19:53:21.363295+00:00",
+  "model": "GPT-6 (Codex)",
+  "snapshot": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-ltc-validation/live-watch-01/terminal-snapshot",
+  "snapshot_integrity": {
+    "integrity_ok": true,
+    "archived_files_verified": 25,
+    "unarchived_artifacts": 0,
+    "errors": [],
+    "scope": "Archive integrity only; no experiment validity or Elo claim"
+  },
+  "snapshot_manifest_sha256": "8291901f0378a5311d901763a7c87912b264c8e32774d2d86affa4adc876058e",
+  "audited_artifact_sha256": {
+    "log": "ec786785cabc2b288dc201a84eb18e8451390d876b962e7043b7447c8421afd4",
+    "pgn": "4d7f3e667c399e044f280312f4a888c128a2f09c08bd2896bb379b4015afbb19",
+    "config": "9cd7eb9f3b01e81291d857362e8e7b709a3de13985718d6d4c720b75c1b980e7"
+  },
+  "implementation_sources": {
+    "audit_match": {
+      "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/qsearch-validation/audit_match.py",
+      "sha256": "e67123fa57194ed4dc700a4614ec3a73fc2bf3a7b23f094e6485c2f284a1dac9"
+    },
+    "snapshot_run": {
+      "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/scripts/research/snapshot_run.py",
+      "sha256": "e502f4982165c4e1833d66c97a9d521b55f2a23740f64765deef10a309e73991"
+    },
+    "prepare_corpus": {
+      "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/scripts/research/prepare_corpus.py",
+      "sha256": "bca6c249dbe68ec127c09e749acf05b4e947dbf32ddbd1420322c7d6ed9578b3"
+    },
+    "chess": {
+      "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/dependencies/python-chess/chess/__init__.py",
+      "sha256": "1fde6a8e932508d14b31f6a584497b49c2969fc3c7cdc675347f819f0d667a5b"
+    },
+    "chess.engine": {
+      "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/dependencies/python-chess/chess/engine.py",
+      "sha256": "40a1407749ea43b4ed3174f0603e0316a9c971b8943113fbea5be47c82bde22b"
+    },
+    "chess.pgn": {
+      "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/dependencies/python-chess/chess/pgn.py",
+      "sha256": "0e280ee44cb3c27cde903c40fe166419df71a030b05793c63f3e0ffffd6ff0c4"
+    },
+    "chess.svg": {
+      "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/dependencies/python-chess/chess/svg.py",
+      "sha256": "32840c66e33bf55ea2de49eadc856d45dc3cd661b87a0a1ea99d8b6c3b143b99"
+    }
+  },
+  "runtime": {
+    "python_version": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+    "executable": "/usr/bin/python3",
+    "flags": {
+      "optimize": 0,
+      "dont_write_bytecode": 1,
+      "debug": 0,
+      "isolated": 0,
+      "no_site": 0,
+      "ignore_environment": 0
+    },
+    "assertions_enabled": true
+  },
+  "input_bindings_rechecked": true,
+  "cpu_affinity": [
+    19
+  ],
+  "python_chess_version": "1.11.2",
+  "single_session_signature": {
+    "Event": "Fastchess Tournament",
+    "Site": "?",
+    "TimeControl": "60+0.6",
+    "Session": null,
+    "RunId": null,
+    "Variant": null
+  },
+  "pgn_games_legally_replayed": 146,
+  "legal_plies": 17375,
+  "pgn_termination_counts": {
+    "adjudication": 99,
+    "normal": 47
+  },
+  "log_finished_games": 146,
+  "log_reports_checked": 7,
+  "log_report_count_mismatches": [],
+  "config_counts": {
+    "games": 146,
+    "wins": 48,
+    "losses": 28,
+    "draws": 70,
+    "pentanomial": [
+      1,
+      12,
+      30,
+      26,
+      4
+    ]
+  },
+  "config_matching_report_lines": [],
+  "cross_source_game_results_compared": 146,
+  "log_games_not_in_pgn_snapshot": [],
+  "pgn_games_not_in_log_snapshot": [],
+  "log_finished_reasons": {
+    "Black wins by adjudication": 35,
+    "Draw by 3-fold repetition": 42,
+    "White wins by adjudication": 41,
+    "Draw by adjudication": 23,
+    "Draw by stalemate": 1,
+    "Draw by insufficient mating material": 4
+  },
+  "suspect_termination_reasons": {},
+  "current_manager_verdict": "not_interpreted",
+  "scope": "Frozen prefixes; each file can represent a different observation instant. No SPRT decision or adjudication calibration.",
+  "source_sha256": "e67123fa57194ed4dc700a4614ec3a73fc2bf3a7b23f094e6485c2f284a1dac9"
+}

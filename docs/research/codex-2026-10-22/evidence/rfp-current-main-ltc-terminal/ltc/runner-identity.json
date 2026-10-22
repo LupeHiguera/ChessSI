@@ -1,0 +1,14 @@
+{
+  "created_utc": "2026-10-22T18:07:32.698035+00:00",
+  "runner": {
+    "pid": 2738765,
+    "start_ticks": "5478308"
+  },
+  "boot_id": "cf2046b8-25a2-4f5a-9586-9a2819e573bd",
+  "launch_plan_sha256": "cc230c37a70388f7249900cb72c3b1c40fcc208731ee07db91393e325330c6c5",
+  "log": {
+    "path": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-ltc-validation/sprt-ltc.log",
+    "device": 71,
+    "inode": 2251799816031910
+  }
+}

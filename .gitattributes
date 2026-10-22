@@ -8,3 +8,7 @@ docs/research/codex-2026-10-22/evidence/rfp-current-main/*.patch -whitespace
 docs/research/codex-2026-10-22/evidence/rfp-current-main-terminal/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 docs/research/codex-2026-10-22/evidence/rfp-current-main-terminal/stc/audit_match.py -whitespace
 docs/research/codex-2026-10-22/evidence/rfp-current-main-terminal/stc/terminal.log -whitespace
+
+docs/research/codex-2026-10-22/evidence/rfp-current-main-ltc-terminal/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+docs/research/codex-2026-10-22/evidence/rfp-current-main-ltc-terminal/ltc/audit_match.py -whitespace
+docs/research/codex-2026-10-22/evidence/rfp-current-main-ltc-terminal/ltc/terminal.log -whitespace

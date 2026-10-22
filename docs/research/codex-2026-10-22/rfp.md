@@ -1,6 +1,6 @@
 # Shallow reverse futility pruning trial
 
-Prepared by GPT-6 (Codex), 2026-10-22 UTC. **Status: separate STC passes on the original baseline and updated main `f801f8c`; unpromoted, with independent LTC confirmation now running.** See [the updated-main result](#final-result-on-updated-main) and [the original-baseline result](#final-result-on-the-original-baseline). Main advanced during the original frozen comparison; see [baseline transition](#accepted-main-advanced-during-the-run). This is idea 5, classified Known. The separate check-evasion experiment ended with H0 accepted, was logged as Failed, and its engine changes were reverted before this trial began.
+Prepared by GPT-6 (Codex), 2026-10-22 UTC. **Status: separate STC passes on the original baseline and updated main `f801f8c`; LTC ended Inconclusive at the fixed deadline, and the candidate remains unpromoted.** See [the LTC terminal outcome](#ltc-terminal-outcome-on-updated-main), [the updated-main STC result](#final-result-on-updated-main) and [the original-baseline result](#final-result-on-the-original-baseline). Main advanced during the original frozen comparison; see [baseline transition](#accepted-main-advanced-during-the-run). This is idea 5, classified Known. The separate check-evasion experiment ended with H0 accepted, was logged as Failed, and its engine changes were reverted before this trial began.
 
 ## Question and frozen implementation
 
@@ -270,13 +270,13 @@ Remote main was rechecked at **16:26:36 UTC**. The fresh launcher recorded its p
 
 The verified deadline guard attached at **16:27:07.947761 UTC** and retains the fixed **19:53 UTC / 12:53 PM Arizona** cutoff. The manager and all ten engine processes were observed inside CPUs 14-19; the watcher uses CPU 19. The source/process snapshot verified all 34 archived files with no findings, including a near-launch book-path/digest observation. The first frozen configuration confirms the intended settings and distinct seed. Its independent PGN audit legally replayed 33 games and 3,321 plies, reconciled the first statistics report and every saved result, and found no missing cross-source games or suspect terminations.
 
-All new-run evidence is separated under `engines/rfp-current-main-validation/`: launch/guard plans, source snapshot, process audit, first protocol/match audit, runner log and subsequent terminal records. The candidate and its test inputs remained frozen through the audited STC pass below. Independent 60+0.6 confirmation is still required; no LTC decision by the deadline remains Inconclusive for confirmation.
+All new-run evidence is separated under `engines/rfp-current-main-validation/`: launch/guard plans, source snapshot, process audit, first protocol/match audit, runner log and subsequent terminal records. The candidate and its test inputs remained frozen through the audited STC pass below. The subsequent independent 60+0.6 confirmation ended Inconclusive at the deadline; further eligible confirmation is required before promotion.
 
 The new-baseline confirmation preflight passed 27 focused checks. Its actual live observation at 16:45 UTC correctly waited for this STC to finish and for a fresh accepted-main check. That observation exercised the waiting path; the subsequent STC terminal audit is recorded below. LTC subsequently launched as recorded below. [Preparation and evidence](testing.md#updated-main-confirmation-preparation).
 
 ## Final result on updated main
 
-The frozen `10+0.1` comparison against accepted main **`f801f8c519b0fe5b3d009b8f0664b049409a1188`** accepted **H1 at log line 1941** after **802 games / 401 complete pairs**. The runner exited normally at **17:57:28 UTC on 2026-10-22** with code 0. This is an audited **STC Passed** result; independent `60+0.6` confirmation is now running, and the candidate remains unpromoted.
+The frozen `10+0.1` comparison against accepted main **`f801f8c519b0fe5b3d009b8f0664b049409a1188`** accepted **H1 at log line 1941** after **802 games / 401 complete pairs**. The runner exited normally at **17:57:28 UTC on 2026-10-22** with code 0. This remains an audited **STC Passed** result; the separate `60+0.6` confirmation later ended [Inconclusive at the deadline](#ltc-terminal-outcome-on-updated-main), and the candidate remains unpromoted.
 
 | Terminal statistic | Recorded value |
 | --- | --- |
@@ -378,7 +378,7 @@ An independent `60+0.6` confirmation launched at **18:07:32 UTC on 2026-10-22** 
 
 The forced clean runner rebuild reproduced candidate/base benches **609035 / 864538** and the same binary hashes `b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab` / `819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da`. The candidate source and root HEAD `d1de9d0314cf9b18ae27bb3d61237dd1df57cb05` remain frozen. **No first-pawn optimization is included.** The new comparison uses normalized SPRT `[0,5]`, alpha/beta 0.05, the existing book/adjudication settings, Hash 16, Threads 1, five concurrent games and CPUs 14-19.
 
-Manager **2739252**, start ticks **5479196**, has its own launch and runner identity records. The identity-bound guard entered `watching` at **18:07:49.812079 UTC**, with watcher PID **2739589** on CPU 19 and the unchanged **19:53 UTC / 12:53 PM Arizona** deadline. This is a running confirmation, not an LTC result or accepted promotion. A missing terminal decision at the deadline remains Inconclusive for LTC. The first saved configuration was captured and audited at 18:24 UTC, as recorded below.
+Manager **2739252**, start ticks **5479196**, has its own launch and runner identity records. The identity-bound guard entered `watching` at **18:07:49.812079 UTC**, with watcher PID **2739589** on CPU 19 and the unchanged **19:53 UTC / 12:53 PM Arizona** deadline. This launch did not establish an LTC result or accepted promotion. The predeclared rule classified a missing terminal decision at the deadline as Inconclusive; the actual outcome is recorded below. The first saved configuration was captured and audited at 18:24 UTC, as recorded below.
 
 New-run evidence is under `engines/rfp-current-main-ltc-validation/`: `launch-plan.json`, `runner-identity.json`, `sprt-ltc.log`, `guard-attachment.json` and `live-watch-01/`. Completed-STC preservation and eligibility are under `engines/rfp-current-main-validation/stc-run-files/archive-proof.json` and `confirmation-validation-01/terminal-preflight-01/preflight.json`.
 
@@ -396,4 +396,33 @@ At **18:24:13 UTC**, the first frozen LTC prefix verified seed **570580697723924
 
 After the LTC launch, the tested candidate was reproduced in `engines/rfp-review-worktree` on `astra/rfp-review`, then preserved as commit `e77256e8ff73fcff9806a9b8dc5bfa0edb450e3d` in [draft PR #4](https://github.com/LupeHiguera/ChessSI/pull/4). All **21 committed source/build/test inputs** match the frozen match inputs, and the clean build produced the identical `b10c68c9...` binary. Fresh validation completed at **18:34:44 UTC** with **35 perft and 17 boundary checks passing**, and bench **609035**. Builds/test recipes used CPUs 14-19 with the compiler on CPU 19; the direct bench ran on CPU 19. The earlier sanitizer results remain separate.
 
-The active match's recorded HEAD remains `d1de9d0` plus its frozen working-tree inputs; `e77256e` is the later reproducible review commit. Its only additional bookkeeping changes ignore the generated test executable and record the existing claim/STC result. No new strength comparison or engine promotion occurred. Local reproduction evidence: `engines/rfp-current-main-validation/candidate-review-preparation-01/run-01/result.json`, SHA-256 `c4f986d61018da38400c290b216402767511585cbb0fa10b1b9f1ef70b1534e6`, with raw build/test/bench logs and staged-input verification alongside it. Independent LTC confirmation remains pending.
+The match's recorded HEAD was `d1de9d0` plus its frozen working-tree inputs; `e77256e` is the later reproducible review commit. Its only additional bookkeeping changes ignore the generated test executable and record the existing claim/STC result. No new strength comparison or engine promotion occurred. Local reproduction evidence: `engines/rfp-current-main-validation/candidate-review-preparation-01/run-01/result.json`, SHA-256 `c4f986d61018da38400c290b216402767511585cbb0fa10b1b9f1ef70b1534e6`, with raw build/test/bench logs and staged-input verification alongside it. At this reproduction, independent LTC confirmation was still pending; its later terminal outcome follows.
+
+## LTC terminal outcome on updated main
+
+The independent **60+0.6** comparison against **`f801f8c519b0fe5b3d009b8f0664b049409a1188`** ended **Inconclusive** at the fixed research deadline on **2026-10-22**. The log contains **no explicit H0 or H1 decision**. The identity-checked guard requested SIGINT at **19:53:00.007678 UTC**, observed process termination at **19:53:01.521443 UTC**, and finished its terminal archive at **19:53:01.927429 UTC**. The runner exited **1** after interruption; the guard exited **0**. These exits and the successful replay do not supply an SPRT decision.
+
+| Final audited LTC accounting | Value |
+| --- | --- |
+| Saved and counted games | 146 |
+| Complete opening pairs | 73 |
+| Candidate wins / losses / draws | 48 / 28 / 70 |
+| Pentanomial counts | 1 / 12 / 30 / 26 / 4 |
+| Completed unpaired games | 0 |
+| Started without a finish; excluded | 147-151 |
+| Legally replayed plies / checked reports | 17,375 / 7 |
+
+The independent replay reconciled all saved games, paired counts, terminal configuration and reported results, with **zero count mismatches, cross-source gaps or suspect terminations**. All **25 terminal-snapshot files** passed integrity verification. The candidate/base binary hashes remained `b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab` / `819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da`, with no guard-observed drift. The last accepted-main check at **19:47 UTC** still identified `f801f8c`. The recorded baseline, five-game concurrency and CPUs 14-19 remained the comparison's scope.
+
+No final LTC Elo estimate is reported here: the last printed Elo/LLR block describes **138 games**, whereas the terminal audit counts **146**. The separate **+68.00 +/- 16.54 logistic Elo / 802-game STC pass** remains attributed to its own time control and is neither pooled with LTC nor treated as longer-time confirmation. The exact candidate remains unpromoted in [draft PR #4](https://github.com/LupeHiguera/ChessSI/pull/4).
+
+The terminal collector and evidence packager completed successfully. Local evidence is under `engines/rfp-current-main-ltc-validation/`: `terminal-extraction.json`, `terminal-audit-01/result.json`, `terminal-audit-binding.json`, `runner-exit.json`, `guard-exit.json` and `live-watch-01/terminal-snapshot/`. The [selected LTC terminal evidence subset](evidence/rfp-current-main-ltc-terminal/README.md) contains **24 files, including 20 exact copies**; full PGN, binaries, book and dependencies remain local.
+
+| Terminal artifact | SHA-256 |
+| --- | --- |
+| Extraction | `bcb8d74f15dafc5ee15100d0f6390bc9664fbbb30c22b67f72c04bc7feed2b8c` |
+| Independent replay result | `729e6291345eb648409bcdb1ed68bb0f0343a6db3ab17d0342cbfb3e8eaf8f58` |
+| Audit binding | `75cdd31cb0e6a726a5496f76b01759e28bd4a1e07cd3b29f898ed159940016a9` |
+| Selected-subset manifest | `cbbf135a2ca9a844b9204b5b73fec2974c3e2288a24a97f253085ff22c8cc942` |
+
+The research window ended at **19:53 UTC / 12:53 PM Arizona**. Before promotion, recheck accepted main and complete an eligible new or resumed confirmation under the applicable protocol; a resume must preserve identical comparison settings and audited recovery accounting, while a changed baseline requires a new comparison. This closeout establishes neither a novel method nor an AGI conclusion.

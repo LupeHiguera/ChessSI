@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "snapshot": "/mnt/c/Users/Lupe/CLionProjects/ChessSI-astra/engines/rfp-current-main-ltc-validation/live-watch-01/terminal-snapshot",
+  "integrity": {
+    "integrity_ok": true,
+    "archived_files_verified": 25,
+    "unarchived_artifacts": 0,
+    "errors": [],
+    "scope": "Archive integrity only; no experiment validity or Elo claim"
+  },
+  "evidence_status": "unresolved",
+  "benchmark_result": "not_assigned",
+  "scope": "Reported manager evidence only; independent PGN, protocol, build and acceptance review required.",
+  "issues": [
+    "Expected exactly one explicit SPRT decision",
+    "Signal sent or signal status unknown; review interruption ordering"
+  ],
+  "manifest_sha256": "8291901f0378a5311d901763a7c87912b264c8e32774d2d86affa4adc876058e",
+  "artifact_sha256": {
+    "binary_path:candidate": "b10c68c9870eb589b89ccab8d860cdeed91aeeddcff1618ecfa37aff35f6a6ab",
+    "binary_path:baseline": "819333c372d911c46c341091ed46f0872753b18d5dd39c094383139598e1f8da",
+    "config": "9cd7eb9f3b01e81291d857362e8e7b709a3de13985718d6d4c720b75c1b980e7",
+    "log": "ec786785cabc2b288dc201a84eb18e8451390d876b962e7043b7447c8421afd4",
+    "pgn": "4d7f3e667c399e044f280312f4a888c128a2f09c08bd2896bb379b4015afbb19"
+  },
+  "protocol": {
+    "seed_decimal": "5705806977239248754",
+    "sprt": {
+      "alpha": 0.05,
+      "beta": 0.05,
+      "elo0": 0.0,
+      "elo1": 5.0,
+      "model": "normalized",
+      "enabled": true
+    },
+    "concurrency": 5,
+    "games_per_round": 2,
+    "rounds": 100000,
+    "opening": {
+      "file": "../ChessSI/books/UHO_Lichess_4852_v1.epd",
+      "format": 0,
+      "order": 0,
+      "plies": -1,
+      "start": 1
+    },
+    "engines": [
+      {
+        "name": "new",
+        "dir": "",
+        "cmd": "engines/new",
+        "args": "",
+        "restart": false,
+        "options": [
+          [
+            "Hash",
+            "16"
+          ],
+          [
+            "Threads",
+            "1"
+          ]
+        ],
+        "limit": {
+          "tc": {
+            "increment": 600,
+            "fixed_time": 0,
+            "time": 60000,
+            "moves": 0,
+            "timemargin": 0
+          },
+          "nodes": 0,
+          "plies": 0
+        },
+        "variant": 0
+      },
+      {
+        "name": "base",
+        "dir": "",
+        "cmd": "engines/base",
+        "args": "",
+        "restart": false,
+        "options": [
+          [
+            "Hash",
+            "16"
+          ],
+          [
+            "Threads",
+            "1"
+          ]
+        ],
+        "limit": {
+          "tc": {
+            "increment": 600,
+            "fixed_time": 0,
+            "time": 60000,
+            "moves": 0,
+            "timemargin": 0
+          },
+          "nodes": 0,
+          "plies": 0
+        },
+        "variant": 0
+      }
+    ],
+    "resign": {
+      "move_count": 3,
+      "score": 400,
+      "twosided": true,
+      "enabled": true
+    },
+    "draw": {
+      "move_number": 40,
+      "move_count": 8,
+      "score": 10,
+      "enabled": true
+    },
+    "pgn": {
+      "additional_lines_rgx": [],
+      "event_name": "Fastchess Tournament",
+      "site": "?",
+      "file": "engines/sprt.pgn",
+      "notation": 0,
+      "append_file": true,
+      "track_nodes": false,
+      "track_seldepth": false,
+      "track_nps": false,
+      "track_hashfull": false,
+      "track_tbhits": false,
+      "track_timeleft": false,
+      "track_latency": false,
+      "track_pv": false,
+      "min": false,
+      "crc": false
+    },
+    "recover": true,
+    "stats_observed": {
+      "new vs base": {
+        "wins": 48,
+        "losses": 28,
+        "draws": 70,
+        "penta_WW": 4,
+        "penta_WD": 26,
+        "penta_WL": 14,
+        "penta_DD": 16,
+        "penta_LD": 12,
+        "penta_LL": 1
+      }
+    }
+  },
+  "log_evidence": {
+    "reported_hypothesis": null,
+    "decision": null,
+    "decision_messages": 0,
+    "statistics_reports": 7,
+    "completed_log_games": 146,
+    "final_paired_counts": {
+      "games": 146,
+      "wins": 48,
+      "losses": 28,
+      "draws": 70,
+      "pentanomial": [
+        1,
+        12,
+        30,
+        26,
+        4
+      ]
+    },
+    "unpaired_completed_game_ids": [],
+    "started_without_finish": [
+      147,
+      148,
+      149,
+      150,
+      151
+    ],
+    "late_started_game_ids": [],
+    "late_finished_game_ids": [],
+    "late_statistics_lines": [],
+    "termination_reasons": {
+      "Black wins by adjudication": 35,
+      "Draw by 3-fold repetition": 42,
+      "White wins by adjudication": 41,
+      "Draw by adjudication": 23,
+      "Draw by stalemate": 1,
+      "Draw by insufficient mating material": 4
+    },
+    "issues": [
+      "Expected exactly one explicit SPRT decision"
+    ]
+  },
+  "terminal_state_sha256": "f22c9ec61c430538160c37fcba21ae08712581d25e3d0a6330e92513b66d844e"
+}
