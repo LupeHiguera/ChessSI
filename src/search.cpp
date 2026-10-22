@@ -12,9 +12,9 @@
 
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
-// with MVV-LVA ordering, and killer moves. Pruning, reductions and history
-// heuristics are left out on purpose: each is a separate experiment for the
-// ideas log.
+// with MVV-LVA ordering, killer moves and null-move pruning. Other pruning,
+// reductions and history heuristics are left out on purpose: each is a
+// separate experiment for the ideas log.
 
 std::atomic<bool> Search::stop{false};
 
@@ -36,6 +36,7 @@ struct Searcher {
     Move pv[MAX_PLY + 1][MAX_PLY + 1];
     int pvLength[MAX_PLY + 1];
     Move killers[MAX_PLY + 1][2] = {};
+    Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
 
@@ -172,6 +173,24 @@ struct Searcher {
                 return ttScore;
         }
 
+        // Null-move pruning: if passing the turn still fails high, a real move
+        // almost surely would too. Skipped in check, without pieces (zugzwang)
+        // and right after another null move.
+        Color us = pos.side_to_move();
+        bool hasPieces = pos.pieces(us) & ~pos.pieces(PAWN) & ~pos.pieces(KING);
+        if (!pvNode && !inCheck && !root && depth >= 3 && hasPieces && moveStack[ply - 1] != MOVE_NONE
+            && evaluate(pos) >= beta) {
+            int R = 3 + depth / 6;
+            moveStack[ply] = MOVE_NONE;
+            pos.do_null_move();
+            int score = -search(-beta, -beta + 1, depth - 1 - R, ply + 1);
+            pos.undo_null_move();
+            if (stopped)
+                return 0;
+            if (score >= beta)
+                return score >= VALUE_MATE_IN_MAX_PLY ? beta : score;
+        }
+
         MoveList list;
         generate(pos, list, ALL_MOVES);
         int scores[256];
@@ -189,6 +208,7 @@ struct Searcher {
                 continue;
             }
             ++legalMoves;
+            moveStack[ply] = m;
 
             int score;
             if (legalMoves == 1)
