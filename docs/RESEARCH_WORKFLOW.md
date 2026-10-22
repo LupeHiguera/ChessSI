@@ -89,6 +89,8 @@ Use a unique archive per observation and a fresh match output set per experiment
 
 For a live run, capture the manager and engine process executables separately from the current binary paths. Save the fastchess configuration so its 64-bit random seed remains an exact decimal string. Do not treat a PGN containing several reused `new`/`base` sessions as one match. Archive incomplete tails explicitly and wait for final results before logging a verdict.
 
+After termination, use `scripts/research/extract_result.py` to extract the decision block and paired counts from a verified snapshot. Its successful status means ready for independent audit; it never assigns Passed or Failed. Missing decisions, caps, interruption, inconsistent records and unresolved capture findings require review. See [terminal evidence handling](research/codex-2026-10-22/testing.md#read-only-terminal-evidence-extractor) for the command, limitations and validation.
+
 For Windows-created worktrees, WSL Git may need explicit `GIT_DIR` and `GIT_WORK_TREE` environment variables because the `.git` pointer uses a Windows path. Set those for the command rather than rewriting the shared worktree metadata.
 
 ## Compare models fairly
