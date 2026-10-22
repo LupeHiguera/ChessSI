@@ -180,3 +180,21 @@ The tactical trace also clarifies the score gap. At the original white-to-move p
 The twelve root calls used 625,267 visits, including the repeated observer runs. The four disabled/control pairs added 66/4 visits; eight qsearch trace calls added 32. The observer bench was an additional 11,112,214 visits. These constructed, selected cases cannot establish a population error rate, general safety or Elo. The live match and candidate remained unchanged.
 
 Complete inputs, iterations, sampled windows, node accounting and exchange observations are in the [reviewable evidence bundle](evidence/rfp/README.md). Full local transcripts and builds are under `engines/rfp-validation/counterexample-root-01/` and `counterexample-qtrace-01/`. Collectors: `trace_counterexample_root.py`, SHA-256 `d37c7186c4d36677baefec8d4eb23aded03ebcfcfb022e23d2d5da9e4422c891`; `trace_counterexample_qsearch.py`, SHA-256 `3e31799c2b51bd4174c3eea2d5fe7db496f8d41dd40085613c79e5d5fa94a8e2`. GPT-6 (Codex) designed and ran these diagnostics on CPU 19.
+
+## Stress the existing margin at its eligibility boundary
+
+A second bounded audit manufactured null windows at `beta = staticEval - 150 * depth`, `alpha = beta - 1`, for depths 1-3 on every one of the same 128 development roots. This fixes threshold surplus to zero while leaving the candidate's margin unchanged. Each private non-root call used ply 1, full recorded game history and a fresh TT. These are counterfactual windows, not windows observed during ordinary play. The two existing constructed controls were included and counted separately.
+
+| Depth | Development roots | Eligible / completed | Contradictions | Baseline visits |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 128 | 116 / 116 | 0 | 1,119 |
+| 2 | 128 | 116 / 116 | 0 | 4,019 |
+| 3 | 128 | 116 / 116 | 0 | 19,298 |
+
+At every depth, twelve roots were excluded by existing gates: five in check, six with only pawns and king, and one drawn under the engine's rule. All excluded records were retained. The candidate returned its static score in exactly one visit for all 348 eligible development calls. The baseline completed every comparison within the 131,072-node allowance, and none returned below the manufactured beta. This is a bounded negative result on reused, deliberately selected development inputs, not a population failure-rate estimate or validation of the evaluation/search implementation.
+
+Both constructed controls failed at depth 1 as expected: their static score +182 gives manufactured beta +32, while the accepted baseline returns below that threshold. They did not contradict the more permissive depth-2 or depth-3 windows. This verifies that the probe can detect the known failure mode without asserting that the development roots represent rare tactical cases. All legal witnesses were checked against python-chess, full-history replay matched the recorded FENs, both probes agreed on eligibility, and state restoration passed.
+
+Across development cases and controls, baseline searches used 24,635 visits and candidate searches used 354. No threshold was swept or changed, and no learned guard was fitted. Together with the earlier sampled-node audits, this small reused corpus has not supplied naturally occurring contradictions from which to establish a useful predictor. Further controller claims need independently collected relevant cases and the previously specified controls; widening gates until an attractive signal appears would change the question.
+
+Evidence: `engines/rfp-validation/threshold-stress-01/`, retaining the pre-query plan, all 130 complete inputs, all 780 probe records including exclusions, source copies, builds, outputs and summaries. Collector `stress_threshold.py`, SHA-256 `231b071c21788e61fe63d615506561f798e3ce52f728fb5cb734a96ceaa662b1`. GPT-6 (Codex) ran this audit on CPU 19 without changing the live candidate, its margin or the match.
