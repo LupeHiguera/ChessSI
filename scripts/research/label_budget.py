@@ -36,7 +36,8 @@ import threading
 import time
 from typing import Any
 
-SCHEMA = 1
+SCHEMA = 2
+PROTOCOL = "magnitude-selector-v2-retention-control"
 MOVE = re.compile(r"[a-h][1-8][a-h][1-8][qrbn]?\Z")
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
@@ -336,7 +337,7 @@ def collect(input_path, engine, output, config):
     if not engine.is_file():
         raise ValueError("Engine must be a frozen executable file")
     frozen_hash = file_hash(engine)
-    manifest = {"schema": SCHEMA, "status": "collecting", "config": asdict(config),
+    manifest = {"schema": SCHEMA, "protocol": PROTOCOL, "status": "collecting", "config": asdict(config),
         "engine": str(engine), "engine_sha256": frozen_hash,
         "analysis_script_sha256": file_hash(Path(__file__)),
         "cpu_affinity": sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None,
@@ -506,6 +507,8 @@ def analyze_data(manifest, labels):
         raise ValueError("Analysis requires a completed collection with matching schema")
     if manifest.get("analysis_script_sha256") != file_hash(Path(__file__)):
         raise ValueError("Analysis source differs from the preregistered collection script")
+    if manifest.get("protocol") != PROTOCOL:
+        raise ValueError("Collection protocol differs from the declared analysis protocol")
     config = Config(**manifest["config"])
     config.validate()
     roots = manifest["roots"]
@@ -570,6 +573,7 @@ def analyze_data(manifest, labels):
         "learned": sorted(candidates, key=lambda item: (-model_score(model, item["x"]), tie(item))),
     }
     selected = {name: {item["root"]["id"] for item in items[:count]} for name, items in policies.items()}
+    selected["no_replacement"] = set()  # Retention control spends only cheap-screening cost.
     # Selection is now frozen. Audit exclusions never trigger refill or reranking.
     rows = []
     for item in candidates:
@@ -598,7 +602,7 @@ def analyze_data(manifest, labels):
             "auditable_selected_count": sum(row["id"] in ids for row in available),
             "negative_utility_selections": sum(row["id"] in ids and row["utility"] < 0 for row in available)}
     comparisons = {name: compare_policy(rows, selected["learned"], ids, effective, config) for name, ids in
-        [("uniform_expected", None)] + [(name, selected[name]) for name in ("raw_volatility", "bounded_volatility", "context_only")]}
+        [("uniform_expected", None)] + [(name, selected[name]) for name in ("raw_volatility", "bounded_volatility", "context_only", "no_replacement")]}
     group_counts = defaultdict(int)
     for row in rows:
         group_counts[row["group"]] += 1
@@ -607,7 +611,7 @@ def analyze_data(manifest, labels):
         result["worst_case_missing_interval"][0] > 0 and
         result["sensitivity_group_bootstrap_95"] is not None and
         result["sensitivity_group_bootstrap_95"][0] > 0 for result in comparisons.values())
-    return {"schema": SCHEMA, "kind": "offline_label_diagnostic", "elo_claim": None,
+    return {"schema": SCHEMA, "protocol": PROTOCOL, "kind": "offline_label_diagnostic", "elo_claim": None,
         "score_transform": "logistic(cp / scale), not calibrated win probability", "score_scale": config.score_scale,
         "engine_sha256": manifest["engine_sha256"], "config": asdict(config),
         "counts": {"training": len(training), "calibration": len(calibration), "test_candidates": len(candidates),
@@ -620,12 +624,13 @@ def analyze_data(manifest, labels):
         "conditional_cp_uniform_expected_loss": base - effective * statistics.fmean(row["utility"] for row in available),
         "policies": summaries, "comparisons": comparisons, "exclusions": exclusions,
         "stage_gate": "passed_screen_only" if passed else "not_passed_or_inconclusive",
-        "gate_note": "All four controls must pass conservative missing-data and group-bootstrap bounds; no Elo implication.",
+        "gate_note": "Must beat all four allocation controls and retaining cheap labels under conservative missing-data and group-bootstrap bounds; no Elo implication.",
         "actual_consumed_nodes": None,
         "research_charged_nodes": sum(label["result"]["charged_nodes"] for label in labels),
         "counterfactual_policy_charged_nodes": sum(root["split"] == "test" for root in roots) * config.cheap + count * config.replacement,
+        "no_replacement_charged_nodes": sum(root["split"] == "test" for root in roots) * config.cheap,
         "candidate_domain_only_charged_nodes": len(candidates) * config.cheap + count * config.replacement,
-        "accounting_note": "Counterfactual total includes screening every test root, including cheap non-cp roots; research total includes all probes and audits.",
+        "accounting_note": "Counterfactual total includes screening every test root, including cheap non-cp roots; research total includes all probes and audits. Retention is a lower-cost reference, not a cost-matched allocation policy.",
         "utility_rows": rows}
 
 def main(argv=None):

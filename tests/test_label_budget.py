@@ -107,7 +107,7 @@ def dataset():
         if item["split"] == "test":
             s2 = s0 if index % 3 == 0 else s0 + delta + 10
             labels.append({"id": item["id"], "tier": "audit", "result": result(s2, cfg.audit)})
-    return {"schema": lb.SCHEMA, "status": "complete", "config": asdict(cfg),
+    return {"schema": lb.SCHEMA, "protocol": lb.PROTOCOL, "status": "complete", "config": asdict(cfg),
             "engine_sha256": "fixture-only", "analysis_script_sha256": lb.file_hash(SCRIPT), "roots": roots}, labels
 
 class ParsingAndGroups(unittest.TestCase):
@@ -237,21 +237,62 @@ class OfflineAnalysis(unittest.TestCase):
         self.assertEqual(report["research_charged_nodes"], sum(label["result"]["charged_nodes"] for label in labels))
         self.assertIsNone(report["elo_claim"])
 
-    def test_audit_changes_never_change_training_or_selection(self):
+    def test_heldout_labels_never_change_training_or_selection(self):
         manifest, labels = dataset()
         first = lb.analyze_data(manifest, labels)
-        changed = copy.deepcopy(labels)
         selected = first["policies"]["learned"]["selected_ids"][0]
-        for label in changed:
-            if label["tier"] == "audit":
-                label["result"] = result(500, lb.Config().audit, mate=label["id"] == selected)
-        second = lb.analyze_data(manifest, changed)
-        self.assertEqual(first["selector"], second["selector"])
-        for name in first["policies"]:
-            self.assertEqual(first["policies"][name]["selected_ids"], second["policies"][name]["selected_ids"])
-        self.assertEqual(first["counterfactual_policy_charged_nodes"], second["counterfactual_policy_charged_nodes"])
-        self.assertLess(second["counts"]["auditable_test"], first["counts"]["auditable_test"])
-        self.assertGreater(second["comparisons"]["uniform_expected"]["missing_coefficient_mass"], 0)
+        heldout = {r["id"] for r in manifest["roots"] if r["split"] == "test"}
+        for tier in ("replacement", "audit"):
+            with self.subTest(tier=tier):
+                changed = copy.deepcopy(labels)
+                for label in changed:
+                    if label["tier"] == tier and label["id"] in heldout:
+                        label["result"] = result(500, getattr(lb.Config(), tier), mate=label["id"] == selected)
+                second = lb.analyze_data(manifest, changed)
+                self.assertEqual(first["selector"], second["selector"])
+                self.assertEqual(first["context_only_selector"], second["context_only_selector"])
+                for name in first["policies"]:
+                    self.assertEqual(first["policies"][name]["selected_ids"], second["policies"][name]["selected_ids"])
+                self.assertEqual(first["counterfactual_policy_charged_nodes"], second["counterfactual_policy_charged_nodes"])
+                self.assertLess(second["counts"]["auditable_test"], first["counts"]["auditable_test"])
+                for control in ("uniform_expected", "no_replacement"):
+                    self.assertGreater(second["comparisons"][control]["missing_coefficient_mass"], 0)
+
+    def test_less_harmful_than_other_selectors_cannot_pass(self):
+        # Adversarial synthetic evidence, not a claim about engine behavior.
+        manifest, labels = dataset()
+        manifest["config"]["bootstrap"] = 1000
+        for label in labels:
+            index = int(label["id"][1:])
+            switches, drift = index % 3, 1 + (index * 7) % 19
+            if label["tier"] == "cheap":
+                label["result"] = result(0, lb.Config().cheap, drift)
+                moves = (("e2e4", "e2e4", "e2e4"), ("e2e4", "d2d4", "d2d4"),
+                         ("e2e4", "d2d4", "e2e4"))[switches]
+                for info, move in zip(label["result"]["infos"], moves):
+                    info["pv"] = [move]
+            else:
+                label["result"] = result(20 + 100 * switches, getattr(lb.Config(), label["tier"]))
+        initial = lb.analyze_data(manifest, labels)
+        learned = set(initial["policies"]["learned"]["selected_ids"])
+        heldout = {r["id"] for r in manifest["roots"] if r["split"] == "test"}
+        for label in labels:
+            if label["id"] in heldout and label["tier"] in ("replacement", "audit"):
+                value = 0 if label["tier"] == "audit" else 1 if label["id"] in learned else 400
+                label["result"] = result(value, getattr(lb.Config(), label["tier"]))
+        report = lb.analyze_data(manifest, labels)
+        self.assertGreaterEqual(report["counts"]["test_groups"], lb.Config().minimum_test_groups)
+        self.assertTrue(all(row["utility"] < 0 for row in report["utility_rows"]))
+        for name in ("uniform_expected", "raw_volatility", "bounded_volatility", "context_only"):
+            self.assertGreater(report["comparisons"][name]["worst_case_missing_interval"][0], 0)
+            self.assertGreater(report["comparisons"][name]["sensitivity_group_bootstrap_95"][0], 0)
+        self.assertLess(report["comparisons"]["no_replacement"]["worst_case_missing_interval"][1], 0)
+        self.assertEqual(report["stage_gate"], "not_passed_or_inconclusive")
+        self.assertEqual(report["policies"]["no_replacement"]["selected_count"], 0)
+        self.assertEqual(report["no_replacement_charged_nodes"], len(heldout) * lb.Config().cheap)
+        self.assertEqual(report["research_charged_nodes"], sum(l["result"]["charged_nodes"] for l in labels))
+        self.assertEqual(initial["selector"], report["selector"])
+        self.assertEqual(learned, set(report["policies"]["learned"]["selected_ids"]))
 
     def test_missing_data_worst_case_uses_all_root_denominator(self):
         rows = [{"id": "a", "group": "a", "utility": 0.2},
@@ -261,10 +302,14 @@ class OfflineAnalysis(unittest.TestCase):
         self.assertAlmostEqual(answer["missing_coefficient_mass"], 0.5)
         self.assertAlmostEqual(answer["worst_case_missing_interval"][0], -0.4)
 
-    def test_changed_analysis_source_is_rejected(self):
+    def test_changed_analysis_source_or_protocol_is_rejected(self):
         manifest, labels = dataset()
         manifest["analysis_script_sha256"] = "wrong"
         with self.assertRaisesRegex(ValueError, "preregistered"):
+            lb.analyze_data(manifest, labels)
+        manifest, labels = dataset()
+        manifest["protocol"] = "earlier-protocol"
+        with self.assertRaisesRegex(ValueError, "protocol"):
             lb.analyze_data(manifest, labels)
 
     def test_excluded_cheap_roots_still_cost_screening(self):
