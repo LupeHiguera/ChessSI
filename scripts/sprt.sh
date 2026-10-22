@@ -9,12 +9,16 @@
 #   ALPHA=0.05 BETA=0.05  SPRT error rates (false pass, false fail)
 #   ROUNDS=100000    maximum game pairs before stopping undecided
 #   CONCURRENCY=N    games in parallel (default: cores - 2)
+#   CPUS=list        run everything on these cores only, e.g. CPUS=0-13 (see "Sharing the PC" in AGENTS.md)
 #   BOOK=path        EPD opening book (default: books/UHO_Lichess_4852_v1.epd)
 #   FASTCHESS=path   fastchess binary (default: fastchess on PATH)
 #
 # Decided games end early to save CPU: a resign when both engines agree one side is 4+ pawns up for
 # 3 moves, a draw from move 40 when both report a score within 0.1 pawns for 8 moves.
 set -euo pipefail
+if [ -n "${CPUS:-}" ] && [ -z "${SPRT_PINNED:-}" ]; then
+    SPRT_PINNED=1 exec taskset -c "$CPUS" "$0" "$@"
+fi
 cd "$(dirname "$0")/.."
 
 BASE_REF=${1:-HEAD}
@@ -45,7 +49,7 @@ make -s -C engines/base-src EXE="$PWD/engines/base"
 
 echo "new  ($(git rev-parse --short HEAD)+working tree): bench $(engines/new bench | tail -1 | cut -d' ' -f1)"
 echo "base ($BASE_REF): bench $(engines/base bench | tail -1 | cut -d' ' -f1)"
-echo "SPRT [$ELO0, $ELO1] alpha $ALPHA beta $BETA at $TC, $CONCURRENCY games in parallel, at most $ROUNDS pairs"
+echo "SPRT [$ELO0, $ELO1] alpha $ALPHA beta $BETA at $TC, $CONCURRENCY games in parallel${CPUS:+ on cores $CPUS}, at most $ROUNDS pairs"
 
 "$FASTCHESS" \
     -engine cmd=engines/new name=new \

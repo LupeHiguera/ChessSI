@@ -65,7 +65,47 @@ check that a binary matches its source.
 
 - Never claim an Elo gain without an SPRT result. One game, or a handful, proves nothing.
 - Never commit with `make test` failing.
-- Keep each test on one machine and one core type (P-cores vs E-cores, Apple vs Intel).
+- Keep each test on one machine and, where the OS allows, one core type (P-cores vs E-cores, Apple vs
+  Intel). Under WSL, Windows moves engines between core types anyway, so record the concurrency used.
 - Don't change the bench positions or depth without saying so in the commit; it resets the signature.
 - Keep the search single-threaded until the roadmap calls for more. `Threads` exists only for OpenBench.
 - Prefer measured simplicity: if removing code passes a `[-5, 0]` test, remove it.
+
+## Sharing the PC
+
+Several agents (Claude Code, Astra) may work on the 265K at once. It has 20 cores and plenty of RAM,
+so the rules are about not disturbing each other's tests, not about scarcity.
+
+**Each agent has its own folder and branch.** `scripts/sprt.sh` builds the "new" engine from the
+working tree it runs in, so an edit saved into another agent's folder silently changes that agent's
+test. Never edit files in another agent's folder.
+
+| Agent | Folder | Branch prefix |
+| --- | --- | --- |
+| Claude Code | `ChessSI` | `claude/` |
+| Astra | `ChessSI-astra` (a git worktree of the same repo) | `astra/` |
+
+Accepted changes reach `main` through pull requests. Rebase onto `main` before starting a new test,
+so every SPRT runs against the latest accepted engine.
+
+**Cores are split, not shared.** Run tests inside WSL Ubuntu, pinned to your own cores with `CPUS`:
+
+| Agent | Cores | Test command |
+| --- | --- | --- |
+| Claude Code | 0-13 | `CPUS=0-13 CONCURRENCY=13 scripts/sprt.sh` |
+| Astra | 14-19 | `CPUS=14-19 CONCURRENCY=5 scripts/sprt.sh` |
+
+Builds and other work count against your share too (`taskset -c 14-19 make -j6`, for example). If you
+work outside WSL, keep the same total: at most 6 busy cores for Astra. When an agent has nothing
+running, the other may borrow its cores for one test, but must say so in the log row's Games cell
+(for example "1,240 (18 concurrent)").
+
+**One idea per agent at a time.** Claim an idea before starting it by writing your name next to it in
+the queue in `docs/IDEAS.md`, so two agents never test the same thing. Novel ideas are open to
+everyone; claim them the same way.
+
+**The log is shared.** Add rows only for your own tests, with your own model name, and keep them in
+date order when merging.
+
+The opening book and fastchess are shared and read-only: use `BOOK=` to point at another folder's
+`books/` rather than downloading a second copy.
