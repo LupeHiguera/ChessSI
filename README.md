@@ -28,4 +28,5 @@ make test         # move generation correctness
 - [AGENTS.md](AGENTS.md): how AI agents work on this repo (commands, layout, the test-and-log loop)
 - [docs/PLAN.md](docs/PLAN.md): goals, roadmap, hardware, testing method
 - [docs/IDEAS.md](docs/IDEAS.md): the benchmark log and the queue of ideas to try
+- [docs/RESEARCH_WORKFLOW.md](docs/RESEARCH_WORKFLOW.md): turning ideas into controlled, reproducible research
 - [docs/SETUP.md](docs/SETUP.md): setting up a machine to build, test and play
