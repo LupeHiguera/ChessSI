@@ -396,3 +396,26 @@ When the static threshold qualifies, verify that a legal move exists before retu
 Validate root move output, checked and pawn-only exclusions, mate-band windows, the two stalemates and their escape controls, full state restoration, perft, and stop behavior. Record the changed bench signature. Run the prescribed independent `[0,5]` SPRT at `10+0.1`; confirm a pass at `60+0.6`. These fixtures constrain correctness and interpretation, not an expected Elo gain. If the accepted baseline or ownership changes before implementation, revise and record the plan before gathering candidate results.
 
 Evidence is preserved in `engines/qsearch-validation/rfp-boundary-audit-01/`, including the plan written before probes, independent legal lists, all sixteen UCI transcripts, non-root outputs and result summary. Reproduce with `engines/qsearch-validation/audit_rfp_boundaries.py`, SHA-256 `ecb489a882b062e2c98dbfc9f259ab2effbf88b9b4a6f4ddabb93b4a91d84480`. GPT-6 (Codex) designed and ran this read-only audit on CPU 19; source, live binaries and match rules remained unchanged.
+
+## Prospective stability features on saved development traces
+
+A follow-up on 2026-10-22 corrected the timing of the uncertainty question. At a completed depth d, use only score movement and first-PV-move change from d-gap to d. The outcome is a later move change from d to d+gap. Adjacent iterations use gap one; gap two keeps both comparisons on the same depth parity. Only exact-CP iterations with nonempty PVs are eligible. The feature function receives the two already completed records, not the future record.
+
+The plan and fixed score/depth bins were written before this enumeration. All inputs are the previously used 128 development traces, so this is exploratory reuse rather than a new untouched validation set. No engine search, fitted model, pilot label or match game was added.
+
+| Gap | Eligible future transitions | Future move changes | After previously stable move | After previous move change | Prior absolute score-movement AUC | Prior move-change AUC |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 470 | 136 | 62 / 315 (19.7%) | 74 / 155 (47.7%) | 0.522 | 0.651 |
+| 2 | 214 | 67 | 31 / 126 (24.6%) | 36 / 88 (40.9%) | 0.463 | 0.592 |
+
+AUC here is a descriptive ranking statistic on these transitions, with ties worth one half; it is not prediction accuracy, an independent validation result or a quality metric. No predictor was fitted. Adjacent transitions cover 128 roots, 118 games and 101 openings; same-parity transitions cover 105 roots, 97 games and 85 openings.
+
+For adjacent iterations, the later move-change rate was 76/266 (28.6%) after prior score movement of at most 10 cp and 58/195 (29.7%) after movement of 11-99 cp. Only nine transitions had prior movement of at least 100 cp, so their 2/9 outcome is particularly sparse. A large previous score swing is not established as a useful standalone ranking signal in this sample. Do not invert or retune thresholds based on these observed outcomes and then call the same records a test set.
+
+Depth is a substantial confound: adjacent future-change rates were 93/256 at current depths 2-3, 38/155 at depths 4-5, and 5/59 at depth 6 or above. Within the first two predeclared depth bins, the previous-move-change distinction remained visible: 40/156 versus 53/100 at depths 2-3, and 19/110 versus 19/45 at depths 4-5. These are descriptive strata, not a causal adjustment; observations overlap within roots and games, and no independent-sample confidence interval is asserted.
+
+There were 126 otherwise eligible adjacent records and 252 same-parity records without an observed future iteration. Their future move changes are unknown and were not labeled stable. Additional non-CP/bound/PV exclusions are counted in the artifact. Consequently, these rates are conditional on the later iteration completing within the original node-capped run. They do not estimate completion probability under a deadline, the value of an unfinished iteration, or the benefit of additional computation.
+
+The practical implication is to retain strong depth/cost and move-stability controls in the future allocation study. A learned uncertainty feature needs to improve on those controls using fresh grouped data and the separately specified signed decision-utility target. A move change can be harmful, and a stable move can remain wrong. No time-management rule is implemented or promoted from this audit.
+
+Evidence is in `engines/qsearch-validation/prospective-stability-01/`, including the plan, every event, all joint strata, exclusions and summaries. Reproduce with `engines/qsearch-validation/analyze_prospective_stability.py`, SHA-256 `df31c34a1f7d03ae8f81f596a0644cbc1034f5be64ab45dc0910114a1b64aacd`. The input trace hash remains `93fecc4eaa42d5dc590723517fb7be39e3c27ff9fb58b83eb81e4f2aefc7f79f`. GPT-6 (Codex) ran the analysis on CPU 19.
