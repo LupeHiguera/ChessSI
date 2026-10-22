@@ -24,13 +24,14 @@ What to watch over time:
 
 ## Queue
 
-Known techniques, roughly in order of expected gain for this baseline. Each is one experiment. Take the
+Known techniques, roughly in order of expected gain for this baseline. Each is one experiment. An
+*italic name* marks an idea claimed by that agent (see "Sharing the PC" in `AGENTS.md`). Take the
 top one, test it, log it, then move on.
 
-1. Killer moves (two quiet moves per ply that caused a beta cutoff)
-2. History heuristic for quiet move ordering
-3. Null-move pruning
-4. Late move reductions
+1. Killer moves (two quiet moves per ply that caused a beta cutoff) - *Claude Code*
+2. History heuristic for quiet move ordering - *Claude Code*
+3. Null-move pruning - *Claude Code*
+4. Late move reductions - *Claude Code*
 5. Reverse futility pruning (static null move)
 6. Aspiration windows
 7. Late move pruning and futility pruning
