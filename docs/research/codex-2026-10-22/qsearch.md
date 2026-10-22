@@ -95,3 +95,24 @@ At 2026-10-22 06:48 UTC, a validated local guard was attached to manager PID `30
 If the manager finishes first, the guard archives the terminal artifacts without sending a signal. Otherwise it verifies process identity, requests SIGINT at the deadline, waits up to 60 seconds for termination, and captures either a terminal or explicitly live snapshot. It neither resumes the test nor decides its statistical verdict. State and archives are under `engines/qsearch-validation/live-watch-01/`; the guard's output is `engines/qsearch-validation/live-watch-01.log`.
 
 Before changing the binaries, PGN, configuration or source for a subsequent experiment, inspect this guard's final state and archive. An interrupted run without a completed SPRT decision is Inconclusive. See the lifecycle and resume fixtures in [testing research](testing.md) for the measured difference between completed PGN games and persisted paired-game counts.
+## Prepared implementation variant: reuse known check status
+
+The cost diagnostic motivated one isolated implementation variant of idea 9. It passes the existing `inCheck` value from normal search into quiescence, and computes child check status after each legal recursive quiescence move. It does not assume that normal-search entry is always unchecked. The live candidate source and match binaries were retained unchanged.
+
+The plan was written before building or timing the variant. The first diagnostic build put the replacement translation unit last in the compiler command. Its correctness checks passed, but the link order could confound a small timing comparison. That build remains in `known-check-01/`; it was not used for the paired speed result. The controlled build in `known-check-02/` restored the original source order. A parent rebuild using that procedure was byte-identical to the live candidate, SHA-256 `17415917fc9c0ddd8afd4df57b121a5eade929f7d2418b9269fab69e901d1563`.
+
+The controlled variant passed all eight quiescence regressions, all 35 perft cases, and the eight-case ASan/UBSan run. Its bench remained `22824107`. A UCI comparison with fresh TT state for each of the 14 original benchmark positions found identical scores, bounds, PVs, best moves and node counts at every completed iteration through depth seven. This establishes agreement on those searches, not a universal proof of equivalence.
+
+Six alternating parent/variant timing pairs, following one warm-up per binary, ran on CPU 19 while the original match continued. Median search times were 2,559.5 ms for the parent and 2,525.0 ms for the variant, a 1.35% reduction. Median throughput was 8,913,953 and 9,035,694 nodes/second respectively. Individual paired speed ratios ranged from 0.9635 to 1.0353, including one tie. The small central difference is within the observed timing variation; no confirmed speedup or Elo gain is claimed. Reusing the query did not recover most of the previously measured overall cost.
+
+The prepared variant is not promoted and has no strength-test result. If revisited, test the complete candidate against the then-current accepted baseline and retain this attempt separately. Do not substitute its binary into the running match.
+
+| Artifact | Identity |
+| --- | --- |
+| Variant source SHA-256 | `fc5ece9eaa9c9d5f1d418c1812b629e2da5eb58e06ca037cd7874bf09fc8eec3` |
+| Controlled variant binary SHA-256 | `fd5d3452be76e1bf2e1d448e03ab18aa959b14a285c9dc7f0c0d2043501e6f57` |
+| Parent-relative patch | `engines/qsearch-validation/known-check-02/candidate-relative.patch` |
+| Build, test and sanitizer records | `engines/qsearch-validation/known-check-02/` |
+| Per-position transcripts and raw timings | `engines/qsearch-validation/known-check-02/equivalence-timing/` |
+
+Reproduction scripts are `prepare_known_check_01.py` (initial build), `prepare_known_check.py` (controlled build), and `check_known_check.py` under `engines/qsearch-validation/`. Builds used `taskset -c 14-19 make -j6` with the compiler itself pinned to spare CPU 19. A small WSL filesystem clock-skew warning appeared in the first build; explicit phony targets executed the compiler, and fresh exclusive output directories prevented stale binary reuse.
