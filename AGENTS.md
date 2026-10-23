@@ -76,8 +76,11 @@ check that a binary matches its source.
 - Keep the search single-threaded until the roadmap calls for more. `Threads` exists only for OpenBench.
 - Prefer measured simplicity: if removing code passes a `[-5, 0]` test, remove it.
 - Networks are trained only on ChessSI's own games and searches: no external datasets, networks or
-  engine evaluations. A new network is tested like any other change, by SPRT against the current
-  default, and gets an entry in `nets/README.md` (data, training command, result).
+  engine evaluations. Games ChessSI plays against other engines count, but only its own side of
+  them: positions where ChessSI is to move, labelled with its own search score and the game result.
+  The opponent's evaluations are never used (owner's decision, 2026-10-23). A new network is tested
+  like any other change, by SPRT against the current default, and gets an entry in `nets/README.md`
+  (data, training command, result).
 
 ## Sharing the PC
 
