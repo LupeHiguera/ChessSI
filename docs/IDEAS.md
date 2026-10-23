@@ -26,6 +26,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-22 | Claude Opus 5.5 | Known | Futility pruning (non-PV, depth <= 6, skip quiets when eval + 120 × depth <= alpha) | Passed | +43.3 ± 13.4 | 1,210 (13 concurrent) | Inconclusive at 600-game cap, +33.7 ± 19.5 |
 | 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (depth <= 3, margin 150 × depth), retest on top of futility pruning; run by Claude Code | Passed | +31.4 ± 11.6 | 1,730 (4 concurrent, 4-core cloud container, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), against 684badc, before reverse futility pruning | Inconclusive (stopped when the PC was needed, LLR 2.48 of 2.94) | +6.0 ± 4.7 | 9,398 (13 concurrent) | Inconclusive at 600-game cap, +30.8 ± 20.9 |
+| 2026-10-22 | Claude Opus 5.5 | Known | First NNUE network vs PeSTO: (768 → 256) × 2, SCReLU, 2.5M positions from our SPRT games (net1) | Inconclusive (stopped for net4, trained on 7× the data; LLR 0.84) | +47.8 ± 29.3 | 380 (5 concurrent, cores 8-13) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
