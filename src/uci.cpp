@@ -1,12 +1,14 @@
 #include "uci.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 #include <mutex>
 #include <sstream>
 #include <thread>
 #include <vector>
 
+#include "datagen.h"
 #include "eval.h"
 #include "movegen.h"
 #include "perft.h"
@@ -142,6 +144,16 @@ int UCI::loop(int argc, char* argv[]) {
         std::string cmd = argv[1];
         if (cmd == "bench") {
             bench(argc > 2 ? std::atoi(argv[2]) : BenchDepth);
+            return 0;
+        }
+        if (cmd == "datagen") {
+            // chesssi datagen <out-file> <games> <seed> [nodes] [random-plies]
+            if (argc < 5) {
+                std::cerr << "usage: chesssi datagen <out-file> <games> <seed> [nodes=5000] [random-plies=8]" << std::endl;
+                return 1;
+            }
+            Datagen::run(argv[2], std::atoi(argv[3]), std::strtoull(argv[4], nullptr, 10),
+                         argc > 5 ? std::strtoull(argv[5], nullptr, 10) : 5000, argc > 6 ? std::atoi(argv[6]) : 8);
             return 0;
         }
         if (cmd == "perftsuite") {

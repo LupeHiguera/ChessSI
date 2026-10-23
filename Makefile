@@ -38,7 +38,7 @@ test: $(EXE) $(EXE)-rfp-tests
 
 # Search boundaries for the shallow reverse futility trial.
 $(EXE)-rfp-tests: tests/rfp.cpp $(SRCS) $(HDRS)
-	$(CXX) $(CXXFLAGS) tests/rfp.cpp $(filter-out src/main.cpp src/uci.cpp src/search.cpp,$(SRCS)) -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) tests/rfp.cpp $(filter-out src/main.cpp src/uci.cpp src/search.cpp src/datagen.cpp,$(SRCS)) -o $@ $(LDFLAGS)
 
 test-rfp: $(EXE)-rfp-tests
 	./$(EXE)-rfp-tests
