@@ -148,6 +148,16 @@ Known and note where it was found. Proposals:
   for NNUE: nnue-pytorch, bullet, the chessprogramming wiki and TalkChess were searched on 2026-10-23
   (Discord, where much NNUE work is discussed, could not be).
   Needs no new data: games are contiguous in the datagen files.
+- **Policy auxiliary head (transplant).** *Claude Code, branch `claude/policy-aux`.* A second
+  training-only head on the accumulator, predicting the from and to squares of the move played
+  (cross-entropy), dropped at export like the value head. Datagen plays the search's best move, so
+  the move is the difference between a recorded position and the next ply's; 79% of positions have
+  one. The idea follows from the ablation above: an extra target with real signal helps the shared
+  layer, and a move choice says more per position than one scalar. Prior art: AlphaZero trains
+  policy and value on one trunk, and [dshawul's nn-train](https://github.com/dshawul/nn-train)
+  trains value, policy and score heads together, but in both the policy is used at inference.
+  [Lc0's transformer](https://arxiv.org/abs/2409.12272) adds auxiliary future-move targets. Not
+  found as a training-only signal for an alpha-beta NNUE (web and TalkChess searched 2026-10-23).
 - **Playout-cap randomization in datagen (transplant).** Most moves get a cheap unrecorded search and
   some get a deeper recorded one, so CPU goes to fewer, better-labelled, less correlated positions.
   From KataGo; in chess only node-count jitter was found. Test at equal CPU: two datasets, one SPRT.
