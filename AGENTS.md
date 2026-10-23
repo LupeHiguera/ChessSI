@@ -26,7 +26,11 @@ The engine speaks UCI on stdin. Extra commands: `perft <depth>`, `d` (show board
 | `src/bitboard.*` | Attack tables, magic bitboards (found at startup with a fixed seed) |
 | `src/position.*` | Board, FEN, `do_move`/`undo_move`, Zobrist keys, draw detection |
 | `src/movegen.*` | Pseudo-legal move generation; `do_move` returns false for illegal moves |
-| `src/eval.*` | PeSTO tapered piece-square tables (placeholder until NNUE) |
+| `src/eval.*` | Evaluation entry point; PeSTO tables when no network is loaded |
+| `src/nnue.*` | NNUE inference; `Position` keeps incrementally updated accumulators |
+| `src/datagen.*` | Self-play training data (`chesssi datagen`) |
+| `nnue/` | PyTorch trainer and inference check (`train.py`, `check_inference.py`) |
+| `nets/` | Networks; the Makefile's `EVALFILE` picks the default, `nets/README.md` logs each one |
 | `src/search.*` | Iterative deepening, PVS, TT, check extension, quiescence, time management |
 | `src/tt.*` | Transposition table |
 | `src/uci.*` | UCI loop, `bench`, `perftsuite` |
@@ -71,6 +75,9 @@ check that a binary matches its source.
 - Don't change the bench positions or depth without saying so in the commit; it resets the signature.
 - Keep the search single-threaded until the roadmap calls for more. `Threads` exists only for OpenBench.
 - Prefer measured simplicity: if removing code passes a `[-5, 0]` test, remove it.
+- Networks are trained only on ChessSI's own games and searches: no external datasets, networks or
+  engine evaluations. A new network is tested like any other change, by SPRT against the current
+  default, and gets an entry in `nets/README.md` (data, training command, result).
 
 ## Sharing the PC
 
