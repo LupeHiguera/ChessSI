@@ -104,9 +104,10 @@ def parse_lines(lines):
     return out, bad
 
 
-def load_file(path, cache_dir):
+def load_file(path, cache_dir, frozen=False):
     """Raw arrays for one file. With cache_dir, each parsed byte range is kept as an .npz and only
-    lines appended since the last run are parsed (datagen files grow while it runs)."""
+    lines appended since the last run are parsed (datagen files grow while it runs). frozen: use
+    only what is cached, so runs compared with each other see the same data."""
     chunks, start = [], 0
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
@@ -115,6 +116,8 @@ def load_file(path, cache_dir):
             z = np.load(f"{stem}.{start}.npz")
             chunks.append({k: z[k] for k in FIELDS})
             start = int(z["end"])
+    if frozen and chunks:
+        return {k: np.concatenate([c[k] for c in chunks]) for k in FIELDS}
     with open(path, "rb") as f:
         f.seek(start)
         data = f.read()
@@ -129,7 +132,7 @@ def load_file(path, cache_dir):
     return {k: np.concatenate([c[k] for c in chunks]) for k in FIELDS} if chunks else None
 
 
-def load(paths, cache_dir=None, future_plies=8):
+def load(paths, cache_dir=None, future_plies=8, frozen=False):
     """Unique positions from datagen text files: White-perspective features int16[n, 32] padded
     with PAD, side to move (1 for White), White-relative score and result, a game number, and the
     White-relative win probability `future_plies` later in the same game (the game result if it
@@ -137,7 +140,7 @@ def load(paths, cache_dir=None, future_plies=8):
     the result changes."""
     parts, game_base = [], 0
     for path in paths:
-        d = load_file(path, cache_dir)
+        d = load_file(path, cache_dir, frozen)
         if d is None:
             continue
         n = len(d["ply"])
@@ -215,6 +218,7 @@ def main():
     ap.add_argument("--lambda", dest="lam", type=float, default=0.75)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--cache-dir", default=None, help="keeps parsed data per file; later runs parse only new lines")
+    ap.add_argument("--frozen", action="store_true", help="use only already-cached data (see --cache-dir)")
     ap.add_argument("--aux-weight", type=float, default=0.0, help="weight of the auxiliary future-outcome loss")
     ap.add_argument("--future-plies", type=int, default=8)
     ap.add_argument("--gpu-data-gb", type=float, default=6.0, help="above this, positions stay in host RAM")
@@ -223,7 +227,7 @@ def main():
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     t0 = time.time()
-    d = load(args.data, args.cache_dir, args.future_plies)
+    d = load(args.data, args.cache_dir, args.future_plies, args.frozen)
     n = len(d["scores"])
     # Validation holds whole games, so no game has positions on both sides of the split.
     games = np.unique(d["game"])
