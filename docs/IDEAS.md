@@ -39,6 +39,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known | Improving flag in LMR: one more ply of reduction when the static eval is not above its value two plies earlier | Inconclusive (stopped to free cores, LLR 0.32) | +6.7 ± 13.9 | 940 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +7.0 ± 17.7 |
 | 2026-10-23 | Claude Opus 5.5 | Novel | Policy auxiliary head: a training-only head predicting the played move's from and to squares, on net7's recipe and data | Failed (validation loss, no SPRT) | Not run | 0 (validation only: worse than no head at every weight tried) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | net7's recipe with `--lambda 0.6` (more game result in the target), same data and seed, vs net7 | Inconclusive (stopped to free cores for datagen, LLR 0.01) | +1.8 ± 13.4 | 1,160 (4 concurrent, cores 6-9) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | Eight material output buckets (by piece count), net7's recipe and data, vs net7 in one binary (`claude/output-buckets`) | Inconclusive (stopped to free cores, LLR −0.15) | −0.7 ± 14.7 | 1,002 (4 concurrent, cores 0-3) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -119,8 +120,14 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
 - Game-result weight 0.25 → 0.4 (`--lambda 0.6`); filter early plies and score/result contradictions
 - Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes
 - Validation split by game, not by position (same-game positions make validation loss optimistic)
-- Material output buckets (*Claude Code*, branch `claude/output-buckets`); horizontal mirroring; king
-  buckets only past ~1B positions
+- Material output buckets (*Claude Code*: level with net7 at 64.6M positions, −0.7 ± 14.7; code on
+  branch `claude/output-buckets`, worth retrying with more data); horizontal mirroring; king buckets
+  only past ~1B positions
+- **Labelled experiment: games against other engines as data** (*Claude Code*; the owner keeps it to
+  one experiment, off the main line). ChessSI at 5,000 nodes plays Stash 25-36 at 12,500 nodes,
+  scoring 48.7% over 42,000 games. Only ChessSI's side is kept, with its own scores (see AGENTS.md):
+  1.6M positions from the first run, about 3.2M after the second. Test: net9 with and without that
+  data, otherwise identical, by SPRT. Networks that include it are marked in `nets/README.md`.
 - Second generation: data from the NNUE engine itself
 
 ## Novel ideas
