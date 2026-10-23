@@ -12,6 +12,8 @@ result, both from the side to move: target = lambda * score + (1 - lambda) * res
 --aux-weight, a second head (training only, not exported) also learns the win probability
 --future-plies later in the game. With --policy-weight, a third training-only head learns the
 from and to squares of the move played (cross-entropy), where the next recorded position shows it.
+With --teacher <net.nnue>, a training-only head learns that network's evaluation of each position
+(self-distillation from an earlier ChessSI network), weighted by --teacher-weight.
 
 Export (little-endian, see src/nnue.cpp): magic "CSNN", hidden size (int32), feature weights
 int16[768][H] and biases int16[H] scaled by QA, output weights int16[2H] scaled by QB, output bias
@@ -204,8 +206,34 @@ def played_moves(d, chunk=1 << 18):
     return pfrom, pto
 
 
+def teacher_predictions(path, inputs, n, dev, chunk=1 << 18):
+    """Win probability, from the side to move's view, that an exported one-bucket network gives
+    each of the n positions (`inputs` maps position indices to feature tensors, as in main). The
+    weights are dequantised back to floats, so this matches the engine's eval up to rounding."""
+    with open(path, "rb") as f:
+        assert f.read(4) == b"CSNN", "the teacher must be a one-bucket (CSNN) network"
+        (h,) = struct.unpack("<i", f.read(4))
+        ft_w = np.frombuffer(f.read(PAD * h * 2), dtype="<i2").reshape(PAD, h)
+        ft_b = np.frombuffer(f.read(h * 2), dtype="<i2")
+        out_w = np.frombuffer(f.read(2 * h * 2), dtype="<i2")
+        (out_b,) = struct.unpack("<i", f.read(4))
+    w = torch.zeros(PAD + 1, h, device=dev)  # the PAD row stays zero
+    w[:PAD] = torch.from_numpy(ft_w.astype(np.float32)).to(dev) / QA
+    b = torch.from_numpy(ft_b.astype(np.float32)).to(dev) / QA
+    ow = torch.from_numpy(out_w.astype(np.float32)).to(dev) / QB
+    out = torch.empty(n, device=dev)
+    with torch.no_grad():
+        for s in range(0, n, chunk):
+            idx = torch.arange(s, min(s + chunk, n), device=dev)
+            stm, nstm = inputs(idx)[:2]
+            a = torch.clamp(torch.nn.functional.embedding_bag(stm, w, mode="sum") + b, 0, 1) ** 2
+            c = torch.clamp(torch.nn.functional.embedding_bag(nstm, w, mode="sum") + b, 0, 1) ** 2
+            out[s:s + len(idx)] = torch.sigmoid(a @ ow[:h] + c @ ow[h:] + out_b / (QA * QB))
+    return out
+
+
 class Net(torch.nn.Module):
-    def __init__(self, hidden, aux=False, policy=False):
+    def __init__(self, hidden, aux=False, policy=False, teacher=False):
         super().__init__()
         self.ft = torch.nn.EmbeddingBag(PAD + 1, hidden, mode="sum", padding_idx=PAD)
         self.ft_bias = torch.nn.Parameter(torch.zeros(hidden))
@@ -219,13 +247,18 @@ class Net(torch.nn.Module):
         with torch.no_grad():
             self.ft.weight.uniform_(-0.05, 0.05)
             self.ft.weight[PAD].zero_()
+        # Teacher head, also training only: predicts an earlier network's evaluation. Made after
+        # the first layer's initialisation, so a run with a teacher starts from the same weights
+        # as one without.
+        self.teach = torch.nn.Linear(2 * hidden, 1) if teacher else None
 
     def forward(self, stm, nstm):
         a = torch.clamp(self.ft(stm) + self.ft_bias, 0, 1) ** 2
         b = torch.clamp(self.ft(nstm) + self.ft_bias, 0, 1) ** 2
         x = torch.cat([a, b], dim=1)
         return (self.out(x).squeeze(1), self.aux(x).squeeze(1) if self.aux is not None else None,
-                self.policy(x) if self.policy is not None else None)
+                self.policy(x) if self.policy is not None else None,
+                self.teach(x).squeeze(1) if self.teach is not None else None)
 
     def clip(self):
         # Keeps quantised values in range: QA * w and QB * w must fit int16, and the int32
@@ -266,6 +299,8 @@ def main():
     ap.add_argument("--future-plies", type=int, default=8)
     ap.add_argument("--gpu-data-gb", type=float, default=6.0, help="above this, positions stay in host RAM")
     ap.add_argument("--policy-weight", type=float, default=0.0, help="weight of the auxiliary played-move loss")
+    ap.add_argument("--teacher", help="an exported network whose evaluation a training-only head learns")
+    ap.add_argument("--teacher-weight", type=float, default=1.0, help="weight of the teacher loss (with --teacher)")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -308,14 +343,20 @@ def main():
         wt = white_t[idx].unsqueeze(1)
         return torch.where(wt, w, b), torch.where(wt, b, w)
 
-    net = Net(args.hidden, aux=args.aux_weight > 0, policy=args.policy_weight > 0).to(dev)
+    train_t, val_t = torch.from_numpy(train).to(dev), torch.from_numpy(val).to(dev)
+    teacher = args.teacher is not None
+    if teacher:
+        teacher_t = teacher_predictions(args.teacher, inputs, n, dev)
+        tv = torch.mean((teacher_t[val_t] - target[val_t]) ** 2).item()
+        print(f"teacher {os.path.basename(args.teacher)}: validation loss {tv:.5f} on this run's target", flush=True)
+
+    net = Net(args.hidden, aux=args.aux_weight > 0, policy=args.policy_weight > 0, teacher=teacher).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
-    train_t, val_t = torch.from_numpy(train).to(dev), torch.from_numpy(val).to(dev)
     zero = torch.zeros((), device=dev)
 
     def losses(idx):
-        main, aux, pol = net(*inputs(idx))
+        main, aux, pol, teach = net(*inputs(idx))
         main_loss = torch.mean((torch.sigmoid(main) - target[idx]) ** 2)
         aux_loss = torch.mean((torch.sigmoid(aux) - future_t[idx]) ** 2) if aux is not None else zero
         pol_loss = zero
@@ -325,7 +366,8 @@ def main():
             if ok.any():
                 ce = torch.nn.functional.cross_entropy
                 pol_loss = ce(pol[ok, :64], f[ok]) + ce(pol[ok, 64:], t[ok])
-        return main_loss, aux_loss, pol_loss
+        teach_loss = torch.mean((torch.sigmoid(teach) - teacher_t[idx]) ** 2) if teach is not None else zero
+        return main_loss, aux_loss, pol_loss, teach_loss
 
     for epoch in range(1, args.epochs + 1):
         net.train()
@@ -334,23 +376,26 @@ def main():
         for i in range(0, len(order), args.batch):
             idx = order[i:i + args.batch]
             opt.zero_grad()
-            main_loss, aux_loss, pol_loss = losses(idx)
-            (main_loss + args.aux_weight * aux_loss + args.policy_weight * pol_loss).backward()
+            main_loss, aux_loss, pol_loss, teach_loss = losses(idx)
+            (main_loss + args.aux_weight * aux_loss + args.policy_weight * pol_loss
+             + args.teacher_weight * teach_loss).backward()
             opt.step()
             net.clip()
             total += main_loss.item() * len(idx)
         sched.step()
         net.eval()
-        v = va = vp = 0.0
+        v = va = vp = vt = 0.0
         with torch.no_grad():
             for i in range(0, len(val_t), 65536):
                 idx = val_t[i:i + 65536]
-                main_loss, aux_loss, pol_loss = losses(idx)
+                main_loss, aux_loss, pol_loss, teach_loss = losses(idx)
                 v += main_loss.item() * len(idx)
                 va += aux_loss.item() * len(idx)
                 vp += pol_loss.item() * len(idx)
+                vt += teach_loss.item() * len(idx)
         aux_text = f" aux {va / len(val):.5f}" if args.aux_weight > 0 else ""
         aux_text += f" policy {vp / len(val):.3f}" if args.policy_weight > 0 else ""
+        aux_text += f" teacher {vt / len(val):.5f}" if teacher else ""
         print(f"epoch {epoch:3d} train {total / len(train):.5f} val {v / len(val):.5f}{aux_text}  "
               f"({time.time() - t0:.0f}s)", flush=True)
 
