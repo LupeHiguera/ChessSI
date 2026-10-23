@@ -160,16 +160,15 @@ const int16_t* Position::accumulator() const {
     return accStack.data() + accStack.size() - 2 * size_t(accHidden);
 }
 
-// Pushes a copy of the current accumulator for do_move to update, or returns nullptr if there is
-// none (no network, or one loaded after set(), which then evaluates by full refresh).
-int16_t* Position::push_accumulator() {
+// Pushes the next ply's accumulator: the current one with the move's piece changes applied. Does
+// nothing without accumulators (no network, or one loaded after set(): evaluate refreshes then).
+void Position::push_accumulator(const NNUE::Delta& delta) {
     if (!accGeneration)
-        return nullptr;
+        return;
     size_t n = 2 * size_t(accHidden);
     accStack.resize(accStack.size() + n);
     int16_t* acc = accStack.data() + accStack.size() - n;
-    std::copy(acc - n, acc, acc);
-    return acc;
+    NNUE::apply(acc - n, acc, delta);
 }
 
 std::string Position::fen() const {
@@ -236,7 +235,7 @@ bool Position::do_move(Move m) {
     st.captured = NO_PIECE;
     ++st.rule50;
     ++st.pliesFromNull;
-    int16_t* acc = push_accumulator();
+    NNUE::Delta delta;
 
     Color us = stm, them = ~us;
     Square from = from_sq(m), to = to_sq(m);
@@ -255,12 +254,10 @@ bool Position::do_move(Move m) {
         Piece rook = board[rookFrom];
         move_piece(from, to);
         move_piece(rookFrom, rookTo);
-        if (acc) {
-            NNUE::sub(acc, pc, from);
-            NNUE::add(acc, pc, to);
-            NNUE::sub(acc, rook, rookFrom);
-            NNUE::add(acc, rook, rookTo);
-        }
+        delta.sub(pc, from);
+        delta.add(pc, to);
+        delta.sub(rook, rookFrom);
+        delta.add(rook, rookTo);
         st.key ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
         st.key ^= Zobrist::psq[rook][rookFrom] ^ Zobrist::psq[rook][rookTo];
     } else {
@@ -268,18 +265,15 @@ bool Position::do_move(Move m) {
         Piece captured = board[capSq];
         if (captured != NO_PIECE) {
             remove_piece(capSq);
-            if (acc)
-                NNUE::sub(acc, captured, capSq);
+            delta.sub(captured, capSq);
             st.key ^= Zobrist::psq[captured][capSq];
             st.captured = captured;
             st.rule50 = 0;
         }
 
         move_piece(from, to);
-        if (acc) {
-            NNUE::sub(acc, pc, from);
-            NNUE::add(acc, pc, to);
-        }
+        delta.sub(pc, from);
+        delta.add(pc, to);
         st.key ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
 
         if (type_of(pc) == PAWN) {
@@ -288,10 +282,7 @@ bool Position::do_move(Move m) {
                 Piece promo = make_piece(us, promotion_type(m));
                 remove_piece(to);
                 put_piece(promo, to);
-                if (acc) {
-                    NNUE::sub(acc, pc, to);
-                    NNUE::add(acc, promo, to);
-                }
+                delta.addPiece[delta.adds - 1] = promo; // the pawn arrives as the new piece
                 st.key ^= Zobrist::psq[pc][to] ^ Zobrist::psq[promo][to];
             } else if (to - from == 16 || from - to == 16) {
                 Square ep = (from + to) / 2;
@@ -314,6 +305,7 @@ bool Position::do_move(Move m) {
     if (us == BLACK)
         ++fullmove;
 
+    push_accumulator(delta);
     return !attacked(king_square(us), them);
 }
 

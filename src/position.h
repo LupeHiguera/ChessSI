@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "bitboard.h"
+#include "nnue.h"
 
 inline const std::string StartFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -61,7 +62,7 @@ private:
     void remove_piece(Square s);
     void move_piece(Square from, Square to);
     uint64_t compute_key() const;
-    int16_t* push_accumulator();
+    void push_accumulator(const NNUE::Delta& delta);
 
     // One NNUE accumulator per ply, 2 * accHidden values each, for network accGeneration (0: none).
     std::vector<int16_t> accStack;

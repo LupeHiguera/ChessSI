@@ -26,7 +26,18 @@ bool loaded();
 int generation();
 int hidden();
 
+// The pieces a move adds and removes: at most two of each (castling; a capture removes two).
+struct Delta {
+    int adds = 0, subs = 0;
+    Piece addPiece[2], subPiece[2];
+    Square addSq[2], subSq[2];
+    void add(Piece p, Square s) { addPiece[adds] = p; addSq[adds++] = s; }
+    void sub(Piece p, Square s) { subPiece[subs] = p; subSq[subs++] = s; }
+};
+
 void refresh(const Position& pos, int16_t* acc);
+// acc = prev with the delta applied, in one pass; prev may equal acc.
+void apply(const int16_t* prev, int16_t* acc, const Delta& d);
 void add(int16_t* acc, Piece p, Square s);
 void sub(int16_t* acc, Piece p, Square s);
 
