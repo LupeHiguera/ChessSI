@@ -256,6 +256,14 @@ training. *Claude Code.*
   0.03 0.00726 at epoch 12 (stopped), against 0.00653 without it. The harm grows steadily with the
   weight. Predicting moves seems to compete with the value target for 256 hidden units rather than
   teach them anything useful. A wider first layer might change that.
+- **A self-distillation head helps a little, and a validation pitfall turned up.** On net8's
+  snapshot (91.3M positions, net8 0.00674), a head learning net8's own evaluation (born-again)
+  reached 0.00671. That result is clean, since net8 never saw its validation games. A head
+  learning net7 reached 0.00667, but that number is contaminated. The validation split is redrawn
+  whenever the data changes, so most of net8's validation games were in net7's training data. That
+  is why net7 itself scores 0.00671 there, better than net8, while losing to net8 by 43 Elo in
+  games. Fix: choose validation games by a stable hash of each game, so networks from different
+  generations share the same unseen games. Both variants need SPRTs.
 - **Training hyperparameters barely move validation loss.** Against net7's 0.00653: 40 epochs
   0.00649, learning rate 0.002 0.00651, batch 8,192 0.00651. Eight material output buckets reached
   0.00650; their SPRT is running.
