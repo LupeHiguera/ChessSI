@@ -103,7 +103,8 @@ first network is in, since pruning margins are in eval units and must be recheck
 16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main search
 17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
     (LMR alone was inconclusive, +6.7 ± 13.9; RFP and LMP untried)*
-18. Continuation history (1 and 2 plies back), then capture history
+18. Continuation history (1 and 2 plies back), then capture history - *Claude Code (continuation
+    history first)*
 19. Keep killers and history between moves (they reset on every `go`)
 20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets
 21. Hard time limit capped below the remaining clock; node-fraction time management
