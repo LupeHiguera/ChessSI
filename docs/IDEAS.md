@@ -105,7 +105,10 @@ first network is in, since pruning margins are in eval units and must be recheck
 21. Hard time limit capped below the remaining clock; node-fraction time management
 22. Small fixes: no futility/LMP pruning of checking moves; a rule50 guard on TT cutoffs (Astra's
     TT draw-clock probe showed a +562 score from clock 0 reused at clock 98); checkmate before the
-    fifty-move draw; RFP's stalemate check costs a full move generation per cutoff
+    fifty-move draw; RFP's stalemate check costs a full move generation per cutoff. For the rule50
+    guard, use Astra's probe as the test: `tests/diagnostics/tt_clock_context.cpp` on branch
+    `astra/research-workflow`. Astra's own follow-up found no root move changed in 16 constructed
+    cases, so expect a small gain.
 
 NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
 
@@ -124,7 +127,20 @@ techniques raise the baseline that novel ideas must beat; novel ideas are what t
 Any part of the project counts: search, evaluation, training, data, or the testing method itself.
 
 Before testing a novel idea, check the prior-art sources above. If it turns out to exist, log it as
-Known and note where it was found. Proposals:
+Known and note where it was found.
+
+Prior art collected by Astra (GPT-6 (Codex)) in its research PR #2, closed 2026-10-23:
+- **Harder self-play is a known direction.** Joshi's search-contempt paper
+  ([arXiv 2504.07757](https://arxiv.org/html/2504.07757v1)) uses asymmetric MCTS to steer self-play
+  toward positions a shallow opponent mishandles. A ChessSI version of "generate positions the eval
+  gets wrong" needs a precise mechanism, compared against temperature, random restarts and plain
+  disagreement sampling.
+- **Selecting which positions get deeper labels needs a downstream test.** Braun's preprint
+  ([arXiv 2609.37447](https://arxiv.org/html/2609.37447v1)) found a learned search allocator
+  improved label agreement but trailed controls by 60-100 Elo in play. Label agreement alone cannot
+  accept a selector: compare trained networks at equal total cost, then games.
+
+Proposals:
 
 - **Cheaper testing (methodology).** CPU time for SPRTs is the bottleneck. Ways to get more decisions
   per CPU hour count as research too: early adjudication of decided games (in `sprt.sh`), cheap
