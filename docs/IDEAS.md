@@ -223,6 +223,7 @@ each result here with the date, the commit and its bench.
 | Date | Commit | Bench | Opponents | Games | Rating |
 | --- | --- | --- | --- | --- | --- |
 | 2026-10-22 | `74412b7` | 864538 | Stash 12, 13, 14, 15.3, 17, 19 (CCRL Blitz 1883-2474) | 2,400 at 10+0.1, 8moves_v3 book, 13 concurrent | **2440 ± 19** |
+| 2026-10-23 | `cdfc298` (net7) | 264979 | Stash 19, 20.0.1, 21, 25, 27, 30, 31, 33, 34, 36 (CCRL Blitz 2474-3375) | 959 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 0-3) | **3150 ± 26** |
 
 The 2026-10-22 gauntlet used a balanced book (`8moves_v3`), not the SPRT book: UHO openings give one
 side an edge, which stretches rating gaps. Run it with `scripts/gauntlet.sh`. The ± is statistical
@@ -231,3 +232,14 @@ with opponent strength (2356-2402 vs the weakest, 2461-2467 vs Stash 17 and 19),
 compression at the extremes, so the true figure is likely nearer 2460. The 12 time forfeits, all by
 Stash, were excluded. Stash 20.0.1 (2512) and 21 (2714) are now built for later gauntlets, so the
 next one has opponents above ChessSI.
+
+The 2026-10-23 gauntlet rates net7 before SEE pruning in quiescence, 710 Elo above the first
+gauntlet. Since `74412b7` the engine gained the NNUE, which was worth +203, +139 and +104 in
+self-play across three networks. It also gained aspiration windows, the history heuristic, late move
+pruning, futility pruning and RFP. It ran in two parts. The first pool was
+Stash 19-27, where ChessSI scored 70-99%, too high to say much. It was stopped after 359 games, and
+600 more were played against Stash 27-36, chosen to bracket ChessSI. Those alone give 3140 ± 30.
+ChessSI scored 49% against Stash 30 (3153). Performance was 3090-3150 against the four strongest
+opponents and 3200 against Stash 27, so compression at the extremes again lifts the combined figure
+a little. Each Stash build reproduces the bench in its release commit. The same caveat applies: this
+is 10+0.1 under WSL, not CCRL's conditions.
