@@ -75,7 +75,31 @@ top one, test it, log it, then move on.
 11. Internal iterative reductions when there is no TT move - *Claude Code*
 12. Mate distance pruning; insufficient-material draws
 13. Time management: stop early when the best move is stable - *Claude Code*
-14. Phase 3: self-play data generation and a first NNUE network (trainer on the RTX 5080)
+14. Phase 3: self-play data generation and a first NNUE network - *Claude Code, in progress*
+
+Added 2026-10-22 from a prior-art review by Claude Code research agents (Stash's per-version
+changelog gives most of the expected gains, measured at 10+0.1 or 8+0.08). Rough order, after the
+first network is in, since pruning margins are in eval units and must be rechecked against it:
+
+15. Probe and store the TT in quiescence (Stash +35.7 and +28.5)
+16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main search
+17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP
+18. Continuation history (1 and 2 plies back), then capture history
+19. Keep killers and history between moves (they reset on every `go`)
+20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets
+21. Hard time limit capped below the remaining clock; node-fraction time management
+22. Small fixes: no futility/LMP pruning of checking moves; a rule50 guard on TT cutoffs (Astra's
+    TT draw-clock probe showed a +562 score from clock 0 reused at clock 98); checkmate before the
+    fifty-move draw; RFP's stalemate check costs a full move generation per cutoff
+
+NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
+
+- Hidden size 128 vs 256 vs 512 at equal training time; NPS counts, so compare in games
+- Game-result weight 0.25 → 0.4 (`--lambda 0.6`); filter early plies and score/result contradictions
+- Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes
+- Validation split by game, not by position (same-game positions make validation loss optimistic)
+- Material output buckets; horizontal mirroring; king buckets only past ~1B positions
+- Second generation: data from the NNUE engine itself
 
 ## Novel ideas
 
@@ -94,7 +118,17 @@ Known and note where it was found. Proposals:
   from our own games and use it to relabel positions in large batches, so the CPU plays games and the
   GPU supplies the evaluation targets.
 - **Uncertainty-aware evaluation.** Train the network to also predict how unsure it is, and use that to
-  set pruning margins and time use instead of fixed values.
+  set pruning margins and time use instead of fixed values. Partially known: Stockfish widens its RFP
+  margin by the size of its correction history, which comes from search, not a learned head. Check
+  first that the predicted error correlates with real eval error before playing games.
+- **Auxiliary training targets (transplant).** Extra outputs read the accumulator only during
+  training and are dropped at export, so the engine is no slower: the search score some plies later
+  (KataGo's short-term value targets), material later, moves left. Found in KataGo (arXiv 1902.10565)
+  and Lc0, where the heads are used at inference; not found in NNUE trainers (nnue-pytorch, bullet).
+  Needs no new data: games are contiguous in the datagen files.
+- **Playout-cap randomization in datagen (transplant).** Most moves get a cheap unrecorded search and
+  some get a deeper recorded one, so CPU goes to fewer, better-labelled, less correlated positions.
+  From KataGo; in chess only node-count jitter was found. Test at equal CPU: two datasets, one SPRT.
 - **Train on the positions the eval gets wrong (phase 3).** *Claude Code.* Weight training positions
   by how far the static eval is from the search score, instead of filtering those positions out. The
   closest prior art does the opposite: [arXiv 2412.17948](https://arxiv.org/abs/2412.17948) keeps
