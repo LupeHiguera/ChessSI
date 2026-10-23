@@ -40,6 +40,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Novel | Policy auxiliary head: a training-only head predicting the played move's from and to squares, on net7's recipe and data | Failed (validation loss, no SPRT) | Not run | 0 (validation only: worse than no head at every weight tried) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | net7's recipe with `--lambda 0.6` (more game result in the target), same data and seed, vs net7 | Inconclusive (stopped to free cores for datagen, LLR 0.01) | +1.8 ± 13.4 | 1,160 (4 concurrent, cores 6-9) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | Eight material output buckets (by piece count), net7's recipe and data, vs net7 in one binary (`claude/output-buckets`) | Inconclusive (stopped to free cores, LLR −0.15) | −0.7 ± 14.7 | 1,002 (4 concurrent, cores 0-3) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | Continuation history, 1 and 2 plies back, in quiet-move ordering (tables reset on every `go`, like history) | Failed (pre-screen) | −2.9 ± 18.1 (pre-screen) | 600 (4 concurrent, cores 0-3) | Failed, 600 games; full SPRT skipped by the gate |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -104,8 +105,10 @@ first network is in, since pruning margins are in eval units and must be recheck
 17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
     (LMR alone was inconclusive, +6.7 ± 13.9; RFP and LMP untried)*
 18. Continuation history (1 and 2 plies back), then capture history - *Claude Code (continuation
-    history first)*
-19. Keep killers and history between moves (they reset on every `go`)
+    history failed its pre-screen, −2.9 ± 18.1; its 590k-entry table resets on every `go`, so retest
+    after item 19)*
+19. Keep killers and history between moves (they reset on every `go`) - *Claude Code (history
+    first)*
 20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets
 21. Hard time limit capped below the remaining clock; node-fraction time management
 22. Small fixes: no futility/LMP pruning of checking moves; a rule50 guard on TT cutoffs (Astra's
