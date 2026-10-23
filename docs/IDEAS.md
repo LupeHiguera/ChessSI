@@ -150,6 +150,22 @@ Known and note where it was found. Proposals:
   move, so killers and history reset each move. Test keeping them between moves (Known) first; the
   prior can only add on top of that.
 
+### NNUE training measurements (2026-10-23)
+
+Validation loss on held-out games: a guide to which networks are worth an SPRT, not an Elo result.
+Each comparison uses the same frozen data, seed and epochs, with validation games never seen in
+training. *Claude Code.*
+
+- **Validating on whole games exposed overfitting.** A random-position split had put positions from
+  the same game on both sides. Split by game, h256 on 23M positions stops improving after about 10
+  epochs while its training loss keeps falling.
+- **The auxiliary head lowers validation loss at every size tried.** At 23M positions with h256: no
+  head 0.00690, weight 0.5 0.00678, weight 1.0 0.00673. At 38.5M: 0.00672 without, 0.00661 with
+  (weight 1.0, this is net6). At h512 the gap is larger (0.00712 vs 0.00694), consistent with the
+  head acting partly as a regulariser.
+- **More hidden neurons don't help yet.** At 47.4M positions with the head: h256 0.00651, h384
+  0.00652, h512 0.00653, while h512 searches about 40% slower. Data, not network size, is the limit.
+
 ### Findings from existing games (2026-10-22, no new games played)
 
 Two methodology questions, answered from the 32,743 SPRT and pre-screen games in `engines/sprt.pgn`
