@@ -264,6 +264,12 @@ training. *Claude Code.*
   is why net7 itself scores 0.00671 there, better than net8, while losing to net8 by 43 Elo in
   games. Fix: choose validation games by a stable hash of each game, so networks from different
   generations share the same unseen games. Both variants need SPRTs.
+- **Two data-pipeline fixes for net9 onward.** Position keys came from Python's `hash()`, which is
+  randomised per process, so duplicates across cache chunks from different runs were never removed.
+  On the 79.0M positions of generations 1-3 and the SPRT games, deterministic keys remove 10.19% as
+  duplicates against 9.03% before: 918k positions (1.16%) had been counted twice. Validation games
+  are now chosen by a stable per-game key (the key of the game's first position), the fix for the
+  pitfall above. Networks up to net8 were trained without either fix.
 - **Training hyperparameters barely move validation loss.** Against net7's 0.00653: 40 epochs
   0.00649, learning rate 0.002 0.00651, batch 8,192 0.00651. Eight material output buckets reached
   0.00650; their SPRT is running.
