@@ -112,7 +112,8 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
 - Game-result weight 0.25 → 0.4 (`--lambda 0.6`); filter early plies and score/result contradictions
 - Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes
 - Validation split by game, not by position (same-game positions make validation loss optimistic)
-- Material output buckets; horizontal mirroring; king buckets only past ~1B positions
+- Material output buckets (*Claude Code*, branch `claude/output-buckets`); horizontal mirroring; king
+  buckets only past ~1B positions
 - Second generation: data from the NNUE engine itself
 
 ## Novel ideas
