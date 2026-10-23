@@ -20,6 +20,7 @@ int16[768][H] and biases int16[H] scaled by QA, output weights int16[2H] scaled 
 int32 scaled by QA * QB.
 """
 import argparse
+import hashlib
 import os
 import math
 import random
@@ -79,6 +80,17 @@ def white_features(board_field):
 
 
 FIELDS = ("feats", "white", "scores", "results", "keys", "ply")
+# Cache files are named <data file>.v<CACHE_VERSION>.<byte offset>.npz. Version 2: deterministic
+# position keys (version 1 used Python's hash(), which differs between processes, so duplicates in
+# chunks cached by different runs were never found).
+CACHE_VERSION = 2
+
+
+def position_key(fields):
+    """64-bit key of a position from its first four FEN fields (board, side, castling, en passant;
+    not the move counters). The same in every process, unlike Python's hash()."""
+    digest = hashlib.blake2b(fields.encode(), digest_size=8).digest()
+    return int.from_bytes(digest, "little") & 0x7FFFFFFFFFFFFFFF
 
 
 def parse_lines(lines):
@@ -95,7 +107,7 @@ def parse_lines(lines):
         except (ValueError, KeyError, IndexError):
             bad += 1  # e.g. a line cut short by stopping datagen
             continue
-        keys.append(hash(" ".join(parts[:4])) & 0x7FFFFFFFFFFFFFFF)  # ignore move counters
+        keys.append(position_key(" ".join(parts[:4])))  # ignore move counters
         feats.extend(w + [PAD] * (32 - len(w)))
         white.append(parts[1] == "w")
         scores.append(cp)
@@ -114,7 +126,7 @@ def load_file(path, cache_dir, frozen=False):
     chunks, start = [], 0
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
-        stem = os.path.join(cache_dir, os.path.basename(path))
+        stem = os.path.join(cache_dir, f"{os.path.basename(path)}.v{CACHE_VERSION}")
         while os.path.exists(f"{stem}.{start}.npz"):
             z = np.load(f"{stem}.{start}.npz")
             chunks.append({k: z[k] for k in FIELDS})
@@ -162,11 +174,16 @@ def load(paths, cache_dir=None, future_plies=8, frozen=False, moves=False):
     jc = np.minimum(j, len(j) - 1)
     valid = (j < len(j)) & (d["game"][jc] == d["game"])
     future = np.where(valid, 1 / (1 + np.exp(-d["scores"][jc] / SCALE)), d["results"]).astype(np.float32)
+    # A stable identity for each game, for the validation split: the key of its first recorded
+    # position. Unlike the game number, it does not change when files grow or are added.
+    starts = np.flatnonzero(np.r_[True, d["game"][1:] != d["game"][:-1]])
+    gkey = d["keys"][starts][d["game"]]
 
     _, first = np.unique(d["keys"], return_index=True)
     first.sort()
     out = {"feats": d["feats"][first], "white": d["white"][first], "scores": d["scores"][first],
-           "results": d["results"][first], "game": d["game"][first], "future": future[first]}
+           "results": d["results"][first], "game": d["game"][first], "future": future[first],
+           "gkey": gkey[first]}
     if moves:
         pfrom, pto = played_moves(d)
         out["pfrom"], out["pto"] = pfrom[first], pto[first]
@@ -309,11 +326,12 @@ def main():
     policy = args.policy_weight > 0
     d = load(args.data, args.cache_dir, args.future_plies, args.frozen, moves=policy)
     n = len(d["scores"])
-    # Validation holds whole games, so no game has positions on both sides of the split.
+    # Validation holds whole games, about 2%, chosen by each game's stable key. So no game has
+    # positions on both sides, and the same games stay held out as data grows and from one network
+    # generation to the next. Networks trained before this split (net8 and earlier) used a random
+    # one, so they did train on some of these games. --seed now sets only initialisation and order.
     games = np.unique(d["game"])
-    rng = np.random.default_rng(args.seed)
-    val_games = rng.choice(games, size=max(len(games) // 50, 1), replace=False)
-    is_val = np.isin(d["game"], val_games)
+    is_val = d["gkey"] % 50 == 0
     val, train = np.flatnonzero(is_val), np.flatnonzero(~is_val)
     moves_text = f"; {np.mean(d['pfrom'] >= 0):.0%} have the played move" if policy else ""
     print(f"{n} unique positions from {len(games)} games ({len(train)} train, {len(val)} validation), "
