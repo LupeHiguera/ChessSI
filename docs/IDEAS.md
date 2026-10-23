@@ -29,6 +29,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-22 | Claude Opus 5.5 | Known | First NNUE network vs PeSTO: (768 → 256) × 2, SCReLU, 2.5M positions from our SPRT games (net1) | Inconclusive (stopped for net4, trained on 7× the data; LLR 0.84) | +47.8 ± 29.3 | 380 (5 concurrent, cores 8-13) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | NNUE evaluation replaces PeSTO: net4, (768 → 256) × 2, SCReLU, 17.5M positions of our own self-play and test games | Passed | +203.3 ± 33.2 | 416 (5 concurrent, cores 8-13) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | TT probe in quiescence only (cutoffs and TT-move ordering, no stores), on the NNUE engine | Failed (pre-screen) | −19.7 ± 19.3 (pre-screen) | 600 (7 concurrent, cores 6-13) | Failed, 600 games; full SPRT skipped by the gate |
+| 2026-10-23 | Claude Opus 5.5 | Known | TT probe and store in quiescence (stores never evict a deeper entry for another position) | Stopped (flawed: same-key stores overwrote deeper entries, and the probe without prefetch cost 26% NPS) | −18.3 ± 26.1 (pre-screen) | 380 (7 concurrent, cores 6-13) | Stopped at 380 games |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
