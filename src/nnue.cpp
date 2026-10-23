@@ -6,6 +6,8 @@
 #include <fstream>
 #include <vector>
 
+#include "position.h"
+
 namespace {
 
 constexpr int Inputs = 768;
@@ -22,7 +24,7 @@ struct Network {
 };
 
 Network net;
-bool isLoaded = false;
+int loadedGeneration = 0;
 
 // Feature index from `persp`'s point of view: own pieces first, squares mirrored for Black.
 int feature(Color persp, Piece p, Square s) {
@@ -51,37 +53,71 @@ bool NNUE::load(const std::string& path) {
         || !read(in, n.outWeights.data(), n.outWeights.size()) || !read(in, &n.outBias, 1))
         return false;
     net = std::move(n);
-    isLoaded = true;
+    ++loadedGeneration;
     return true;
 }
 
 bool NNUE::loaded() {
-    return isLoaded;
+    return loadedGeneration != 0;
+}
+
+int NNUE::generation() {
+    return loadedGeneration;
+}
+
+int NNUE::hidden() {
+    return net.hidden;
+}
+
+void NNUE::refresh(const Position& pos, int16_t* acc) {
+    const int h = net.hidden;
+    std::copy(net.ftBias.begin(), net.ftBias.end(), acc);
+    std::copy(net.ftBias.begin(), net.ftBias.end(), acc + h);
+    for (Bitboard b = pos.pieces(); b;) {
+        Square s = pop_lsb(b);
+        add(acc, pos.piece_on(s), s);
+    }
+}
+
+// The trainer clips weights to +-1.98, so 32 pieces plus the bias stay within int16.
+void NNUE::add(int16_t* acc, Piece p, Square s) {
+    const int h = net.hidden;
+    const int16_t* w = &net.ftWeights[size_t(feature(WHITE, p, s)) * h];
+    const int16_t* b = &net.ftWeights[size_t(feature(BLACK, p, s)) * h];
+    for (int i = 0; i < h; ++i) {
+        acc[i] += w[i];
+        acc[h + i] += b[i];
+    }
+}
+
+void NNUE::sub(int16_t* acc, Piece p, Square s) {
+    const int h = net.hidden;
+    const int16_t* w = &net.ftWeights[size_t(feature(WHITE, p, s)) * h];
+    const int16_t* b = &net.ftWeights[size_t(feature(BLACK, p, s)) * h];
+    for (int i = 0; i < h; ++i) {
+        acc[i] -= w[i];
+        acc[h + i] -= b[i];
+    }
 }
 
 int NNUE::evaluate(const Position& pos) {
     const int h = net.hidden;
-    std::vector<int32_t> acc(2 * size_t(h));
-    Color us = pos.side_to_move();
-    for (int k = 0; k < 2; ++k)
-        std::copy(net.ftBias.begin(), net.ftBias.end(), acc.begin() + k * h);
-    for (Bitboard b = pos.pieces(); b;) {
-        Square s = pop_lsb(b);
-        Piece p = pos.piece_on(s);
-        const int16_t* wUs = &net.ftWeights[size_t(feature(us, p, s)) * h];
-        const int16_t* wThem = &net.ftWeights[size_t(feature(~us, p, s)) * h];
-        for (int i = 0; i < h; ++i) {
-            acc[i] += wUs[i];
-            acc[h + i] += wThem[i];
-        }
+    const int16_t* acc = pos.accumulator();
+    std::vector<int16_t> fresh;
+    if (!acc) {
+        fresh.resize(2 * size_t(h));
+        refresh(pos, fresh.data());
+        acc = fresh.data();
     }
+    const int16_t* us = acc + (pos.side_to_move() == WHITE ? 0 : h);
+    const int16_t* them = acc + (pos.side_to_move() == WHITE ? h : 0);
 
     // SCReLU: clamp to [0, QA] and square, so the sum carries QA * QA * QB; dividing by QA once
     // leaves QA * QB, the scale of the output bias.
     int64_t sum = 0;
-    for (int i = 0; i < 2 * h; ++i) {
-        int64_t x = std::clamp<int32_t>(acc[i], 0, QA);
-        sum += x * x * net.outWeights[i];
+    for (int i = 0; i < h; ++i) {
+        int32_t x = std::clamp<int32_t>(us[i], 0, QA), y = std::clamp<int32_t>(them[i], 0, QA);
+        sum += int64_t(x * x) * net.outWeights[i] + int64_t(y * y) * net.outWeights[h + i];
     }
     sum = sum / QA + net.outBias;
     return int(sum * Scale / (QA * QB));
