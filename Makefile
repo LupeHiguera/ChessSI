@@ -15,7 +15,7 @@ CXXFLAGS ?= -std=c++20 -O3 $(ARCHFLAG) -DNDEBUG -Wall -Wextra
 
 # The network compiled in as the default evaluation (OpenBench passes EVALFILE too). Empty: PeSTO.
 # nets/README.md records where each network came from.
-EVALFILE ?= nets/net4-h256.nnue
+EVALFILE ?= nets/net6-h256-aux.nnue
 ifneq ($(EVALFILE),)
     NETFLAGS := -DEVALFILE='"$(abspath $(EVALFILE))"'
 endif
