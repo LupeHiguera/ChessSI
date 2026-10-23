@@ -32,6 +32,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known | TT probe and store in quiescence (stores never evict a deeper entry for another position) | Stopped (flawed: same-key stores overwrote deeper entries, and the probe without prefetch cost 26% NPS) | −18.3 ± 26.1 (pre-screen) | 380 (7 concurrent, cores 6-13) | Stopped at 380 games |
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net6 replaces net4: 2.2× the data (38.5M positions, partly from net4 self-play) and the training-only auxiliary head; the aux head alone is tested separately | Passed | +138.6 ± 24.7 | 496 (7 concurrent, cores 6-13) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Novel | Training-only auxiliary head predicting the win probability 8 plies later (weight 1.0), dropped at export: net6 vs a control trained on the same 38.5M positions with the same seed and epochs, no head | Passed | +53.2 ± 15.6 | 1,066 (4 concurrent, cores 6-9) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Novel | Auxiliary head, replication on a second data snapshot (47.4M positions; head at 8 plies, weight 1.0) against a no-head control with the same data, seed and epochs | Passed | +34.6 ± 12.2 | 1,502 (4 concurrent, cores 6-9) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net7 replaces net6: 1.7× the data (64.6M positions, adding about 18.6M from net6 self-play) and the auxiliary head at 4 plies instead of 8 | Passed | +103.7 ± 21.8 | 628 (4 concurrent, cores 0-3) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), retest on the NNUE engine (net6, against d243d1c) | Passed | +22.2 ± 9.1 | 2,212 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +29.0 ± 19.5 |
 
@@ -135,7 +136,7 @@ Known and note where it was found. Proposals:
   margin by the size of its correction history, which comes from search, not a learned head. Check
   first that the predicted error correlates with real eval error before playing games.
 - **Auxiliary training targets (transplant).** *Claude Code.* **Passed: +53.2 ± 15.6** (log above);
-  a replication on a second data snapshot is running. The ablations under "NNUE training
+  replicated on a second data snapshot, **+34.6 ± 12.2**. The ablations under "NNUE training
   measurements" show the gain comes from an extra pure-search-score target, not from looking ahead.
   That makes it closer to ordinary multi-task learning than to KataGo's future targets. Extra outputs
   read the accumulator only during
