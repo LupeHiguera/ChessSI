@@ -133,7 +133,10 @@ Known and note where it was found. Proposals:
   margin by the size of its correction history, which comes from search, not a learned head. Check
   first that the predicted error correlates with real eval error before playing games.
 - **Auxiliary training targets (transplant).** *Claude Code.* **Passed: +53.2 ± 15.6** (log above);
-  a replication on a second data snapshot is running. Extra outputs read the accumulator only during
+  a replication on a second data snapshot is running. The ablations under "NNUE training
+  measurements" show the gain comes from an extra pure-search-score target, not from looking ahead.
+  That makes it closer to ordinary multi-task learning than to KataGo's future targets. Extra outputs
+  read the accumulator only during
   training and are dropped at export, so the engine is no slower: the search score some plies later
   (KataGo's short-term value targets), material later, moves left. Found in KataGo (arXiv 1902.10565)
   and Lc0, where the heads are used at inference; Lc0's transformer nets also train "future" heads
@@ -172,9 +175,15 @@ training. *Claude Code.*
 - **A near horizon works best for the auxiliary target.** At 47.4M positions with h256 (no head
   0.00659), the win probability this many plies later gave: 1 ply 0.00646, 2 plies 0.00646, 4 plies
   0.00645, 8 plies 0.00651, 16 plies 0.00657. A weight of 2.0 at 8 plies (0.00652) was no better than
-  1.0. One reading: the search score at 5,000 nodes is a noisy label, and the scores of positions a
-  few plies on in the same game are extra, partly independent measurements of nearly the same value.
-  That is a different job from KataGo's longer-range auxiliary targets.
+  1.0.
+- **The head works without looking ahead at all, so the horizon is not the mechanism.** On net7's
+  64.6M positions, a head predicting the position's own search score (0 plies) matched the 4-ply head:
+  no head 0.00662, own score 0.00652, 4 plies 0.00653 (net7). A second seed, which also redraws the
+  validation games, gave 0.00668 vs 0.00655. A head predicting only the game result made things much
+  worse (0.00717). So the head helps as a second, low-noise target for the shared layer. The exported
+  head learns a blend that is 25% game result, which is noisy, and the auxiliary head adds pure search
+  score. Farther horizons lose because a later score is a worse estimate of the current position's
+  value. That points at the blend itself, tested next as `--lambda 1.0` and `--lambda 0.6`.
 - **More hidden neurons don't help yet.** At 47.4M positions with the head: h256 0.00651, h384
   0.00652, h512 0.00653, while h512 searches about 40% slower. Data, not network size, is the limit.
 
