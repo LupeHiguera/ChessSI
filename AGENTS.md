@@ -31,6 +31,7 @@ The engine speaks UCI on stdin. Extra commands: `perft <depth>`, `d` (show board
 | `src/tt.*` | Transposition table |
 | `src/uci.*` | UCI loop, `bench`, `perftsuite` |
 | `tests/perft.epd` | Known perft counts |
+| `tests/rfp.cpp` | Boundary tests for reverse futility pruning, run by `make test` |
 
 ## The development loop
 
