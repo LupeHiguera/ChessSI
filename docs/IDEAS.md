@@ -181,6 +181,16 @@ Proposals:
   for NNUE: nnue-pytorch, bullet, the chessprogramming wiki and TalkChess were searched on 2026-10-23
   (Discord, where much NNUE work is discussed, could not be).
   Needs no new data: games are contiguous in the datagen files.
+- **Self-distillation head (transplant).** *Claude Code.* A training-only head that learns an earlier
+  ChessSI network's static evaluation of each position (`train.py --teacher`), dropped at export.
+  It follows from the auxiliary-head ablation: a low-noise target helps the shared layer, and a
+  network's own evaluation is smoother than any search score. Two variants on net8's data: net7 as
+  the teacher (the previous generation), and net8 itself (a born-again network). The teacher's
+  network is ChessSI's own, so this stays within the data rule. Prior art: born-again networks
+  ([arXiv 1805.04770](https://arxiv.org/abs/1805.04770)), where students trained on their
+  teacher's outputs beat it, and distillation for compression in
+  [DeepChess](https://arxiv.org/abs/1711.09667). Not found for NNUE training (web searched
+  2026-10-23).
 - **Policy auxiliary head (transplant).** *Claude Code.* **Failed: validation loss worse than no
   head at every weight tried** (see "NNUE training measurements"); `--policy-weight` stays in the
   trainer, off by default. A second
