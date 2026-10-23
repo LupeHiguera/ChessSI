@@ -89,6 +89,10 @@ test. Never edit files in another agent's folder.
 Accepted changes reach `main` through pull requests. Rebase onto `main` before starting a new test,
 so every SPRT runs against the latest accepted engine.
 
+**One session per branch.** The same agent may also run elsewhere, such as Claude Code in a cloud
+container. Each session pushes only to its own branch (for example `claude/cloud-<topic>`), so a push
+from one never lands under a test running in another. Fetch `main` before each new test.
+
 **Cores are split, not shared.** Run tests inside WSL Ubuntu, pinned to your own cores with `CPUS`:
 
 | Agent | Cores | Test command |

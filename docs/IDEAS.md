@@ -71,9 +71,9 @@ top one, test it, log it, then move on.
 8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning - *Claude Code*
 9. Check evasions in quiescence search - *Astra / GPT-6 (Codex)*
 10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud)*
-11. Internal iterative reductions when there is no TT move
+11. Internal iterative reductions when there is no TT move - *Claude Code*
 12. Mate distance pruning; insufficient-material draws
-13. Time management: stop early when the best move is stable
+13. Time management: stop early when the best move is stable - *Claude Code*
 14. Phase 3: self-play data generation and a first NNUE network (trainer on the RTX 5080)
 
 ## Novel ideas
