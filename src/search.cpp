@@ -403,6 +403,7 @@ void Search::clear() {
 }
 
 SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbose) {
+    TT.new_search();
     Searcher s(pos, limits);
     s.set_time_limits();
     SearchResult result;

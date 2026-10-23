@@ -36,6 +36,8 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net7 replaces net6: 1.7× the data (64.6M positions, adding about 18.6M from net6 self-play) and the auxiliary head at 4 plies instead of 8 | Passed | +103.7 ± 21.8 | 628 (4 concurrent, cores 0-3) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), retest on the NNUE engine (net6, against d243d1c) | Passed | +22.2 ± 9.1 | 2,212 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +29.0 ± 19.5 |
 | 2026-10-23 | Claude Opus 5.5 | Known | net7's recipe with `--lambda 1.0` (search score only, no game result in the target), same data and seed, vs net7 | Failed | −80.4 ± 18.7 | 642 (4 concurrent, cores 0-3) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | TT replacement by depth and age (an entry from the current search stays unless the new one, for another position, is at least as deep; older entries always give way), on the PeSTO engine against afe9aab | Inconclusive (stopped when main moved to NNUE, LLR 1.50) | +10.4 ± 8.9 | 2,998 (4 concurrent, 4-core cloud containers on two CPU types) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | TT replacement by depth and age, the same change on the NNUE engine (net4, against fb4d163) | Inconclusive (cloud container stopped; handed to the PC on `claude/cloud-tt-replacement`, LLR 0.56) | +4.4 ± 7.9 | 3,660 (4 concurrent, 4-core cloud container) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -85,7 +87,7 @@ top one, test it, log it, then move on.
 7. Late move pruning and futility pruning - *Claude Code*
 8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning - *Claude Code*
 9. Check evasions in quiescence search - *Astra / GPT-6 (Codex)*
-10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud); quiescence part taken over by Claude Code*
+10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (PC): the replacement part was handed over from the cloud session on `claude/cloud-tt-replacement`*
 11. Internal iterative reductions when there is no TT move - *Claude Code*
 12. Mate distance pruning; insufficient-material draws
 13. Time management: stop early when the best move is stable - *Claude Code*
