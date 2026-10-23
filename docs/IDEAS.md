@@ -37,6 +37,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), retest on the NNUE engine (net6, against d243d1c) | Passed | +22.2 ± 9.1 | 2,212 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +29.0 ± 19.5 |
 | 2026-10-23 | Claude Opus 5.5 | Known | net7's recipe with `--lambda 1.0` (search score only, no game result in the target), same data and seed, vs net7 | Failed | −80.4 ± 18.7 | 642 (4 concurrent, cores 0-3) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | Improving flag in LMR: one more ply of reduction when the static eval is not above its value two plies earlier | Inconclusive (stopped to free cores, LLR 0.32) | +6.7 ± 13.9 | 940 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +7.0 ± 17.7 |
+| 2026-10-23 | Claude Opus 5.5 | Novel | Policy auxiliary head: a training-only head predicting the played move's from and to squares, on net7's recipe and data | Failed (validation loss, no SPRT) | Not run | 0 (validation only: worse than no head at every weight tried) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -166,7 +167,9 @@ Proposals:
   for NNUE: nnue-pytorch, bullet, the chessprogramming wiki and TalkChess were searched on 2026-10-23
   (Discord, where much NNUE work is discussed, could not be).
   Needs no new data: games are contiguous in the datagen files.
-- **Policy auxiliary head (transplant).** *Claude Code, branch `claude/policy-aux`.* A second
+- **Policy auxiliary head (transplant).** *Claude Code.* **Failed: validation loss worse than no
+  head at every weight tried** (see "NNUE training measurements"); `--policy-weight` stays in the
+  trainer, off by default. A second
   training-only head on the accumulator, predicting the from and to squares of the move played
   (cross-entropy), dropped at export like the value head. Datagen plays the search's best move, so
   the move is the difference between a recorded position and the next ply's; 79% of positions have
@@ -216,6 +219,18 @@ training. *Claude Code.*
   head learns a blend that is 25% game result, which is noisy, and the auxiliary head adds pure search
   score. Farther horizons lose because a later score is a worse estimate of the current position's
   value. That points at the blend itself, tested next as `--lambda 1.0` and `--lambda 0.6`.
+- **More of the game result helps in play, and pure score hurts badly.** `--lambda 1.0` lost
+  −80.4 ± 18.7 against net7 (λ 0.75), with validation loss not comparable across λ. So the noisy
+  game result carries information the search score lacks. The auxiliary head lets the network keep
+  it and still get a clean score target.
+- **A policy head hurts at every weight tried.** The move played (from and to squares,
+  cross-entropy), on net7's recipe and data: weight 0.0003 0.00655, 0.001 0.00657, 0.003 0.00668,
+  0.03 0.00726 at epoch 12 (stopped), against 0.00653 without it. The harm grows steadily with the
+  weight. Predicting moves seems to compete with the value target for 256 hidden units rather than
+  teach them anything useful. A wider first layer might change that.
+- **Training hyperparameters barely move validation loss.** Against net7's 0.00653: 40 epochs
+  0.00649, learning rate 0.002 0.00651, batch 8,192 0.00651. Eight material output buckets reached
+  0.00650; their SPRT is running.
 - **More hidden neurons don't help yet.** At 47.4M positions with the head: h256 0.00651, h384
   0.00652, h512 0.00653, while h512 searches about 40% slower. Data, not network size, is the limit.
 
