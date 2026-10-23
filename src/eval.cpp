@@ -1,5 +1,7 @@
 #include "eval.h"
 
+#include "nnue.h"
+
 // Baseline evaluation: PeSTO's tapered piece-square tables (Ronald Friederich's
 // published values). Tables are written from a8 to h1, as on the page.
 // This is the placeholder the roadmap replaces with an NNUE network in phase 3.
@@ -143,6 +145,9 @@ void Eval::init() {
 }
 
 int evaluate(const Position& pos) {
+    if (NNUE::loaded())
+        return NNUE::evaluate(pos);
+
     int mg = 0, eg = 0, phase = 0;
     for (Bitboard b = pos.pieces(); b;) {
         Square s = pop_lsb(b);

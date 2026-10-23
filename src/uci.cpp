@@ -11,6 +11,7 @@
 #include "datagen.h"
 #include "eval.h"
 #include "movegen.h"
+#include "nnue.h"
 #include "perft.h"
 #include "search.h"
 #include "tt.h"
@@ -125,6 +126,9 @@ void set_option(std::istringstream& is) {
 
     if (name == "Hash" && !value.empty())
         TT.resize(std::max(1, std::stoi(value)));
+    else if (name == "EvalFile" && !value.empty() && value != "<empty>")
+        UCI::send(NNUE::load(value) ? "info string loaded network " + value
+                                    : "info string could not load network " + value);
     // Threads is accepted for OpenBench but the search is single-threaded.
 }
 
@@ -175,6 +179,7 @@ int UCI::loop(int argc, char* argv[]) {
             send("id author Lupe Higuera");
             send("option name Hash type spin default " + std::to_string(DefaultHashMB) + " min 1 max 65536");
             send("option name Threads type spin default 1 min 1 max 1");
+            send("option name EvalFile type string default <empty>");
             send("uciok");
         } else if (token == "isready")
             send("readyok");

@@ -11,3 +11,7 @@
 /books/
 *.pgn
 /config.json
+
+# NNUE tooling
+__pycache__/
+*.nnue
