@@ -27,6 +27,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (depth <= 3, margin 150 × depth), retest on top of futility pruning; run by Claude Code | Passed | +31.4 ± 11.6 | 1,730 (4 concurrent, 4-core cloud container, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), against 684badc, before reverse futility pruning | Inconclusive (stopped when the PC was needed, LLR 2.48 of 2.94) | +6.0 ± 4.7 | 9,398 (13 concurrent) | Inconclusive at 600-game cap, +30.8 ± 20.9 |
 | 2026-10-22 | Claude Opus 5.5 | Known | First NNUE network vs PeSTO: (768 → 256) × 2, SCReLU, 2.5M positions from our SPRT games (net1) | Inconclusive (stopped for net4, trained on 7× the data; LLR 0.84) | +47.8 ± 29.3 | 380 (5 concurrent, cores 8-13) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | NNUE evaluation replaces PeSTO: net4, (768 → 256) × 2, SCReLU, 17.5M positions of our own self-play and test games | Passed | +203.3 ± 33.2 | 416 (5 concurrent, cores 8-13) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -76,7 +77,7 @@ top one, test it, log it, then move on.
 11. Internal iterative reductions when there is no TT move - *Claude Code*
 12. Mate distance pruning; insufficient-material draws
 13. Time management: stop early when the best move is stable - *Claude Code*
-14. Phase 3: self-play data generation and a first NNUE network - *Claude Code, in progress*
+14. Phase 3: self-play data generation and a first NNUE network - *Claude Code, done (net4)*
 
 Added 2026-10-22 from a prior-art review by Claude Code research agents (Stash's per-version
 changelog gives most of the expected gains, measured at 10+0.1 or 8+0.08). Rough order, after the

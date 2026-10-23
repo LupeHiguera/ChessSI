@@ -2,9 +2,9 @@
 
 #include "nnue.h"
 
-// Baseline evaluation: PeSTO's tapered piece-square tables (Ronald Friederich's
-// published values). Tables are written from a8 to h1, as on the page.
-// This is the placeholder the roadmap replaces with an NNUE network in phase 3.
+// Fallback evaluation when no network is loaded: PeSTO's tapered piece-square
+// tables (Ronald Friederich's published values). Tables are written from a8 to
+// h1, as on the page. The default build uses the NNUE network in nets/.
 
 namespace {
 

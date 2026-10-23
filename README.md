@@ -11,8 +11,8 @@ Phase 1 of 5 (working engine). Done so far:
 - Move generation with magic bitboards, verified against known perft counts
 - UCI protocol, so it plays in any chess GUI
 - Baseline search: iterative deepening, principal variation search, transposition table, quiescence
-- PeSTO piece-square evaluation (to be replaced by a neural network in phase 3)
-- Bench: `20648203` nodes
+- NNUE evaluation trained only on ChessSI's own self-play (`nets/`), with PeSTO tables as the fallback
+- Bench: `272745` nodes
 
 ## Quick start
 
