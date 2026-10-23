@@ -7,6 +7,24 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net8-h256.nnue
+
+- **SHA-256:** `9a758cab4248b12f619401bff1b483eba1326dbd4ed0ef9f3f175abb8c36d536`
+- **Data:** 91,302,005 unique positions from 1,088,953 games, all self-play (no games against other
+  engines):
+  - 37.2M generation-1 positions: `chesssi datagen` at `d574e70` (PeSTO), 5,000 nodes a move.
+  - 12.4M generation-2 positions: `chesssi datagen` at `fb4d163` (net4), same settings.
+  - 26.8M generation-3 positions: `chesssi datagen` at `d243d1c` (net6), same settings.
+  - 20.3M generation-4 positions: `chesssi datagen` at `d2ac8e0` (net7), same settings.
+  - 2.6M positions from SPRT games, as for net4.
+- **Training:** net7's recipe on all of it: `train.py <data files> net8-h256.nnue --hidden 256
+  --epochs 20 --seed 1 --cache-dir <dir> --frozen --aux-weight 1.0 --future-plies 4` at `a74d12b`.
+  The data files were cached once first, so every net8 variant saw the same snapshot. Validation
+  loss is 0.00674 on 2% of games. It is not comparable with net7's 0.00653, because the validation
+  games now include generation 4. It took 27 minutes on an RTX 5080.
+- **Result:** replaced net7, +43.1 ± 13.2 Elo, SPRT [0, 5] at 10+0.1, H1 after 1,208 games (both
+  networks loaded in the same binary).
+
 ## net7-h256-aux4.nnue
 
 - **SHA-256:** `5dba29c15af3c59d34e6576f5c12e578fcc49de31de3fb2e010764b46198d89a`

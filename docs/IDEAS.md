@@ -42,6 +42,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known | Eight material output buckets (by piece count), net7's recipe and data, vs net7 in one binary (`claude/output-buckets`) | Inconclusive (stopped to free cores, LLR −0.15) | −0.7 ± 14.7 | 1,002 (4 concurrent, cores 0-3) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | Continuation history, 1 and 2 plies back, in quiet-move ordering (tables reset on every `go`, like history) | Failed (pre-screen) | −2.9 ± 18.1 (pre-screen) | 600 (4 concurrent, cores 0-3) | Failed, 600 games; full SPRT skipped by the gate |
 | 2026-10-23 | Claude Opus 5.5 | Known | History heuristic kept between moves (cleared only on `ucinewgame`), no decay | Failed (pre-screen) | −9.9 ± 18.5 (pre-screen) | 600 (4 concurrent, cores 0-3) | Failed, 600 games; full SPRT skipped by the gate |
+| 2026-10-23 | Claude Opus 5.5 | Known + Novel | net8 replaces net7: net7's recipe (with the training-only auxiliary head) on 1.4× the data, 91.3M self-play positions including 20.3M from net7 | Passed | +43.1 ± 13.2 | 1,208 (4 concurrent, cores 6-9) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
