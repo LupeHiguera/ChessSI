@@ -7,8 +7,8 @@
 
 class Position;
 
-// NNUE evaluation, trained by nnue/train.py: (768 -> H) x 2 perspectives -> SCReLU -> 1.
-// Without a network (none compiled in, none loaded with the EvalFile option) evaluate() uses PeSTO.
+// NNUE evaluation, trained by nnue/train.py: (768 -> H) x 2 perspectives -> SCReLU -> 1, with
+// optionally one set of output weights per range of piece counts. Without a network (none compiled in, none loaded with the EvalFile option) evaluate() uses PeSTO.
 //
 // An accumulator holds the first layer for both perspectives: [0, H) from White's side, [H, 2H)
 // from Black's. Position keeps one per ply and updates it as pieces move.

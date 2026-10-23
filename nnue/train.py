@@ -1,7 +1,7 @@
 """Train ChessSI's NNUE on positions in the datagen text format.
 
     python train.py <data.txt>... <out.nnue> [--hidden 128] [--epochs 20] [--lambda 0.75] [--cache-dir dir]
-                    [--aux-weight 0] [--future-plies 8]
+                    [--aux-weight 0] [--future-plies 8] [--buckets 1]
 
 Network: (768 -> H) x 2 perspectives -> SCReLU -> 1, the usual first NNUE. Input features are
 (piece colour relative to the perspective, piece type, square), with squares mirrored vertically for
@@ -12,9 +12,13 @@ result, both from the side to move: target = lambda * score + (1 - lambda) * res
 --aux-weight, a second head (training only, not exported) also learns the win probability
 --future-plies later in the game.
 
+With --buckets N, the output layer has N sets of weights, one per range of piece counts (kings
+included): bucket = (pieces - 2) / ceil(32 / N), at most N - 1.
+
 Export (little-endian, see src/nnue.cpp): magic "CSNN", hidden size (int32), feature weights
 int16[768][H] and biases int16[H] scaled by QA, output weights int16[2H] scaled by QB, output bias
-int32 scaled by QA * QB.
+int32 scaled by QA * QB. With buckets the magic is "CSNB", the bucket count (int32) follows the
+hidden size, and the output weights and biases repeat once per bucket.
 """
 import argparse
 import os
@@ -165,12 +169,18 @@ def load(paths, cache_dir=None, future_plies=8, frozen=False):
             "results": d["results"][first], "game": d["game"][first], "future": future[first]}
 
 
+def output_bucket(piece_count, buckets):
+    """Output bucket for positions with this many pieces (kings included), as in src/nnue.cpp."""
+    return torch.clamp((piece_count - 2) // ((32 + buckets - 1) // buckets), 0, buckets - 1)
+
+
 class Net(torch.nn.Module):
-    def __init__(self, hidden, aux=False):
+    def __init__(self, hidden, aux=False, buckets=1):
         super().__init__()
         self.ft = torch.nn.EmbeddingBag(PAD + 1, hidden, mode="sum", padding_idx=PAD)
         self.ft_bias = torch.nn.Parameter(torch.zeros(hidden))
-        self.out = torch.nn.Linear(2 * hidden, 1)
+        # One output per material bucket; each position uses the one for its piece count.
+        self.out = torch.nn.Linear(2 * hidden, buckets)
         # Auxiliary head, used only in training and not exported: predicts the outcome a few plies
         # later from the same hidden layer, as extra signal for the shared first layer.
         self.aux = torch.nn.Linear(2 * hidden, 1) if aux else None
@@ -178,11 +188,12 @@ class Net(torch.nn.Module):
             self.ft.weight.uniform_(-0.05, 0.05)
             self.ft.weight[PAD].zero_()
 
-    def forward(self, stm, nstm):
+    def forward(self, stm, nstm, bucket):
         a = torch.clamp(self.ft(stm) + self.ft_bias, 0, 1) ** 2
         b = torch.clamp(self.ft(nstm) + self.ft_bias, 0, 1) ** 2
         x = torch.cat([a, b], dim=1)
-        return self.out(x).squeeze(1), (self.aux(x).squeeze(1) if self.aux is not None else None)
+        main = self.out(x).gather(1, bucket.unsqueeze(1)).squeeze(1)
+        return main, (self.aux(x).squeeze(1) if self.aux is not None else None)
 
     def clip(self):
         # Keeps quantised values in range: QA * w and QB * w must fit int16, and the int32
@@ -196,15 +207,19 @@ def export(net, path):
     hidden = net.ft_bias.shape[0]
     ft_w = torch.round(net.ft.weight[:PAD] * QA).to(torch.int16).cpu().numpy()
     ft_b = torch.round(net.ft_bias * QA).to(torch.int16).cpu().numpy()
-    out_w = torch.round(net.out.weight[0] * QB).to(torch.int16).cpu().numpy()
-    out_b = int(round(net.out.bias.item() * QA * QB))
+    buckets = net.out.weight.shape[0]
+    out_w = torch.round(net.out.weight * QB).to(torch.int16).cpu().numpy()
+    out_b = torch.round(net.out.bias * QA * QB).to(torch.int32).cpu().numpy()
     with open(path, "wb") as f:
-        f.write(b"CSNN")
+        # One bucket keeps the original format, so older binaries still load the network.
+        f.write(b"CSNN" if buckets == 1 else b"CSNB")
         f.write(struct.pack("<i", hidden))
+        if buckets > 1:
+            f.write(struct.pack("<i", buckets))
         f.write(ft_w.astype("<i2").tobytes())
         f.write(ft_b.astype("<i2").tobytes())
         f.write(out_w.astype("<i2").tobytes())
-        f.write(struct.pack("<i", out_b))
+        f.write(out_b.astype("<i4").tobytes())
 
 
 def main():
@@ -222,6 +237,7 @@ def main():
     ap.add_argument("--aux-weight", type=float, default=0.0, help="weight of the auxiliary future-outcome loss")
     ap.add_argument("--future-plies", type=int, default=8)
     ap.add_argument("--gpu-data-gb", type=float, default=6.0, help="above this, positions stay in host RAM")
+    ap.add_argument("--buckets", type=int, default=1, help="output buckets by piece count (1 = none)")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -257,9 +273,10 @@ def main():
         w = (feats_t[idx] if on_gpu else feats_t[idx.cpu()].to(dev, non_blocking=True)).long()
         b = flip_t[w]
         wt = white_t[idx].unsqueeze(1)
-        return torch.where(wt, w, b), torch.where(wt, b, w)
+        bucket = output_bucket((w != PAD).sum(1), args.buckets)
+        return torch.where(wt, w, b), torch.where(wt, b, w), bucket
 
-    net = Net(args.hidden, aux=args.aux_weight > 0).to(dev)
+    net = Net(args.hidden, aux=args.aux_weight > 0, buckets=args.buckets).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
     train_t, val_t = torch.from_numpy(train).to(dev), torch.from_numpy(val).to(dev)

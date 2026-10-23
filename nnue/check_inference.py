@@ -17,12 +17,14 @@ from train import QA, QB, SCALE, features
 
 def load(path):
     with open(path, "rb") as f:
-        assert f.read(4) == b"CSNN"
+        magic = f.read(4)
+        assert magic in (b"CSNN", b"CSNB")
         (h,) = struct.unpack("<i", f.read(4))
+        (n,) = struct.unpack("<i", f.read(4)) if magic == b"CSNB" else (1,)
         ft_w = np.frombuffer(f.read(768 * h * 2), dtype="<i2").reshape(768, h).astype(np.int64)
         ft_b = np.frombuffer(f.read(h * 2), dtype="<i2").astype(np.int64)
-        out_w = np.frombuffer(f.read(2 * h * 2), dtype="<i2").astype(np.int64)
-        (out_b,) = struct.unpack("<i", f.read(4))
+        out_w = np.frombuffer(f.read(n * 2 * h * 2), dtype="<i2").reshape(n, 2 * h).astype(np.int64)
+        out_b = np.frombuffer(f.read(n * 4), dtype="<i4").astype(np.int64)
     return ft_w, ft_b, out_w, out_b
 
 
@@ -39,8 +41,10 @@ def reference(net, fen):
     us, them = (w, b) if parts[1] == "w" else (b, w)
     acc = np.concatenate([ft_b + ft_w[us].sum(0), ft_b + ft_w[them].sum(0)])
     x = np.clip(acc, 0, QA)
-    total = int((x * x * out_w).sum())
-    total = tdiv(total, QA) + out_b
+    n = len(out_b)
+    bucket = min((len(w) - 2) // ((32 + n - 1) // n), n - 1)
+    total = int((x * x * out_w[bucket]).sum())
+    total = tdiv(total, QA) + int(out_b[bucket])
     return tdiv(total * SCALE, QA * QB)
 
 
