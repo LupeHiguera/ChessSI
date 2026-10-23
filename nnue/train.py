@@ -1,6 +1,6 @@
 """Train ChessSI's NNUE on positions in the datagen text format.
 
-    python train.py <data.txt> <out.nnue> [--hidden 128] [--epochs 20] [--lambda 0.75] [--gpu 1]
+    python train.py <data.txt>... <out.nnue> [--hidden 128] [--epochs 20] [--lambda 0.75] [--cache data.npz]
 
 Network: (768 -> H) x 2 perspectives -> SCReLU -> 1, the usual first NNUE. Input features are
 (piece colour relative to the perspective, piece type, square), with squares mirrored vertically for
@@ -17,6 +17,7 @@ import argparse
 import math
 import random
 import struct
+from array import array
 import time
 
 import numpy as np
@@ -49,29 +50,54 @@ def features(board_field):
     return white, black
 
 
-def load(path, max_positions=None):
-    stm_f, nstm_f, scores, results = [], [], [], []
-    seen = set()
-    with open(path) as f:
-        for line in f:
-            fen, score, result = (x.strip() for x in line.split("|"))
-            key = fen.rsplit(" ", 2)[0]  # ignore move counters
-            if key in seen:
-                continue
-            seen.add(key)
-            parts = fen.split()
-            w, b = features(parts[0])
-            cp, res = int(score), float(result)
-            if parts[1] == "b":
-                w, b, cp, res = b, w, -cp, 1.0 - res
-            stm_f.append(w + [PAD] * (32 - len(w)))
-            nstm_f.append(b + [PAD] * (32 - len(b)))
-            scores.append(cp)
-            results.append(res)
-            if max_positions and len(scores) >= max_positions:
-                break
-    return (np.array(stm_f, dtype=np.int16), np.array(nstm_f, dtype=np.int16),
-            np.array(scores, dtype=np.float32), np.array(results, dtype=np.float32))
+# FLIP[f] is feature f seen from the other side: colours swap, squares mirror vertically. So one
+# White-perspective list per position is enough; the Black one is FLIP applied to it.
+FLIP = np.array([((f + 384) % 768) ^ 56 for f in range(PAD)] + [PAD], dtype=np.int64)
+
+
+def load(paths, max_positions=None):
+    """Unique positions from datagen text files: White-perspective features int16[n, 32] padded
+    with PAD, side to move (True for White), and White-relative score and result."""
+    feats, white, scores, results, keys = array("h"), array("b"), array("f"), array("f"), array("q")
+    bad = 0
+    for path in paths:
+        with open(path) as f:
+            for line in f:
+                try:
+                    fen, score, result = (x.strip() for x in line.split("|"))
+                    parts = fen.split()
+                    w, _ = features(parts[0])
+                    cp, res = int(score), float(result)
+                except (ValueError, KeyError, IndexError):
+                    bad += 1  # e.g. a line cut short by stopping datagen
+                    continue
+                keys.append(hash(" ".join(parts[:4])))  # ignore move counters
+                feats.extend(w + [PAD] * (32 - len(w)))
+                white.append(parts[1] == "w")
+                scores.append(cp)
+                results.append(res)
+                if max_positions and len(scores) >= max_positions:
+                    break
+    _, first = np.unique(np.frombuffer(keys, dtype=np.int64), return_index=True)
+    first.sort()
+    if bad:
+        print(f"skipped {bad} malformed lines")
+    return (np.frombuffer(feats, dtype=np.int16).reshape(-1, 32)[first], np.frombuffer(white, dtype=np.int8)[first],
+            np.frombuffer(scores, dtype=np.float32)[first], np.frombuffer(results, dtype=np.float32)[first])
+
+
+def load_cached(paths, cache, max_positions=None):
+    if cache:
+        try:
+            z = np.load(cache)
+            print(f"loaded {cache}")
+            return z["feats"], z["white"], z["scores"], z["results"]
+        except FileNotFoundError:
+            pass
+    data = load(paths, max_positions)
+    if cache:
+        np.savez(cache, feats=data[0], white=data[1], scores=data[2], results=data[3])
+    return data
 
 
 class Net(torch.nn.Module):
@@ -114,7 +140,7 @@ def export(net, path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("data")
+    ap.add_argument("data", nargs="+")
     ap.add_argument("out")
     ap.add_argument("--hidden", type=int, default=128)
     ap.add_argument("--epochs", type=int, default=20)
@@ -123,12 +149,13 @@ def main():
     ap.add_argument("--lambda", dest="lam", type=float, default=0.75)
     ap.add_argument("--max-positions", type=int, default=None)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--cache", default=None, help=".npz file holding the parsed data, written on first use")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     t0 = time.time()
-    stm, nstm, score, result = load(args.data, args.max_positions)
+    feats, white, score, result = load_cached(args.data, args.cache, args.max_positions)
     n = len(score)
     perm = np.random.default_rng(args.seed).permutation(n)
     val = perm[: max(n // 50, 1)]
@@ -136,9 +163,22 @@ def main():
     print(f"{n} unique positions ({len(train)} train, {len(val)} validation), loaded in {time.time() - t0:.0f}s")
 
     dev = torch.device("cuda")
-    to = lambda a, dt: torch.from_numpy(a).to(dev, dt)
-    stm_t, nstm_t = to(stm, torch.long), to(nstm, torch.long)
-    target = args.lam * torch.sigmoid(to(score, torch.float32) / SCALE) + (1 - args.lam) * to(result, torch.float32)
+    # Kept on the GPU as int16 (64 bytes a position); each batch is widened and flipped there.
+    feats_t = torch.from_numpy(feats).to(dev)
+    white_t = torch.from_numpy(white).to(dev).bool()
+    flip_t = torch.from_numpy(FLIP).to(dev)
+    sign = white_t.float() * 2 - 1
+    score_t = torch.from_numpy(score).to(dev) * sign
+    result_w = torch.from_numpy(result).to(dev)
+    result_t = torch.where(white_t, result_w, 1 - result_w)
+    target = args.lam * torch.sigmoid(score_t / SCALE) + (1 - args.lam) * result_t
+    del score_t, result_t, result_w
+
+    def inputs(idx):
+        w = feats_t[idx].long()
+        b = flip_t[w]
+        wt = white_t[idx].unsqueeze(1)
+        return torch.where(wt, w, b), torch.where(wt, b, w)
 
     net = Net(args.hidden).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
@@ -146,7 +186,7 @@ def main():
     train_t, val_t = torch.from_numpy(train).to(dev), torch.from_numpy(val).to(dev)
 
     def loss_on(idx):
-        return torch.mean((torch.sigmoid(net(stm_t[idx], nstm_t[idx])) - target[idx]) ** 2)
+        return torch.mean((torch.sigmoid(net(*inputs(idx))) - target[idx]) ** 2)
 
     for epoch in range(1, args.epochs + 1):
         net.train()
