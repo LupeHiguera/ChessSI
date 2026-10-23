@@ -35,6 +35,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Novel | Auxiliary head, replication on a second data snapshot (47.4M positions; head at 8 plies, weight 1.0) against a no-head control with the same data, seed and epochs | Passed | +34.6 ± 12.2 | 1,502 (4 concurrent, cores 6-9) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net7 replaces net6: 1.7× the data (64.6M positions, adding about 18.6M from net6 self-play) and the auxiliary head at 4 plies instead of 8 | Passed | +103.7 ± 21.8 | 628 (4 concurrent, cores 0-3) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), retest on the NNUE engine (net6, against d243d1c) | Passed | +22.2 ± 9.1 | 2,212 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +29.0 ± 19.5 |
+| 2026-10-23 | Claude Opus 5.5 | Known | net7's recipe with `--lambda 1.0` (search score only, no game result in the target), same data and seed, vs net7 | Failed | −80.4 ± 18.7 | 642 (4 concurrent, cores 0-3) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
