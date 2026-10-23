@@ -11,16 +11,18 @@
 
 // `make EVALFILE=<net>` compiles that network into the binary as the default evaluation.
 #ifdef EVALFILE
-#ifdef _WIN32
+#ifdef _WIN32 // COFF has no .previous; the compiler expects .text after top-level asm
 #define NET_SECTION ".section .rdata,\"dr\"\n"
+#define NET_SECTION_END ".text\n"
 #else
 #define NET_SECTION ".section .rodata\n"
+#define NET_SECTION_END ".previous\n"
 #endif
 asm(NET_SECTION ".balign 64\n"
     ".globl chesssi_net\nchesssi_net:\n"
     ".incbin \"" EVALFILE "\"\n"
     ".globl chesssi_net_end\nchesssi_net_end:\n"
-    ".previous\n");
+    NET_SECTION_END);
 extern "C" const unsigned char chesssi_net[], chesssi_net_end[];
 static const unsigned char* const EmbeddedNet = chesssi_net;
 static const unsigned char* const EmbeddedNetEnd = chesssi_net_end;
