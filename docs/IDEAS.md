@@ -11,6 +11,9 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 
 | Date | Model | Kind | Idea | Result | Elo | Games | Pre-screen |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-23 | Claude Opus 5.5 | Known | NNUE evaluation replaces PeSTO: net4, (768 → 256) × 2, SCReLU, 17.5M positions of our own self-play and test games | Passed | +203.3 ± 33.2 | 416 (5 concurrent, cores 8-13) | Not run |
+| 2026-10-22 | Claude Opus 5.5 | Known | First NNUE network vs PeSTO: (768 → 256) × 2, SCReLU, 2.5M positions from our SPRT games (net1) | Inconclusive (stopped for net4, trained on 7× the data; LLR 0.84) | +47.8 ± 29.3 | 380 (5 concurrent, cores 8-13) | Not run |
+| 2026-10-22 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), against 684badc, before reverse futility pruning | Inconclusive (stopped when the PC was needed, LLR 2.48 of 2.94) | +6.0 ± 4.7 | 9,398 (13 concurrent) | Inconclusive at 600-game cap, +30.8 ± 20.9 |
 | 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (depth <= 3, margin 150 × depth), retest on top of futility pruning; run by Claude Code | Passed | +31.4 ± 11.6 | 1,730 (4 concurrent, 4-core cloud container, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | Futility pruning (non-PV, depth <= 6, skip quiets when eval + 120 × depth <= alpha) | Passed | +43.3 ± 13.4 | 1,210 (13 concurrent) | Inconclusive at 600-game cap, +33.7 ± 19.5 |
 | 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (updated main; LTC 60+0.6) | Inconclusive | Not established (deadline) | 146 (73 pairs; 5 concurrent, CPUs 14-19, adjudication) | Not run |
@@ -82,7 +85,31 @@ top one, test it, log it, then move on.
 11. Internal iterative reductions when there is no TT move - *Claude Code*
 12. Mate distance pruning; insufficient-material draws
 13. Time management: stop early when the best move is stable - *Claude Code*
-14. Phase 3: self-play data generation and a first NNUE network (trainer on the RTX 5080)
+14. Phase 3: self-play data generation and a first NNUE network - *Claude Code, done (net4)*
+
+Added 2026-10-22 from a prior-art review by Claude Code research agents (Stash's per-version
+changelog gives most of the expected gains, measured at 10+0.1 or 8+0.08). Rough order, after the
+first network is in, since pruning margins are in eval units and must be rechecked against it:
+
+15. Probe and store the TT in quiescence (Stash +35.7 and +28.5)
+16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main search
+17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP
+18. Continuation history (1 and 2 plies back), then capture history
+19. Keep killers and history between moves (they reset on every `go`)
+20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets
+21. Hard time limit capped below the remaining clock; node-fraction time management
+22. Small fixes: no futility/LMP pruning of checking moves; a rule50 guard on TT cutoffs (Astra's
+    TT draw-clock probe showed a +562 score from clock 0 reused at clock 98); checkmate before the
+    fifty-move draw; RFP's stalemate check costs a full move generation per cutoff
+
+NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
+
+- Hidden size 128 vs 256 vs 512 at equal training time; NPS counts, so compare in games
+- Game-result weight 0.25 → 0.4 (`--lambda 0.6`); filter early plies and score/result contradictions
+- Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes
+- Validation split by game, not by position (same-game positions make validation loss optimistic)
+- Material output buckets; horizontal mirroring; king buckets only past ~1B positions
+- Second generation: data from the NNUE engine itself
 
 ## Novel ideas
 
@@ -101,7 +128,48 @@ Known and note where it was found. Proposals:
   from our own games and use it to relabel positions in large batches, so the CPU plays games and the
   GPU supplies the evaluation targets.
 - **Uncertainty-aware evaluation.** Train the network to also predict how unsure it is, and use that to
-  set pruning margins and time use instead of fixed values.
+  set pruning margins and time use instead of fixed values. Partially known: Stockfish widens its RFP
+  margin by the size of its correction history, which comes from search, not a learned head. Check
+  first that the predicted error correlates with real eval error before playing games.
+- **Auxiliary training targets (transplant).** Extra outputs read the accumulator only during
+  training and are dropped at export, so the engine is no slower: the search score some plies later
+  (KataGo's short-term value targets), material later, moves left. Found in KataGo (arXiv 1902.10565)
+  and Lc0, where the heads are used at inference; not found in NNUE trainers (nnue-pytorch, bullet).
+  Needs no new data: games are contiguous in the datagen files.
+- **Playout-cap randomization in datagen (transplant).** Most moves get a cheap unrecorded search and
+  some get a deeper recorded one, so CPU goes to fewer, better-labelled, less correlated positions.
+  From KataGo; in chess only node-count jitter was found. Test at equal CPU: two datasets, one SPRT.
+- **Train on the positions the eval gets wrong (phase 3).** *Claude Code.* Weight training positions
+  by how far the static eval is from the search score, instead of filtering those positions out. The
+  closest prior art does the opposite: [arXiv 2412.17948](https://arxiv.org/abs/2412.17948) keeps
+  only positions where static eval, quiescence and search agree. Test: three networks from the same
+  `datagen` positions and the same training budget (uniform, agreement-filtered, disagreement-
+  weighted), compared by SPRT. Needs `datagen` to also record the static eval.
+- **History prior learned offline.** *Claude Code.* Start each search with history scores learned
+  from our own games, keyed by piece, from and to square and game phase, instead of zeros. No prior
+  art found yet. It depends on a known fix that comes first: ChessSI rebuilds its searcher on every
+  move, so killers and history reset each move. Test keeping them between moves (Known) first; the
+  prior can only add on top of that.
+
+### Findings from existing games (2026-10-22, no new games played)
+
+Two methodology questions, answered from the 32,743 SPRT and pre-screen games in `engines/sprt.pgn`
+by *Claude Code* while the PC was in use. Scripts: `scripts/research/` (each reads only the PGN).
+
+- **Truncated games judged by the base engine: rejected.** The idea: stop each game after P plies and
+  score it with the unchanged engine's eval instead of playing it out. Signal per CPU second, relative
+  to the final results: 0.18× at P=10, 0.56× at 20, 0.35× at 30, 0.59× at 40, 0.85× at 60. It
+  is never cheaper, and it is misleading. For the history heuristic's first test it found a large
+  "effect" the results did not (a shift in eval scale, not strength), and for SEE it got the sign
+  wrong. Engine evals are not a substitute for results.
+- **Openings the engine itself scores as unbalanced carry more signal: a lead.** UHO openings never
+  repeat between tests (the book has 2.6 million), so "openings that were informative before" cannot
+  be measured. Binning pairs by ChessSI's own |eval| of the opening instead, signal per pair relative
+  to its run was 0.63× below 0.3 pawns, about 0.8-1.05× between 0.3 and 0.7, 1.29× at 0.7-0.8 and
+  1.46× at 0.8-1.0 (about ±0.2 each; 5,072 pairs). Selecting openings by an eval band is what UHO
+  already does with Stockfish's eval, so this is Known in principle. The candidate variation is
+  re-filtering by the tested engine's own eval, so the band tracks the engine's strength. Next: build a
+  book from the 0.7+ band, then compare SPRT lengths on the same patches.
 
 ## Measurements
 

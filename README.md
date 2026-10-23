@@ -6,14 +6,14 @@ what each AI model can actually do in research.
 
 ## Status
 
-Working engine, with classical search improvements underway. Accepted main `f801f8c` includes:
+Working engine with neural evaluation and classical search improvements. Accepted main `fb4d163` includes:
 
 - Move generation with magic bitboards, verified against known perft counts
 - UCI protocol, so it plays in any chess GUI
 - Search: iterative deepening, principal variation search, transposition table, quiescence
-- Killer moves, null-move pruning and late move reductions
-- PeSTO piece-square evaluation (to be replaced by a neural network in phase 3)
-- Accepted-main bench: `864538` nodes
+- Killer moves, history, null-move pruning, late move reductions, aspiration windows and shallow pruning
+- NNUE evaluation trained only on ChessSI's own games and searches (`nets/`), with PeSTO tables as the fallback
+- Accepted-main bench: `272745` nodes
 
 ## Quick start
 

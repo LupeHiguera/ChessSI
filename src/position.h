@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "bitboard.h"
+#include "nnue.h"
 
 inline const std::string StartFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -53,11 +54,20 @@ public:
     // Fifty-move rule or any repetition since the last irreversible move.
     bool is_draw() const;
 
+    // The NNUE accumulator for this ply, or nullptr if none matches the loaded network.
+    const int16_t* accumulator() const;
+
 private:
     void put_piece(Piece p, Square s);
     void remove_piece(Square s);
     void move_piece(Square from, Square to);
     uint64_t compute_key() const;
+    void push_accumulator(const NNUE::Delta& delta);
+
+    // One NNUE accumulator per ply, 2 * accHidden values each, for network accGeneration (0: none).
+    std::vector<int16_t> accStack;
+    int accGeneration = 0;
+    int accHidden = 0;
 
     Bitboard byType[6] = {};
     Bitboard byColor[2] = {};

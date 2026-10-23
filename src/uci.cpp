@@ -1,14 +1,17 @@
 #include "uci.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 #include <mutex>
 #include <sstream>
 #include <thread>
 #include <vector>
 
+#include "datagen.h"
 #include "eval.h"
 #include "movegen.h"
+#include "nnue.h"
 #include "perft.h"
 #include "search.h"
 #include "tt.h"
@@ -123,6 +126,11 @@ void set_option(std::istringstream& is) {
 
     if (name == "Hash" && !value.empty())
         TT.resize(std::max(1, std::stoi(value)));
+    else if (name == "EvalFile" && value == "<embedded>")
+        NNUE::load_embedded();
+    else if (name == "EvalFile" && !value.empty() && value != "<empty>")
+        UCI::send(NNUE::load(value) ? "info string loaded network " + value
+                                    : "info string could not load network " + value);
     // Threads is accepted for OpenBench but the search is single-threaded.
 }
 
@@ -144,6 +152,16 @@ int UCI::loop(int argc, char* argv[]) {
             bench(argc > 2 ? std::atoi(argv[2]) : BenchDepth);
             return 0;
         }
+        if (cmd == "datagen") {
+            // chesssi datagen <out-file> <games> <seed> [nodes] [random-plies]
+            if (argc < 5) {
+                std::cerr << "usage: chesssi datagen <out-file> <games> <seed> [nodes=5000] [random-plies=8]" << std::endl;
+                return 1;
+            }
+            Datagen::run(argv[2], std::atoi(argv[3]), std::strtoull(argv[4], nullptr, 10),
+                         argc > 5 ? std::strtoull(argv[5], nullptr, 10) : 5000, argc > 6 ? std::atoi(argv[6]) : 8);
+            return 0;
+        }
         if (cmd == "perftsuite") {
             bool ok = perft_suite(argc > 2 ? argv[2] : "tests/perft.epd", argc > 3 ? std::atoi(argv[3]) : 5);
             return ok ? 0 : 1;
@@ -163,6 +181,7 @@ int UCI::loop(int argc, char* argv[]) {
             send("id author Lupe Higuera");
             send("option name Hash type spin default " + std::to_string(DefaultHashMB) + " min 1 max 65536");
             send("option name Threads type spin default 1 min 1 max 1");
+            send(std::string("option name EvalFile type string default ") + (NNUE::has_embedded() ? "<embedded>" : "<empty>"));
             send("uciok");
         } else if (token == "isready")
             send("readyok");

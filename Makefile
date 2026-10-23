@@ -13,6 +13,13 @@ endif
 
 CXXFLAGS ?= -std=c++20 -O3 $(ARCHFLAG) -DNDEBUG -Wall -Wextra
 
+# The network compiled in as the default evaluation (OpenBench passes EVALFILE too). Empty: PeSTO.
+# nets/README.md records where each network came from.
+EVALFILE ?= nets/net4-h256.nnue
+ifneq ($(EVALFILE),)
+    NETFLAGS := -DEVALFILE='"$(abspath $(EVALFILE))"'
+endif
+
 ifeq ($(OS),Windows_NT)
     LDFLAGS += -static
 endif
@@ -24,8 +31,8 @@ HDRS := $(wildcard src/*.h)
 
 all: $(EXE)
 
-$(EXE): $(SRCS) $(HDRS)
-	$(CXX) $(CXXFLAGS) $(SRCS) -o $(EXE) $(LDFLAGS)
+$(EXE): $(SRCS) $(HDRS) $(EVALFILE)
+	$(CXX) $(CXXFLAGS) $(NETFLAGS) $(SRCS) -o $(EXE) $(LDFLAGS)
 
 # Unoptimised build with sanitizers for hunting crashes and undefined behaviour.
 debug:
@@ -38,7 +45,7 @@ test: $(EXE) $(EXE)-rfp-tests
 
 # Search boundaries for the shallow reverse futility trial.
 $(EXE)-rfp-tests: tests/rfp.cpp $(SRCS) $(HDRS)
-	$(CXX) $(CXXFLAGS) tests/rfp.cpp $(filter-out src/main.cpp src/uci.cpp src/search.cpp,$(SRCS)) -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) tests/rfp.cpp $(filter-out src/main.cpp src/uci.cpp src/search.cpp src/datagen.cpp,$(SRCS)) -o $@ $(LDFLAGS)
 
 test-rfp: $(EXE)-rfp-tests
 	./$(EXE)-rfp-tests
