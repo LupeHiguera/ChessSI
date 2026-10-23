@@ -1,7 +1,7 @@
 """Train ChessSI's NNUE on positions in the datagen text format.
 
     python train.py <data.txt>... <out.nnue> [--hidden 128] [--epochs 20] [--lambda 0.75] [--cache-dir dir]
-                    [--aux-weight 0] [--future-plies 8]
+                    [--aux-weight 0] [--future-plies 8] [--policy-weight 0]
 
 Network: (768 -> H) x 2 perspectives -> SCReLU -> 1, the usual first NNUE. Input features are
 (piece colour relative to the perspective, piece type, square), with squares mirrored vertically for
@@ -10,7 +10,8 @@ Black's perspective. The output, times SCALE, is centipawns for the side to move
 Loss: mean squared error between sigmoid(output) and a blend of sigmoid(score / SCALE) and the game
 result, both from the side to move: target = lambda * score + (1 - lambda) * result. With
 --aux-weight, a second head (training only, not exported) also learns the win probability
---future-plies later in the game.
+--future-plies later in the game. With --policy-weight, a third training-only head learns the
+from and to squares of the move played (cross-entropy), where the next recorded position shows it.
 
 Export (little-endian, see src/nnue.cpp): magic "CSNN", hidden size (int32), feature weights
 int16[768][H] and biases int16[H] scaled by QA, output weights int16[2H] scaled by QB, output bias
@@ -158,15 +159,50 @@ def load(paths, cache_dir=None, future_plies=8, frozen=False):
     jc = np.minimum(j, len(j) - 1)
     valid = (j < len(j)) & (d["game"][jc] == d["game"])
     future = np.where(valid, 1 / (1 + np.exp(-d["scores"][jc] / SCALE)), d["results"]).astype(np.float32)
+    pfrom, pto = played_moves(d)
 
     _, first = np.unique(d["keys"], return_index=True)
     first.sort()
     return {"feats": d["feats"][first], "white": d["white"][first], "scores": d["scores"][first],
-            "results": d["results"][first], "game": d["game"][first], "future": future[first]}
+            "results": d["results"][first], "game": d["game"][first], "future": future[first],
+            "pfrom": pfrom[first], "pto": pto[first]}
+
+
+def played_moves(d, chunk=1 << 18):
+    """From and to squares of the move played in each position, from the side to move's view
+    (mirrored for Black, as the network sees the board), or -1 where the next recorded position is
+    not the very next ply. Datagen plays the search's best move, so this is the move it chose. The
+    move is the difference between the two positions: the mover's piece that left a square and the
+    one that arrived (the king's, when castling moves a rook too)."""
+    n = len(d["ply"])
+    ply = d["ply"].astype(np.int64)
+    valid = np.zeros(n, dtype=bool)
+    valid[:-1] = (d["game"][1:] == d["game"][:-1]) & (ply[1:] == ply[:-1] + 1)
+    nxt = np.minimum(np.arange(1, n + 1), n - 1)
+    pfrom, pto = np.full(n, -1, dtype=np.int8), np.full(n, -1, dtype=np.int8)
+
+    def moved(x, y, mover):
+        # Squares of the mover's pieces in x that are not in y; the highest piece type wins.
+        gone = (x != PAD) & ((x // 384) == mover) & ~(x[:, :, None] == y[:, None, :]).any(2)
+        rank = np.where(gone, (x % 384) // 64, -1)
+        sq = x[np.arange(len(x)), rank.argmax(1)] % 64
+        return np.where(rank.max(1) >= 0, sq, -1)
+
+    for s in range(0, n, chunk):
+        e = min(s + chunk, n)
+        a, b = d["feats"][s:e].astype(np.int32), d["feats"][nxt[s:e]].astype(np.int32)
+        white = d["white"][s:e] == 1
+        mover = np.where(white, 0, 1)[:, None]
+        f, t = moved(a, b, mover), moved(b, a, mover)
+        ok = valid[s:e] & (f >= 0) & (t >= 0)
+        flip = np.where(white, 0, 56)
+        pfrom[s:e] = np.where(ok, f ^ flip, -1)
+        pto[s:e] = np.where(ok, t ^ flip, -1)
+    return pfrom, pto
 
 
 class Net(torch.nn.Module):
-    def __init__(self, hidden, aux=False):
+    def __init__(self, hidden, aux=False, policy=False):
         super().__init__()
         self.ft = torch.nn.EmbeddingBag(PAD + 1, hidden, mode="sum", padding_idx=PAD)
         self.ft_bias = torch.nn.Parameter(torch.zeros(hidden))
@@ -174,6 +210,9 @@ class Net(torch.nn.Module):
         # Auxiliary head, used only in training and not exported: predicts the outcome a few plies
         # later from the same hidden layer, as extra signal for the shared first layer.
         self.aux = torch.nn.Linear(2 * hidden, 1) if aux else None
+        # Policy head, also training only: logits for the played move's from square (first 64)
+        # and to square (last 64).
+        self.policy = torch.nn.Linear(2 * hidden, 128) if policy else None
         with torch.no_grad():
             self.ft.weight.uniform_(-0.05, 0.05)
             self.ft.weight[PAD].zero_()
@@ -182,7 +221,8 @@ class Net(torch.nn.Module):
         a = torch.clamp(self.ft(stm) + self.ft_bias, 0, 1) ** 2
         b = torch.clamp(self.ft(nstm) + self.ft_bias, 0, 1) ** 2
         x = torch.cat([a, b], dim=1)
-        return self.out(x).squeeze(1), (self.aux(x).squeeze(1) if self.aux is not None else None)
+        return (self.out(x).squeeze(1), self.aux(x).squeeze(1) if self.aux is not None else None,
+                self.policy(x) if self.policy is not None else None)
 
     def clip(self):
         # Keeps quantised values in range: QA * w and QB * w must fit int16, and the int32
@@ -222,6 +262,7 @@ def main():
     ap.add_argument("--aux-weight", type=float, default=0.0, help="weight of the auxiliary future-outcome loss")
     ap.add_argument("--future-plies", type=int, default=8)
     ap.add_argument("--gpu-data-gb", type=float, default=6.0, help="above this, positions stay in host RAM")
+    ap.add_argument("--policy-weight", type=float, default=0.0, help="weight of the auxiliary played-move loss")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -236,7 +277,7 @@ def main():
     is_val = np.isin(d["game"], val_games)
     val, train = np.flatnonzero(is_val), np.flatnonzero(~is_val)
     print(f"{n} unique positions from {len(games)} games ({len(train)} train, {len(val)} validation), "
-          f"loaded in {time.time() - t0:.0f}s", flush=True)
+          f"loaded in {time.time() - t0:.0f}s; {np.mean(d['pfrom'] >= 0):.0%} have the played move", flush=True)
 
     dev = torch.device("cuda")
     # Features are int16 (64 bytes a position), widened and flipped per batch on the GPU. Above
@@ -251,6 +292,8 @@ def main():
     target = args.lam * torch.sigmoid(score_t / SCALE) + (1 - args.lam) * torch.where(white_t, result_w, 1 - result_w)
     future_w = torch.from_numpy(d["future"]).to(dev)
     future_t = torch.where(white_t, future_w, 1 - future_w)
+    pfrom_t = torch.from_numpy(d["pfrom"].astype(np.int64)).to(dev)
+    pto_t = torch.from_numpy(d["pto"].astype(np.int64)).to(dev)
     del score_t, result_w, future_w, d
 
     def inputs(idx):
@@ -259,16 +302,24 @@ def main():
         wt = white_t[idx].unsqueeze(1)
         return torch.where(wt, w, b), torch.where(wt, b, w)
 
-    net = Net(args.hidden, aux=args.aux_weight > 0).to(dev)
+    net = Net(args.hidden, aux=args.aux_weight > 0, policy=args.policy_weight > 0).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
     train_t, val_t = torch.from_numpy(train).to(dev), torch.from_numpy(val).to(dev)
+    zero = torch.zeros((), device=dev)
 
     def losses(idx):
-        main, aux = net(*inputs(idx))
+        main, aux, pol = net(*inputs(idx))
         main_loss = torch.mean((torch.sigmoid(main) - target[idx]) ** 2)
-        aux_loss = torch.mean((torch.sigmoid(aux) - future_t[idx]) ** 2) if aux is not None else torch.zeros((), device=dev)
-        return main_loss, aux_loss
+        aux_loss = torch.mean((torch.sigmoid(aux) - future_t[idx]) ** 2) if aux is not None else zero
+        pol_loss = zero
+        if pol is not None:
+            f, t = pfrom_t[idx], pto_t[idx]
+            ok = f >= 0
+            if ok.any():
+                ce = torch.nn.functional.cross_entropy
+                pol_loss = ce(pol[ok, :64], f[ok]) + ce(pol[ok, 64:], t[ok])
+        return main_loss, aux_loss, pol_loss
 
     for epoch in range(1, args.epochs + 1):
         net.train()
@@ -277,21 +328,23 @@ def main():
         for i in range(0, len(order), args.batch):
             idx = order[i:i + args.batch]
             opt.zero_grad()
-            main_loss, aux_loss = losses(idx)
-            (main_loss + args.aux_weight * aux_loss).backward()
+            main_loss, aux_loss, pol_loss = losses(idx)
+            (main_loss + args.aux_weight * aux_loss + args.policy_weight * pol_loss).backward()
             opt.step()
             net.clip()
             total += main_loss.item() * len(idx)
         sched.step()
         net.eval()
-        v = va = 0.0
+        v = va = vp = 0.0
         with torch.no_grad():
             for i in range(0, len(val_t), 65536):
                 idx = val_t[i:i + 65536]
-                main_loss, aux_loss = losses(idx)
+                main_loss, aux_loss, pol_loss = losses(idx)
                 v += main_loss.item() * len(idx)
                 va += aux_loss.item() * len(idx)
+                vp += pol_loss.item() * len(idx)
         aux_text = f" aux {va / len(val):.5f}" if args.aux_weight > 0 else ""
+        aux_text += f" policy {vp / len(val):.3f}" if args.policy_weight > 0 else ""
         print(f"epoch {epoch:3d} train {total / len(train):.5f} val {v / len(val):.5f}{aux_text}  "
               f"({time.time() - t0:.0f}s)", flush=True)
 
