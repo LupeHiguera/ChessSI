@@ -163,6 +163,12 @@ training. *Claude Code.*
   head 0.00690, weight 0.5 0.00678, weight 1.0 0.00673. At 38.5M: 0.00672 without, 0.00661 with
   (weight 1.0, this is net6). At h512 the gap is larger (0.00712 vs 0.00694), consistent with the
   head acting partly as a regulariser.
+- **A near horizon works best for the auxiliary target.** At 47.4M positions with h256 (no head
+  0.00659), the win probability this many plies later gave: 1 ply 0.00646, 2 plies 0.00646, 4 plies
+  0.00645, 8 plies 0.00651, 16 plies 0.00657. A weight of 2.0 at 8 plies (0.00652) was no better than
+  1.0. One reading: the search score at 5,000 nodes is a noisy label, and the scores of positions a
+  few plies on in the same game are extra, partly independent measurements of nearly the same value.
+  That is a different job from KataGo's longer-range auxiliary targets.
 - **More hidden neurons don't help yet.** At 47.4M positions with the head: h256 0.00651, h384
   0.00652, h512 0.00653, while h512 searches about 40% slower. Data, not network size, is the limit.
 
