@@ -65,7 +65,7 @@ top one, test it, log it, then move on.
 2. History heuristic for quiet move ordering - *Claude Code*
 3. Null-move pruning - *Claude Code*
 4. Late move reductions - *Claude Code*
-5. Reverse futility pruning (static null move) - *Astra / GPT-6 (Codex)*
+5. Reverse futility pruning (static null move) - *Astra / GPT-6 (Codex); active: removal simplification at 60+0.6 on accepted main c7e2770*
 6. Aspiration windows - *Claude Code*
 7. Late move pruning and futility pruning - *Claude Code*
 8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning - *Claude Code*
@@ -117,3 +117,9 @@ with opponent strength (2356-2402 vs the weakest, 2461-2467 vs Stash 17 and 19),
 compression at the extremes, so the true figure is likely nearer 2460. The 12 time forfeits, all by
 Stash, were excluded. Stash 20.0.1 (2512) and 21 (2714) are now built for later gauntlets, so the
 next one has opponents above ChessSI.
+
+## Active RFP removal experiment
+
+Claimed by GPT-6 (Codex) on 2026-10-23 UTC. Main `c7e27702fe361e477de2afb3b26f5dafdc6b2e8f` already includes the RFP implementation after Claude Code's separate retest. The earlier 146-game confirmation remains Inconclusive and will not be resumed or pooled.
+
+Test a single simplification: remove the shallow reverse futility block, keeping every other search rule unchanged. Compare against accepted main at `60+0.6`, normalized SPRT `[-5,0]`, alpha/beta `0.05`, 5 concurrent games on WSL Ubuntu CPUs 14-19, Hash 16 MB and Threads 1. Use the shared UHO book, paired openings, the repository's unchanged adjudication, and a fresh manager seed. Stop at a terminal SPRT decision or the existing 100,000-pair cap; no new wall-clock deadline was requested. H0 rejects removal; H1 makes removal eligible for review under the repository's simplification rule. A cap or external interruption is Inconclusive. This tests whether the accepted technique earns its search cost at the longer time control; it is a Known ablation, not a novel method. Exact source, binary, protocol and result records will be retained under this worktree's ignored `engines/` directory.
