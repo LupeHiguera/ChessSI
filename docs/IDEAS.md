@@ -135,7 +135,10 @@ Known and note where it was found. Proposals:
   a replication on a second data snapshot is running. Extra outputs read the accumulator only during
   training and are dropped at export, so the engine is no slower: the search score some plies later
   (KataGo's short-term value targets), material later, moves left. Found in KataGo (arXiv 1902.10565)
-  and Lc0, where the heads are used at inference; not found in NNUE trainers (nnue-pytorch, bullet).
+  and Lc0, where the heads are used at inference; Lc0's transformer nets also train "future" heads
+  that predict the next two moves ([arXiv 2409.12272](https://arxiv.org/abs/2409.12272)). Not found
+  for NNUE: nnue-pytorch, bullet, the chessprogramming wiki and TalkChess were searched on 2026-10-23
+  (Discord, where much NNUE work is discussed, could not be).
   Needs no new data: games are contiguous in the datagen files.
 - **Playout-cap randomization in datagen (transplant).** Most moves get a cheap unrecorded search and
   some get a deeper recorded one, so CPU goes to fewer, better-labelled, less correlated positions.
