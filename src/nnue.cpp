@@ -4,9 +4,27 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <vector>
 
 #include "position.h"
+
+// `make EVALFILE=<net>` compiles that network into the binary as the default evaluation.
+#ifdef EVALFILE
+#ifdef _WIN32
+#define NET_SECTION ".section .rdata,\"dr\"\n"
+#else
+#define NET_SECTION ".section .rodata\n"
+#endif
+asm(NET_SECTION ".balign 64\n"
+    ".globl chesssi_net\nchesssi_net:\n"
+    ".incbin \"" EVALFILE "\"\n"
+    ".globl chesssi_net_end\nchesssi_net_end:\n"
+    ".previous\n");
+extern "C" const unsigned char chesssi_net[], chesssi_net_end[];
+static const unsigned char* const EmbeddedNet = chesssi_net;
+static const unsigned char* const EmbeddedNetEnd = chesssi_net_end;
+#endif
 
 namespace {
 
@@ -32,29 +50,60 @@ int feature(Color persp, Piece p, Square s) {
     return side + type_of(p) * 64 + (persp == WHITE ? s : s ^ 56);
 }
 
+// Reads `count` values from a byte buffer, advancing `pos`; false if the buffer is too short.
 template <typename T>
-bool read(std::ifstream& in, T* data, size_t count) {
-    return bool(in.read(reinterpret_cast<char*>(data), std::streamsize(count * sizeof(T))));
+bool read(const char* data, size_t size, size_t& pos, T* out, size_t count) {
+    size_t bytes = count * sizeof(T);
+    if (size - pos < bytes)
+        return false;
+    std::memcpy(out, data + pos, bytes);
+    pos += bytes;
+    return true;
+}
+
+bool parse(const char* data, size_t size) {
+    size_t pos = 0;
+    char magic[4];
+    Network n;
+    if (!read(data, size, pos, magic, 4) || std::memcmp(magic, "CSNN", 4) != 0 || !read(data, size, pos, &n.hidden, 1)
+        || n.hidden <= 0 || n.hidden > 4096)
+        return false;
+    n.ftWeights.resize(size_t(Inputs) * n.hidden);
+    n.ftBias.resize(n.hidden);
+    n.outWeights.resize(2 * size_t(n.hidden));
+    if (!read(data, size, pos, n.ftWeights.data(), n.ftWeights.size())
+        || !read(data, size, pos, n.ftBias.data(), n.ftBias.size())
+        || !read(data, size, pos, n.outWeights.data(), n.outWeights.size()) || !read(data, size, pos, &n.outBias, 1))
+        return false;
+    net = std::move(n);
+    ++loadedGeneration;
+    return true;
 }
 
 } // namespace
 
 bool NNUE::load(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
-    char magic[4];
-    Network n;
-    if (!in || !read(in, magic, 4) || std::memcmp(magic, "CSNN", 4) != 0 || !read(in, &n.hidden, 1)
-        || n.hidden <= 0 || n.hidden > 4096)
+    if (!in)
         return false;
-    n.ftWeights.resize(size_t(Inputs) * n.hidden);
-    n.ftBias.resize(n.hidden);
-    n.outWeights.resize(2 * size_t(n.hidden));
-    if (!read(in, n.ftWeights.data(), n.ftWeights.size()) || !read(in, n.ftBias.data(), n.ftBias.size())
-        || !read(in, n.outWeights.data(), n.outWeights.size()) || !read(in, &n.outBias, 1))
-        return false;
-    net = std::move(n);
-    ++loadedGeneration;
+    std::vector<char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    return parse(bytes.data(), bytes.size());
+}
+
+bool NNUE::load_embedded() {
+#ifdef EVALFILE
+    return parse(reinterpret_cast<const char*>(EmbeddedNet), size_t(EmbeddedNetEnd - EmbeddedNet));
+#else
+    return false;
+#endif
+}
+
+bool NNUE::has_embedded() {
+#ifdef EVALFILE
     return true;
+#else
+    return false;
+#endif
 }
 
 bool NNUE::loaded() {

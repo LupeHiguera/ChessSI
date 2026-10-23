@@ -13,6 +13,12 @@ endif
 
 CXXFLAGS ?= -std=c++20 -O3 $(ARCHFLAG) -DNDEBUG -Wall -Wextra
 
+# The network compiled in as the default evaluation (OpenBench passes EVALFILE too). Empty: PeSTO.
+EVALFILE ?=
+ifneq ($(EVALFILE),)
+    NETFLAGS := -DEVALFILE='"$(abspath $(EVALFILE))"'
+endif
+
 ifeq ($(OS),Windows_NT)
     LDFLAGS += -static
 endif
@@ -24,8 +30,8 @@ HDRS := $(wildcard src/*.h)
 
 all: $(EXE)
 
-$(EXE): $(SRCS) $(HDRS)
-	$(CXX) $(CXXFLAGS) $(SRCS) -o $(EXE) $(LDFLAGS)
+$(EXE): $(SRCS) $(HDRS) $(EVALFILE)
+	$(CXX) $(CXXFLAGS) $(NETFLAGS) $(SRCS) -o $(EXE) $(LDFLAGS)
 
 # Unoptimised build with sanitizers for hunting crashes and undefined behaviour.
 debug:
