@@ -31,6 +31,11 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known | TT probe in quiescence only (cutoffs and TT-move ordering, no stores), on the NNUE engine | Failed (pre-screen) | −19.7 ± 19.3 (pre-screen) | 600 (7 concurrent, cores 6-13) | Failed, 600 games; full SPRT skipped by the gate |
 | 2026-10-23 | Claude Opus 5.5 | Known | TT probe and store in quiescence (stores never evict a deeper entry for another position) | Stopped (flawed: same-key stores overwrote deeper entries, and the probe without prefetch cost 26% NPS) | −18.3 ± 26.1 (pre-screen) | 380 (7 concurrent, cores 6-13) | Stopped at 380 games |
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net6 replaces net4: 2.2× the data (38.5M positions, partly from net4 self-play) and the training-only auxiliary head; the aux head alone is tested separately | Passed | +138.6 ± 24.7 | 496 (7 concurrent, cores 6-13) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Novel | Training-only auxiliary head predicting the win probability 8 plies later (weight 1.0), dropped at export: net6 vs a control trained on the same 38.5M positions with the same seed and epochs, no head | Passed | +53.2 ± 15.6 | 1,066 (4 concurrent, cores 6-9) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Novel | Auxiliary head, replication on a second data snapshot (47.4M positions; head at 8 plies, weight 1.0) against a no-head control with the same data, seed and epochs | Passed | +34.6 ± 12.2 | 1,502 (4 concurrent, cores 6-9) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known + Novel | net7 replaces net6: 1.7× the data (64.6M positions, adding about 18.6M from net6 self-play) and the auxiliary head at 4 plies instead of 8 | Passed | +103.7 ± 21.8 | 628 (4 concurrent, cores 0-3) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), retest on the NNUE engine (net6, against d243d1c) | Passed | +22.2 ± 9.1 | 2,212 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +29.0 ± 19.5 |
+| 2026-10-23 | Claude Opus 5.5 | Known | net7's recipe with `--lambda 1.0` (search score only, no game result in the target), same data and seed, vs net7 | Failed | −80.4 ± 18.7 | 642 (4 concurrent, cores 0-3) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -92,7 +97,8 @@ first network is in, since pruning margins are in eval units and must be recheck
 
 15. Probe and store the TT in quiescence (Stash +35.7 and +28.5)
 16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main search
-17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP
+17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
+    (LMR first)*
 18. Continuation history (1 and 2 plies back), then capture history
 19. Keep killers and history between moves (they reset on every `go`)
 20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets
@@ -107,7 +113,8 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
 - Game-result weight 0.25 → 0.4 (`--lambda 0.6`); filter early plies and score/result contradictions
 - Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes
 - Validation split by game, not by position (same-game positions make validation loss optimistic)
-- Material output buckets; horizontal mirroring; king buckets only past ~1B positions
+- Material output buckets (*Claude Code*, branch `claude/output-buckets`); horizontal mirroring; king
+  buckets only past ~1B positions
 - Second generation: data from the NNUE engine itself
 
 ## Novel ideas
@@ -130,11 +137,28 @@ Known and note where it was found. Proposals:
   set pruning margins and time use instead of fixed values. Partially known: Stockfish widens its RFP
   margin by the size of its correction history, which comes from search, not a learned head. Check
   first that the predicted error correlates with real eval error before playing games.
-- **Auxiliary training targets (transplant).** Extra outputs read the accumulator only during
+- **Auxiliary training targets (transplant).** *Claude Code.* **Passed: +53.2 ± 15.6** (log above);
+  replicated on a second data snapshot, **+34.6 ± 12.2**. The ablations under "NNUE training
+  measurements" show the gain comes from an extra pure-search-score target, not from looking ahead.
+  That makes it closer to ordinary multi-task learning than to KataGo's future targets. Extra outputs
+  read the accumulator only during
   training and are dropped at export, so the engine is no slower: the search score some plies later
   (KataGo's short-term value targets), material later, moves left. Found in KataGo (arXiv 1902.10565)
-  and Lc0, where the heads are used at inference; not found in NNUE trainers (nnue-pytorch, bullet).
+  and Lc0, where the heads are used at inference; Lc0's transformer nets also train "future" heads
+  that predict the next two moves ([arXiv 2409.12272](https://arxiv.org/abs/2409.12272)). Not found
+  for NNUE: nnue-pytorch, bullet, the chessprogramming wiki and TalkChess were searched on 2026-10-23
+  (Discord, where much NNUE work is discussed, could not be).
   Needs no new data: games are contiguous in the datagen files.
+- **Policy auxiliary head (transplant).** *Claude Code, branch `claude/policy-aux`.* A second
+  training-only head on the accumulator, predicting the from and to squares of the move played
+  (cross-entropy), dropped at export like the value head. Datagen plays the search's best move, so
+  the move is the difference between a recorded position and the next ply's; 79% of positions have
+  one. The idea follows from the ablation above: an extra target with real signal helps the shared
+  layer, and a move choice says more per position than one scalar. Prior art: AlphaZero trains
+  policy and value on one trunk, and [dshawul's nn-train](https://github.com/dshawul/nn-train)
+  trains value, policy and score heads together, but in both the policy is used at inference.
+  [Lc0's transformer](https://arxiv.org/abs/2409.12272) adds auxiliary future-move targets. Not
+  found as a training-only signal for an alpha-beta NNUE (web and TalkChess searched 2026-10-23).
 - **Playout-cap randomization in datagen (transplant).** Most moves get a cheap unrecorded search and
   some get a deeper recorded one, so CPU goes to fewer, better-labelled, less correlated positions.
   From KataGo; in chess only node-count jitter was found. Test at equal CPU: two datasets, one SPRT.
@@ -149,6 +173,34 @@ Known and note where it was found. Proposals:
   art found yet. It depends on a known fix that comes first: ChessSI rebuilds its searcher on every
   move, so killers and history reset each move. Test keeping them between moves (Known) first; the
   prior can only add on top of that.
+
+### NNUE training measurements (2026-10-23)
+
+Validation loss on held-out games: a guide to which networks are worth an SPRT, not an Elo result.
+Each comparison uses the same frozen data, seed and epochs, with validation games never seen in
+training. *Claude Code.*
+
+- **Validating on whole games exposed overfitting.** A random-position split had put positions from
+  the same game on both sides. Split by game, h256 on 23M positions stops improving after about 10
+  epochs while its training loss keeps falling.
+- **The auxiliary head lowers validation loss at every size tried.** At 23M positions with h256: no
+  head 0.00690, weight 0.5 0.00678, weight 1.0 0.00673. At 38.5M: 0.00672 without, 0.00661 with
+  (weight 1.0, this is net6). At h512 the gap is larger (0.00712 vs 0.00694), consistent with the
+  head acting partly as a regulariser.
+- **A near horizon works best for the auxiliary target.** At 47.4M positions with h256 (no head
+  0.00659), the win probability this many plies later gave: 1 ply 0.00646, 2 plies 0.00646, 4 plies
+  0.00645, 8 plies 0.00651, 16 plies 0.00657. A weight of 2.0 at 8 plies (0.00652) was no better than
+  1.0.
+- **The head works without looking ahead at all, so the horizon is not the mechanism.** On net7's
+  64.6M positions, a head predicting the position's own search score (0 plies) matched the 4-ply head:
+  no head 0.00662, own score 0.00652, 4 plies 0.00653 (net7). A second seed, which also redraws the
+  validation games, gave 0.00668 vs 0.00655. A head predicting only the game result made things much
+  worse (0.00717). So the head helps as a second, low-noise target for the shared layer. The exported
+  head learns a blend that is 25% game result, which is noisy, and the auxiliary head adds pure search
+  score. Farther horizons lose because a later score is a worse estimate of the current position's
+  value. That points at the blend itself, tested next as `--lambda 1.0` and `--lambda 0.6`.
+- **More hidden neurons don't help yet.** At 47.4M positions with the head: h256 0.00651, h384
+  0.00652, h512 0.00653, while h512 searches about 40% slower. Data, not network size, is the limit.
 
 ### Findings from existing games (2026-10-22, no new games played)
 
@@ -184,6 +236,7 @@ each result here with the date, the commit and its bench.
 | Date | Commit | Bench | Opponents | Games | Rating |
 | --- | --- | --- | --- | --- | --- |
 | 2026-10-22 | `74412b7` | 864538 | Stash 12, 13, 14, 15.3, 17, 19 (CCRL Blitz 1883-2474) | 2,400 at 10+0.1, 8moves_v3 book, 13 concurrent | **2440 ± 19** |
+| 2026-10-23 | `cdfc298` (net7) | 264979 | Stash 19, 20.0.1, 21, 25, 27, 30, 31, 33, 34, 36 (CCRL Blitz 2474-3375) | 959 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 0-3) | **3150 ± 26** |
 
 The 2026-10-22 gauntlet used a balanced book (`8moves_v3`), not the SPRT book: UHO openings give one
 side an edge, which stretches rating gaps. Run it with `scripts/gauntlet.sh`. The ± is statistical
@@ -192,3 +245,14 @@ with opponent strength (2356-2402 vs the weakest, 2461-2467 vs Stash 17 and 19),
 compression at the extremes, so the true figure is likely nearer 2460. The 12 time forfeits, all by
 Stash, were excluded. Stash 20.0.1 (2512) and 21 (2714) are now built for later gauntlets, so the
 next one has opponents above ChessSI.
+
+The 2026-10-23 gauntlet rates net7 before SEE pruning in quiescence, 710 Elo above the first
+gauntlet. Since `74412b7` the engine gained the NNUE, which was worth +203, +139 and +104 in
+self-play across three networks. It also gained aspiration windows, the history heuristic, late move
+pruning, futility pruning and RFP. It ran in two parts. The first pool was
+Stash 19-27, where ChessSI scored 70-99%, too high to say much. It was stopped after 359 games, and
+600 more were played against Stash 27-36, chosen to bracket ChessSI. Those alone give 3140 ± 30.
+ChessSI scored 49% against Stash 30 (3153). Performance was 3090-3150 against the four strongest
+opponents and 3200 against Stash 27, so compression at the extremes again lifts the combined figure
+a little. Each Stash build reproduces the bench in its release commit. The same caveat applies: this
+is 10+0.1 under WSL, not CCRL's conditions.

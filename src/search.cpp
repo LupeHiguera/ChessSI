@@ -14,9 +14,9 @@
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
 // with MVV-LVA ordering, killer moves, a history heuristic, null-move pruning,
-// late move reductions, late move pruning, futility pruning and aspiration
-// windows. Other pruning is left out on purpose: each is a separate experiment
-// for the ideas log.
+// late move reductions, late move pruning, futility pruning, SEE pruning in
+// quiescence and aspiration windows. Other pruning is left out on purpose: each
+// is a separate experiment for the ideas log.
 
 std::atomic<bool> Search::stop{false};
 
@@ -113,6 +113,58 @@ struct Searcher {
         h += bonus - h * std::abs(bonus) / MaxHistory;
     }
 
+    // Static exchange evaluation: does capturing on the target square, with
+    // both sides then recapturing with their least valuable attacker, gain at
+    // least `threshold`? Castling, en passant and promotions count as even.
+    bool see_ge(Move m, int threshold) const {
+        static constexpr int SeeValue[6] = {100, 320, 330, 500, 900, 20000};
+        if (move_type(m) != NORMAL)
+            return 0 >= threshold;
+
+        Square from = from_sq(m), to = to_sq(m);
+        Piece victim = pos.piece_on(to);
+        int swap = (victim == NO_PIECE ? 0 : SeeValue[type_of(victim)]) - threshold;
+        if (swap < 0)
+            return false;
+        swap = SeeValue[type_of(pos.piece_on(from))] - swap;
+        if (swap <= 0)
+            return true;
+
+        Bitboard occ = pos.pieces() ^ square_bb(from) ^ square_bb(to);
+        Bitboard bishops = pos.pieces(BISHOP) | pos.pieces(QUEEN);
+        Bitboard rooks = pos.pieces(ROOK) | pos.pieces(QUEEN);
+        Bitboard attackers = (PawnAttacks[BLACK][to] & pos.pieces(WHITE, PAWN))
+                           | (PawnAttacks[WHITE][to] & pos.pieces(BLACK, PAWN))
+                           | (KnightAttacks[to] & pos.pieces(KNIGHT))
+                           | (KingAttacks[to] & pos.pieces(KING))
+                           | (bishop_attacks(to, occ) & bishops)
+                           | (rook_attacks(to, occ) & rooks);
+        Color stm = color_of(pos.piece_on(from));
+        bool result = true;
+        while (true) {
+            stm = ~stm;
+            attackers &= occ;
+            Bitboard ours = attackers & pos.pieces(stm);
+            if (!ours)
+                break;
+            result = !result;
+
+            PieceType pt = PAWN;
+            while (!(ours & pos.pieces(pt)))
+                pt = PieceType(pt + 1);
+            if (pt == KING) // the king may only recapture if nothing can take it back
+                return (attackers & pos.pieces(~stm)) ? !result : result;
+            if ((swap = SeeValue[pt] - swap) < int(result))
+                break;
+            occ ^= square_bb(lsb(ours & pos.pieces(pt)));
+            if (pt == PAWN || pt == BISHOP || pt == QUEEN)
+                attackers |= bishop_attacks(to, occ) & bishops;
+            if (pt == ROOK || pt == QUEEN)
+                attackers |= rook_attacks(to, occ) & rooks;
+        }
+        return result;
+    }
+
     // Selection sort step: brings the best remaining move to index i.
     static Move pick_move(MoveList& list, int* scores, int i) {
         int best = i;
@@ -144,6 +196,8 @@ struct Searcher {
         int best = standPat;
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
+            if (!see_ge(m, 0)) // losing captures cannot raise the stand-pat score
+                continue;
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
