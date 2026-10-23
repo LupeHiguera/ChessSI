@@ -36,6 +36,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net7 replaces net6: 1.7× the data (64.6M positions, adding about 18.6M from net6 self-play) and the auxiliary head at 4 plies instead of 8 | Passed | +103.7 ± 21.8 | 628 (4 concurrent, cores 0-3) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), retest on the NNUE engine (net6, against d243d1c) | Passed | +22.2 ± 9.1 | 2,212 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +29.0 ± 19.5 |
 | 2026-10-23 | Claude Opus 5.5 | Known | net7's recipe with `--lambda 1.0` (search score only, no game result in the target), same data and seed, vs net7 | Failed | −80.4 ± 18.7 | 642 (4 concurrent, cores 0-3) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | Improving flag in LMR: one more ply of reduction when the static eval is not above its value two plies earlier | Inconclusive (stopped to free cores, LLR 0.32) | +6.7 ± 13.9 | 940 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +7.0 ± 17.7 |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -98,7 +99,7 @@ first network is in, since pruning margins are in eval units and must be recheck
 15. Probe and store the TT in quiescence (Stash +35.7 and +28.5)
 16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main search
 17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
-    (LMR first)*
+    (LMR alone was inconclusive, +6.7 ± 13.9; RFP and LMP untried)*
 18. Continuation history (1 and 2 plies back), then capture history
 19. Keep killers and history between moves (they reset on every `go`)
 20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets
