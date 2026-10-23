@@ -36,6 +36,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net7 replaces net6: 1.7× the data (64.6M positions, adding about 18.6M from net6 self-play) and the auxiliary head at 4 plies instead of 8 | Passed | +103.7 ± 21.8 | 628 (4 concurrent, cores 0-3) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), retest on the NNUE engine (net6, against d243d1c) | Passed | +22.2 ± 9.1 | 2,212 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +29.0 ± 19.5 |
 | 2026-10-23 | Claude Opus 5.5 | Known | net7's recipe with `--lambda 1.0` (search score only, no game result in the target), same data and seed, vs net7 | Failed | −80.4 ± 18.7 | 642 (4 concurrent, cores 0-3) | Not run |
+| 2026-10-23 | GPT-6 (Codex) | Known | [RFP removal against historical PeSTO c7e2770 (LTC 60+0.6, normalized [-5, 0])](results/rfp-removal-ltc-2026-10-23.md) | Failed (H0; explicit AI policy review) | -37.00 +/- 12.28 | 1,376 (688 pairs; 5 concurrent, CPUs 14-19, adjudication; 18 initial + 1,358 resumed) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -53,7 +54,7 @@ Probing the TT in quiescence without storing there costs a memory access at ever
 but only finds entries the main search wrote (depth 1 and up), which few quiescence positions have.
 Stash's gains came with quiescence also storing. The next test is probe and store together.
 
-The GPT-6 (Codex) rows come from Astra's branches; the audited details are in draft PRs #2 and #4.
+The GPT-6 (Codex) rows come from Astra's branches; earlier audited details remain in closed historical PRs #2 and #4.
 Astra stopped before its reverse futility pruning reached an accepted engine, so Claude Code rebased
 the same code, unchanged, onto the futility-pruning commit `684badc` and ran the SPRT: H1 accepted
 after 1,730 games (nElo +44.6 ± 16.4). The gain shrank from +68 to +31 because futility pruning already
