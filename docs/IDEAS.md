@@ -13,13 +13,18 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-21 | Claude Opus 5.5 | Known | Killer moves | Passed | +43.5 ± 14.2 | 1,332 (18 concurrent, no adjudication) | Passed, 364 games, +76.6 ± 27.5 |
 | 2026-10-21 | Claude Opus 5.5 | Known | History heuristic (gravity, bonus min(d², 1200), malus on earlier quiets) | Failed | −2.7 ± 4.7 | 11,690 (13 concurrent) | Inconclusive at 600-game cap, −23.8 ± 20.5 |
+| 2026-10-22 | GPT-6 (Codex) | Known | Check evasions in quiescence | Failed | -11.83 +/- 8.36 | 4,026 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | Null-move pruning (R = 3 + depth/6, needs non-pawn pieces and static eval >= beta) | Passed | +157.1 ± 27.0 | 472 (13 concurrent) | Passed, 310 games, +107.5 ± 35.2 |
 | 2026-10-22 | Claude Opus 5.5 | Known | Late move reductions (log table, quiet moves after the third, re-search on fail high) | Passed | +83.7 ± 19.4 | 732 (13 concurrent) | Passed, 284 games, +107.3 ± 32.2 |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (original baseline; STC only) | Passed | +39.39 +/- 13.98 | 1,568 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | Aspiration windows (from depth 5, ±25 cp, doubling on fail) | Passed | +56.1 ± 15.0 | 944 (13 concurrent) | Passed, 592 games, +43.1 ± 19.8 |
 | 2026-10-22 | Claude Opus 5.5 | Known | Late move pruning (non-PV, depth <= 8, skip quiets after 3 + depth²) | Failed | −140.0 ± 39.8 (pre-screen) | 238 (13 concurrent) | Failed, 238 games; full SPRT skipped by the gate |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (updated main; STC only) | Passed | +68.00 +/- 16.54 | 802 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | History heuristic, retest of the same code on top of LMR | Passed | +60.4 ± 16.1 | 930 (13 concurrent) | Passed, 568 games, +48.6 ± 21.9 |
 | 2026-10-22 | Claude Opus 5.5 | Known | Late move pruning, retest of the same code on top of the history heuristic | Passed | +52.5 ± 14.9 | 1,000 (13 concurrent) | Inconclusive at 600-game cap, +12.2 ± 21.0 |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (updated main; LTC 60+0.6) | Inconclusive | Not established (deadline) | 146 (5 concurrent, CPUs 14-19, adjudication) | Not run |
 | 2026-10-22 | Claude Opus 5.5 | Known | Futility pruning (non-PV, depth <= 6, skip quiets when eval + 120 × depth <= alpha) | Passed | +43.3 ± 13.4 | 1,210 (13 concurrent) | Inconclusive at 600-game cap, +33.7 ± 19.5 |
+| 2026-10-22 | GPT-6 (Codex) | Known | Shallow reverse futility pruning (depth <= 3, margin 150 × depth), retest on top of futility pruning; run by Claude Code | Passed | +31.4 ± 11.6 | 1,730 (4 concurrent, 4-core cloud container, adjudication) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -32,6 +37,13 @@ the techniques it feeds are in. Late move pruning, retried on top of history, we
 The pre-screen at 2+0.02 scored that late-move-pruning retest at only +12.2 ± 21.0. Pruning gains
 grow with search depth, so very short games understate them. The gate skips the full SPRT only on
 a negative pre-screen; a near-zero pre-screen for a depth-dependent idea should still go to 10+0.1.
+
+The GPT-6 (Codex) rows come from Astra's branches; the audited details are in draft PRs #2 and #4.
+Astra stopped before its reverse futility pruning reached an accepted engine, so Claude Code rebased
+the same code, unchanged, onto the futility-pruning commit `684badc` and ran the SPRT: H1 accepted
+after 1,730 games (nElo +44.6 ± 16.4). The gain shrank from +68 to +31 because futility pruning already
+skips some of the same nodes. The run was resumed once from fastchess's saved state after the cloud
+container restarted at game 960.
 
 Baseline before the first idea: bench `20648203`.
 
@@ -53,12 +65,12 @@ top one, test it, log it, then move on.
 2. History heuristic for quiet move ordering - *Claude Code*
 3. Null-move pruning - *Claude Code*
 4. Late move reductions - *Claude Code*
-5. Reverse futility pruning (static null move)
+5. Reverse futility pruning (static null move) - *Astra / GPT-6 (Codex)*
 6. Aspiration windows - *Claude Code*
 7. Late move pruning and futility pruning - *Claude Code*
 8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning - *Claude Code*
-9. Check evasions in quiescence search
-10. TT replacement by depth and age, and TT cutoffs in quiescence
+9. Check evasions in quiescence search - *Astra / GPT-6 (Codex)*
+10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud)*
 11. Internal iterative reductions when there is no TT move
 12. Mate distance pruning; insufficient-material draws
 13. Time management: stop early when the best move is stable
