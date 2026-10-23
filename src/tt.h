@@ -24,6 +24,8 @@ public:
 
     // Returns the entry if it holds this key, else nullptr.
     const TTEntry* probe(uint64_t key) const;
+    // Starts loading the entry for `key` into cache, ahead of a probe.
+    void prefetch(uint64_t key) const { __builtin_prefetch(table.data() + index(key)); }
     void store(uint64_t key, Move move, int score, int depth, Bound bound);
 
 private:

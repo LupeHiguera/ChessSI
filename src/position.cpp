@@ -1,6 +1,7 @@
 #include "position.h"
 
 #include "nnue.h"
+#include "tt.h"
 
 #include <sstream>
 
@@ -305,6 +306,9 @@ bool Position::do_move(Move m) {
     if (us == BLACK)
         ++fullmove;
 
+    // The search probes this position's TT entry next; start loading it while the accumulator
+    // update runs.
+    TT.prefetch(st.key);
     push_accumulator(delta);
     return !attacked(king_square(us), them);
 }
@@ -355,6 +359,7 @@ void Position::do_null_move() {
     }
     stm = ~stm;
     st.key ^= Zobrist::side;
+    TT.prefetch(st.key);
 }
 
 void Position::undo_null_move() {

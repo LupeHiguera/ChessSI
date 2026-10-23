@@ -12,7 +12,7 @@ Phase 1 of 5 (working engine). Done so far:
 - UCI protocol, so it plays in any chess GUI
 - Baseline search: iterative deepening, principal variation search, transposition table, quiescence
 - NNUE evaluation trained only on ChessSI's own self-play (`nets/`), with PeSTO tables as the fallback
-- Bench: `272745` nodes
+- Bench: `241348` nodes
 
 ## Quick start
 

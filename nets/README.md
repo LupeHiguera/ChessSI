@@ -7,6 +7,20 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net6-h256-aux.nnue
+
+- **SHA-256:** `2f100aa621e4a8e109e6c36cb7068fbcc3a3f0352921292a5bdcf4e3762bf7ea`
+- **Data:** 38,539,931 unique positions from 475,769 games, out of 42.5M raw:
+  - 37.2M generation-1 positions: `chesssi datagen` at `d574e70` (PeSTO), 5,000 nodes a move.
+  - 2.7M generation-2 positions: `chesssi datagen` at `fb4d163` (net4), same settings.
+  - 2.6M positions from SPRT games, as for net4.
+- **Training:** `train.py <data files> net6-h256-aux.nnue --hidden 256 --epochs 20 --seed 1
+  --cache-dir <dir> --aux-weight 1.0` at `2efdfb4`. Training adds an auxiliary head, which isn't
+  exported: it predicts the win probability 8 plies later in the same game. Validation holds out 2%
+  of games, with loss 0.00661. It took 6 minutes on an RTX 5080.
+- **Result:** replaced net4, +138.6 ± 24.7 Elo, SPRT [0, 5] at 10+0.1, H1 after 496 games (both
+  networks loaded in the same binary).
+
 ## net4-h256.nnue
 
 - **SHA-256:** `9d8d6c3a10f973573fe3f7d4b98c6691717f5baf5af3b24d8af1ab00d9f29e50`
