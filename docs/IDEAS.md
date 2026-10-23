@@ -94,6 +94,37 @@ Known and note where it was found. Proposals:
   GPU supplies the evaluation targets.
 - **Uncertainty-aware evaluation.** Train the network to also predict how unsure it is, and use that to
   set pruning margins and time use instead of fixed values.
+- **Train on the positions the eval gets wrong (phase 3).** *Claude Code.* Weight training positions
+  by how far the static eval is from the search score, instead of filtering those positions out. The
+  closest prior art does the opposite: [arXiv 2412.17948](https://arxiv.org/abs/2412.17948) keeps
+  only positions where static eval, quiescence and search agree. Test: three networks from the same
+  `datagen` positions and the same training budget (uniform, agreement-filtered, disagreement-
+  weighted), compared by SPRT. Needs `datagen` to also record the static eval.
+- **History prior learned offline.** *Claude Code.* Start each search with history scores learned
+  from our own games, keyed by piece, from and to square and game phase, instead of zeros. No prior
+  art found yet. It depends on a known fix that comes first: ChessSI rebuilds its searcher on every
+  move, so killers and history reset each move. Test keeping them between moves (Known) first; the
+  prior can only add on top of that.
+
+### Findings from existing games (2026-10-22, no new games played)
+
+Two methodology questions, answered from the 32,743 SPRT and pre-screen games in `engines/sprt.pgn`
+by *Claude Code* while the PC was in use. Scripts: `scripts/research/` (each reads only the PGN).
+
+- **Truncated games judged by the base engine: rejected.** The idea: stop each game after P plies and
+  score it with the unchanged engine's eval instead of playing it out. Signal per CPU second, relative
+  to the final results: 0.18× at P=10, 0.56× at 20, 0.35× at 30, 0.59× at 40, 0.85× at 60. It
+  is never cheaper, and it is misleading. For the history heuristic's first test it found a large
+  "effect" the results did not (a shift in eval scale, not strength), and for SEE it got the sign
+  wrong. Engine evals are not a substitute for results.
+- **Openings the engine itself scores as unbalanced carry more signal: a lead.** UHO openings never
+  repeat between tests (the book has 2.6 million), so "openings that were informative before" cannot
+  be measured. Binning pairs by ChessSI's own |eval| of the opening instead, signal per pair relative
+  to its run was 0.63× below 0.3 pawns, about 0.8-1.05× between 0.3 and 0.7, 1.29× at 0.7-0.8 and
+  1.46× at 0.8-1.0 (about ±0.2 each; 5,072 pairs). Selecting openings by an eval band is what UHO
+  already does with Stockfish's eval, so this is Known in principle. The candidate variation is
+  re-filtering by the tested engine's own eval, so the band tracks the engine's strength. Next: build a
+  book from the 0.7+ band, then compare SPRT lengths on the same patches.
 
 ## Measurements
 
