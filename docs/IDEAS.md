@@ -95,7 +95,8 @@ first network is in, since pruning margins are in eval units and must be recheck
 
 15. Probe and store the TT in quiescence (Stash +35.7 and +28.5)
 16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main search
-17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP
+17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
+    (LMR first)*
 18. Continuation history (1 and 2 plies back), then capture history
 19. Keep killers and history between moves (they reset on every `go`)
 20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets
