@@ -133,12 +133,13 @@ def load_file(path, cache_dir, frozen=False):
     return {k: np.concatenate([c[k] for c in chunks]) for k in FIELDS} if chunks else None
 
 
-def load(paths, cache_dir=None, future_plies=8, frozen=False):
+def load(paths, cache_dir=None, future_plies=8, frozen=False, moves=False):
     """Unique positions from datagen text files: White-perspective features int16[n, 32] padded
     with PAD, side to move (1 for White), White-relative score and result, a game number, and the
     White-relative win probability `future_plies` later in the same game (the game result if it
-    ends first). Games are contiguous in each file; a new one starts where the ply goes back or
-    the result changes."""
+    ends first). With `moves`, also the played move's squares (see played_moves), which takes
+    several minutes on tens of millions of positions. Games are contiguous in each file; a new one
+    starts where the ply goes back or the result changes."""
     parts, game_base = [], 0
     for path in paths:
         d = load_file(path, cache_dir, frozen)
@@ -159,13 +160,15 @@ def load(paths, cache_dir=None, future_plies=8, frozen=False):
     jc = np.minimum(j, len(j) - 1)
     valid = (j < len(j)) & (d["game"][jc] == d["game"])
     future = np.where(valid, 1 / (1 + np.exp(-d["scores"][jc] / SCALE)), d["results"]).astype(np.float32)
-    pfrom, pto = played_moves(d)
 
     _, first = np.unique(d["keys"], return_index=True)
     first.sort()
-    return {"feats": d["feats"][first], "white": d["white"][first], "scores": d["scores"][first],
-            "results": d["results"][first], "game": d["game"][first], "future": future[first],
-            "pfrom": pfrom[first], "pto": pto[first]}
+    out = {"feats": d["feats"][first], "white": d["white"][first], "scores": d["scores"][first],
+           "results": d["results"][first], "game": d["game"][first], "future": future[first]}
+    if moves:
+        pfrom, pto = played_moves(d)
+        out["pfrom"], out["pto"] = pfrom[first], pto[first]
+    return out
 
 
 def played_moves(d, chunk=1 << 18):
@@ -268,7 +271,8 @@ def main():
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     t0 = time.time()
-    d = load(args.data, args.cache_dir, args.future_plies, args.frozen)
+    policy = args.policy_weight > 0
+    d = load(args.data, args.cache_dir, args.future_plies, args.frozen, moves=policy)
     n = len(d["scores"])
     # Validation holds whole games, so no game has positions on both sides of the split.
     games = np.unique(d["game"])
@@ -276,8 +280,9 @@ def main():
     val_games = rng.choice(games, size=max(len(games) // 50, 1), replace=False)
     is_val = np.isin(d["game"], val_games)
     val, train = np.flatnonzero(is_val), np.flatnonzero(~is_val)
+    moves_text = f"; {np.mean(d['pfrom'] >= 0):.0%} have the played move" if policy else ""
     print(f"{n} unique positions from {len(games)} games ({len(train)} train, {len(val)} validation), "
-          f"loaded in {time.time() - t0:.0f}s; {np.mean(d['pfrom'] >= 0):.0%} have the played move", flush=True)
+          f"loaded in {time.time() - t0:.0f}s{moves_text}", flush=True)
 
     dev = torch.device("cuda")
     # Features are int16 (64 bytes a position), widened and flipped per batch on the GPU. Above
@@ -292,8 +297,9 @@ def main():
     target = args.lam * torch.sigmoid(score_t / SCALE) + (1 - args.lam) * torch.where(white_t, result_w, 1 - result_w)
     future_w = torch.from_numpy(d["future"]).to(dev)
     future_t = torch.where(white_t, future_w, 1 - future_w)
-    pfrom_t = torch.from_numpy(d["pfrom"].astype(np.int64)).to(dev)
-    pto_t = torch.from_numpy(d["pto"].astype(np.int64)).to(dev)
+    if policy:
+        pfrom_t = torch.from_numpy(d["pfrom"].astype(np.int64)).to(dev)
+        pto_t = torch.from_numpy(d["pto"].astype(np.int64)).to(dev)
     del score_t, result_w, future_w, d
 
     def inputs(idx):
