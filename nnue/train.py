@@ -116,8 +116,8 @@ def load_file(path, cache_dir, frozen=False):
             z = np.load(f"{stem}.{start}.npz")
             chunks.append({k: z[k] for k in FIELDS})
             start = int(z["end"])
-    if frozen and chunks:
-        return {k: np.concatenate([c[k] for c in chunks]) for k in FIELDS}
+    if frozen:  # files with nothing cached yet are left out
+        return {k: np.concatenate([c[k] for c in chunks]) for k in FIELDS} if chunks else None
     with open(path, "rb") as f:
         f.seek(start)
         data = f.read()
