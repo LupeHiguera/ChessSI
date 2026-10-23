@@ -311,6 +311,7 @@ each result here with the date, the commit and its bench.
 | --- | --- | --- | --- | --- | --- |
 | 2026-10-22 | `74412b7` | 864538 | Stash 12, 13, 14, 15.3, 17, 19 (CCRL Blitz 1883-2474) | 2,400 at 10+0.1, 8moves_v3 book, 13 concurrent | **2440 ± 19** |
 | 2026-10-23 | `cdfc298` (net7) | 264979 | Stash 19, 20.0.1, 21, 25, 27, 30, 31, 33, 34, 36 (CCRL Blitz 2474-3375) | 959 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 0-3) | **3150 ± 26** |
+| 2026-10-23 | `d2b1e25` (net8, SEE in quiescence) | 137954 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 600 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 6-9) | **3176 ± 29** |
 
 The 2026-10-22 gauntlet used a balanced book (`8moves_v3`), not the SPRT book: UHO openings give one
 side an edge, which stretches rating gaps. Run it with `scripts/gauntlet.sh`. The ± is statistical
@@ -330,3 +331,8 @@ ChessSI scored 49% against Stash 30 (3153). Performance was 3090-3150 against th
 opponents and 3200 against Stash 27, so compression at the extremes again lifts the combined figure
 a little. Each Stash build reproduces the bench in its release commit. The same caveat applies: this
 is 10+0.1 under WSL, not CCRL's conditions.
+
+The net8 gauntlet used only the Stash 27-36 pool, where net7 had scored 3140 ± 30. So the gain is
++36 against outside engines, from net8 and SEE pruning together, whose self-play gains were +43
+and +22. Against the same opponents: Stash 30 went from 49% to 62%, Stash 33 from 30% to 36%, and
+Stash 36 from 18% to 22%.

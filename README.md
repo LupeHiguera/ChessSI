@@ -11,7 +11,8 @@ Phase 3 of 5 (neural evaluation). Measured rating, on the CCRL Blitz scale:
 | Date | Engine | Rating | Games |
 | --- | --- | --- | --- |
 | 2026-10-22 | Classical search through late move reductions, PeSTO evaluation | 2440 ± 19 | 2,400 vs Stash 12-19 |
-| 2026-10-23 | net7 and the full pruning set | **3150 ± 26** | 959 vs Stash 19-36 |
+| 2026-10-23 | net7 and the full pruning set | 3150 ± 26 | 959 vs Stash 19-36 |
+| 2026-10-23 | net8 and SEE pruning in quiescence | **3176 ± 29** | 600 vs Stash 27-36 |
 
 Gauntlets are played at 10+0.1 against Stash versions with known CCRL ratings, so the figure is
 approximate. Details are in [docs/IDEAS.md](docs/IDEAS.md).
