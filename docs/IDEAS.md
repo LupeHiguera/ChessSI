@@ -52,6 +52,8 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-24 | Claude Opus 5.5 | Known + Novel | Mirror castling-free positions a↔h at random in training (`--mirror`; 76.6% of positions qualify), net9's recipe on its frozen data snapshot, vs net9 | Failed | −18.2 ± 9.2 | 2,370 (12 concurrent, cores 0-12) | Not run |
 | 2026-10-24 | Claude Opus 5.5 | Novel | Route half of the game result's gradient away from the first layer (`--result-grad 0.5`, with the aux head), net9's recipe on its frozen data snapshot, vs net9 | Failed | −34.5 ± 12.4 | 1,312 (12 concurrent, cores 0-12) | Not run |
 | 2026-10-24 | Claude Opus 5.5 | Known + Novel | Training-only HL-Gauss histogram head, 51 bins, weight 0.01 (`--hl-weight 0.01`), net9's recipe on its frozen data snapshot, vs net9 | Failed | −49.3 ± 14.9 | 1,014 (12 concurrent, cores 0-12) | Not run |
+| 2026-10-24 | Claude Opus 5.5 | Known | Time management: scale the soft limit by best-move stability (2.50 to 0.75 over 0-4+ iterations) and score trend (2^(drop/100)), after Stash v26, with the zero-time fix below it (`claude/tm-stability`) | Passed | +15.1 ± 7.3 | 3,150 (12 concurrent, cores 0-12) | Inconclusive at 600-game cap, +12.2 ± 17.7 |
+| 2026-10-24 | Claude Opus 5.5 | Novel | Correction history keyed by the on/off signs of 14 accumulator units (the cloud research's proposal), offline gate: out-of-sample R² of net9's eval error (5,000-node search score minus static eval) on 1M generation-6 positions, against random, pawn, material and eval-value keys of the same 16,384 buckets | Failed (offline gate) | Not run | 0 (R² ≤ 0 on positions within 200 cp, where pawns reach +0.016 and material +0.020 within games) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -350,6 +352,14 @@ are on `claude/trainer-screens` (`nnue/train.py`, all off by default).
   table, so a bias the search finds generalises along the network's notion of similarity. Every key
   found in engines is a hand-chosen piece set or move history, and the web search found none.
   Offline gate: residual variance explained against a random-bit key of the same width.
+  **Result (2026-10-24): failed the gate where it matters.** Target: net9's eval error (5,000-node search
+  score minus static eval) on 1M generation-6 positions, by side to move, 16,384 buckets per key, group
+  means from one half scored on the other. Over all positions the 14 most even units explain R² 0.089
+  across games, beating a random key (−0.008) and pawns (0.006), but plain eval value (0.214) and
+  material (0.242) explain far more: most of the error is the search amplifying decided positions.
+  Within 200 cp of zero (44% of positions, error sd 81 cp) no key generalises across games, and within
+  games pawns reach +0.016 and material +0.020 while the units stay at or below zero. Not built. The
+  material result points to a material-keyed correction table as a follow-up to pawn correction history.
 - **Randomised pruning audits.** Proposed by the cloud research. With probability about 1/256, a node
   that RFP, futility, LMP or null-move pruning would cut is searched anyway and the outcome logged:
   false-prune rates by technique and depth, and unbiased data for fitting margins. Verified null-move
