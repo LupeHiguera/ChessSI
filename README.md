@@ -27,10 +27,10 @@ The engine:
   move pruning and late move reductions.
 - **Move ordering:** killer moves and a history heuristic.
 - **Evaluation:** NNUE, (768 → 256) × 2 → SCReLU → 1, compiled into the binary.
-  - The network is trained only on ChessSI's own games. The default, net8, saw 91.3M positions; the
+  - The network is trained only on ChessSI's own games. The default, net9, saw 119.8M positions; the
     history is in [nets/README.md](nets/README.md).
   - PeSTO tables are the fallback.
-- **Bench:** `137954` nodes.
+- **Bench:** `163764` nodes.
 
 Research so far:
 

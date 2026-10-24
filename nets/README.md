@@ -7,6 +7,25 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net9-h256.nnue
+
+- **SHA-256:** `98971f10c9c6dff1c4370c1014766a3a0ea664b831897988e20f5f7208ee0f61`
+- **Data:** 119,776,920 unique positions from 1,438,775 games, all self-play (no games against other
+  engines):
+  - 37.2M generation-1 positions: `chesssi datagen` at `d574e70` (PeSTO), 5,000 nodes a move.
+  - 12.4M generation-2 positions: `chesssi datagen` at `fb4d163` (net4), same settings.
+  - 26.8M generation-3 positions: `chesssi datagen` at `d243d1c` (net6), same settings.
+  - 49.9M generation-4 positions: `chesssi datagen` at `d2ac8e0` (net7), same settings.
+  - 4.1M generation-5 positions: `chesssi datagen` at `d2b1e25` (net8), same settings.
+  - 2.6M positions from SPRT games, as for net4.
+- **Training:** net8's recipe: `train.py <data files> net9-h256.nnue --hidden 256 --epochs 20 --seed 1
+  --cache-dir <dir> --frozen --aux-weight 1.0 --future-plies 4 --gpu-data-gb 12` at `e525275`. That
+  is the first network with deterministic deduplication keys and the stable validation split (2% of
+  games, chosen by game key). Validation loss is 0.00684 on that split. It took 27 minutes on an
+  RTX 5080.
+- **Result:** replaced net8, +48.4 ± 14.3 Elo, SPRT [0, 5] at 10+0.1, H1 after 1,062 games (both
+  networks loaded in the same binary, 12 concurrent).
+
 ## net8-h256.nnue
 
 - **SHA-256:** `9a758cab4248b12f619401bff1b483eba1326dbd4ed0ef9f3f175abb8c36d536`
