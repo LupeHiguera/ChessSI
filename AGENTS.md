@@ -18,6 +18,7 @@ code matters, but so does the record: **every idea is measured and logged, inclu
 | `scripts/run-idea.sh <name>` | The whole loop for one idea: perft, bench, pre-screen, then the full SPRT unless the pre-screen rejects it |
 | `scripts/nnue-sprt.sh <new.nnue> <base.nnue>` | SPRT two networks in one binary built from `REF` (default `HEAD`); `NAME` lets several run at once |
 | `scripts/datagen.sh <gen> "<cores>"` | Self-play training data, one process per core, from `REF`; `scripts/datagen.sh stop` stops it |
+| `scripts/idea-queue.sh <queue-file>` | `run-idea.sh` for each `<branch> [base-ref]` line in turn, each in its own worktree; summaries in `engines/queue.log` |
 | `scripts/gauntlet.sh` | Rate `HEAD` against engines with known CCRL ratings |
 
 The engine speaks UCI on stdin. Extra commands: `perft <depth>`, `d` (show board), `eval`, `bench [depth]`.
