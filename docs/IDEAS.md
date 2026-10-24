@@ -151,7 +151,7 @@ first network is in, since pruning margins are in eval units and must be recheck
 24. Lazy SMP: helper threads on copies of the position sharing the TT, for games on more than one
     thread (owner's decision, 2026-10-24; single-thread strength and SPRTs are unchanged) - *Claude
     Code (ready on `claude/lazy-smp`; bench identical at one thread, ThreadSanitizer shows only the
-    lockless TT races; a 4-thread vs 1-thread match is queued)*
+    lockless TT races; 4 threads against 1: +129.0 ± 20.6 in 400 games)*
 
 NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
 
@@ -459,6 +459,7 @@ each result here with the date, the commit and its bench.
 | 2026-10-23 | `cdfc298` (net7) | 264979 | Stash 19, 20.0.1, 21, 25, 27, 30, 31, 33, 34, 36 (CCRL Blitz 2474-3375) | 959 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 0-3) | **3150 ± 26** |
 | 2026-10-23 | `d2b1e25` (net8, SEE in quiescence) | 137954 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 600 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 6-9) | 3176 ± 29 |
 | 2026-10-24 | `7af0aae` (net10, speed series) | 158506 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 1,200 at 10+0.1, 8moves_v3 book, 12 concurrent (cores 0-12) | **3284 ± 21** |
+| 2026-10-24 | Claude Opus 5.5 | Known | Lazy SMP: helper threads on copies of the position sharing the TT (owner's decision), measured as 4 threads against 1 in the same binary (`eb10c7b`), 10+0.1, Hash 64 | Passed (fixed 400-game match, not an SPRT) | +129.0 ± 20.6 | 400 (2 concurrent × 5 threads, cores 0-12) | Not run |
 
 The 2026-10-22 gauntlet used a balanced book (`8moves_v3`), not the SPRT book: UHO openings give one
 side an edge, which stretches rating gaps. Run it with `scripts/gauntlet.sh`. The ± is statistical
