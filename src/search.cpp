@@ -51,6 +51,8 @@ struct Searcher {
     Move killers[MAX_PLY + 1][2] = {};
     int history[2][64][64] = {}; // [side to move][from][to], quiet moves only
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
+    Move excluded[MAX_PLY + 1] = {};  // move a singular search leaves out at each ply
+    int rootDepth = 0;
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
 
@@ -241,13 +243,17 @@ struct Searcher {
                 return evaluate(pos);
         }
 
-        const TTEntry* tte = TT.probe(pos.key());
+        // A singular search (one move excluded) neither reads nor writes this node's TT entry.
+        Move excludedMove = excluded[ply];
+        const TTEntry* tte = excludedMove ? nullptr : TT.probe(pos.key());
         Move ttMove = tte ? tte->move : MOVE_NONE;
-        if (tte && !pvNode && tte->depth >= depth) {
-            int ttScore = score_from_tt(tte->score, ply);
-            if (tte->bound == BOUND_EXACT
-                || (tte->bound == BOUND_LOWER && ttScore >= beta)
-                || (tte->bound == BOUND_UPPER && ttScore <= alpha))
+        int ttScore = tte ? score_from_tt(tte->score, ply) : 0;
+        int ttDepth = tte ? tte->depth : -1;
+        Bound ttBound = tte ? Bound(tte->bound) : BOUND_NONE;
+        if (tte && !pvNode && ttDepth >= depth) {
+            if (ttBound == BOUND_EXACT
+                || (ttBound == BOUND_LOWER && ttScore >= beta)
+                || (ttBound == BOUND_UPPER && ttScore <= alpha))
                 return ttScore;
         }
 
@@ -255,7 +261,7 @@ struct Searcher {
 
         // Reverse futility pruning: at shallow null-window nodes, a large
         // static advantage may make the remaining search unnecessary.
-        if (!root && !pvNode && !inCheck && depth <= 3
+        if (!root && !pvNode && !inCheck && !excludedMove && depth <= 3
             && pos.rule50() + depth < 100
             && std::abs(beta) < VALUE_MATE_IN_MAX_PLY
             && (pos.pieces(pos.side_to_move()) & ~(pos.pieces(PAWN) | pos.pieces(KING)))) {
@@ -269,7 +275,7 @@ struct Searcher {
         // and right after another null move.
         Color us = pos.side_to_move();
         bool hasPieces = pos.pieces(us) & ~pos.pieces(PAWN) & ~pos.pieces(KING);
-        if (!pvNode && !inCheck && !root && depth >= 3 && hasPieces && moveStack[ply - 1] != MOVE_NONE
+        if (!pvNode && !inCheck && !root && !excludedMove && depth >= 3 && hasPieces && moveStack[ply - 1] != MOVE_NONE
             && staticEval >= beta) {
             int R = 3 + depth / 6;
             moveStack[ply] = MOVE_NONE;
@@ -296,6 +302,8 @@ struct Searcher {
 
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
+            if (m == excludedMove)
+                continue;
             bool quiet = is_quiet(m);
 
             // Late move pruning: near the leaves, quiet moves this far down
@@ -310,6 +318,25 @@ struct Searcher {
             if (!pvNode && !inCheck && quiet && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
                 && staticEval + 120 * depth <= alpha)
                 continue;
+
+            // Singular extension: when a reduced search without the TT move cannot get near
+            // its TT score, that move is the only good one here, so search it a ply deeper.
+            // When even the reduced search beats beta, several moves do: cut (multi-cut).
+            int extension = 0;
+            if (!root && m == ttMove && depth >= 8 && ttDepth >= depth - 3 && ttBound != BOUND_UPPER
+                && std::abs(ttScore) < VALUE_MATE_IN_MAX_PLY && ply < 2 * rootDepth) {
+                int singularBeta = ttScore - depth;
+                excluded[ply] = m;
+                int singularScore = search(singularBeta - 1, singularBeta, (depth - 1) / 2, ply);
+                excluded[ply] = MOVE_NONE;
+                if (stopped)
+                    return 0;
+                if (singularScore < singularBeta)
+                    extension = 1;
+                else if (singularBeta >= beta)
+                    return singularBeta;
+            }
+
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
@@ -317,9 +344,10 @@ struct Searcher {
             ++legalMoves;
             moveStack[ply] = m;
 
+            int newDepth = depth - 1 + extension;
             int score;
             if (legalMoves == 1)
-                score = -search(-beta, -alpha, depth - 1, ply + 1);
+                score = -search(-beta, -alpha, newDepth, ply + 1);
             else {
                 // Late quiet moves are searched shallower first, and only
                 // re-searched at full depth if they beat alpha.
@@ -330,11 +358,11 @@ struct Searcher {
                         --r;
                     r = std::clamp(r, 0, depth - 2);
                 }
-                score = -search(-alpha - 1, -alpha, depth - 1 - r, ply + 1);
+                score = -search(-alpha - 1, -alpha, newDepth - r, ply + 1);
                 if (score > alpha && r > 0)
-                    score = -search(-alpha - 1, -alpha, depth - 1, ply + 1);
+                    score = -search(-alpha - 1, -alpha, newDepth, ply + 1);
                 if (score > alpha && score < beta)
-                    score = -search(-beta, -alpha, depth - 1, ply + 1);
+                    score = -search(-beta, -alpha, newDepth, ply + 1);
             }
             pos.undo_move(m);
             if (stopped)
@@ -368,11 +396,12 @@ struct Searcher {
                 quietsTried[quietCount++] = m;
         }
 
-        if (legalMoves == 0)
-            return inCheck ? -VALUE_MATE + ply : 0;
+        if (legalMoves == 0) // with a move excluded, the excluded move was the only legal one
+            return excludedMove ? alpha : inCheck ? -VALUE_MATE + ply : 0;
 
         Bound bound = best >= beta ? BOUND_LOWER : alpha > originalAlpha ? BOUND_EXACT : BOUND_UPPER;
-        TT.store(pos.key(), bestMove, score_to_tt(best, ply), depth, bound);
+        if (!excludedMove)
+            TT.store(pos.key(), bestMove, score_to_tt(best, ply), depth, bound);
         return best;
     }
 
@@ -409,6 +438,7 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
     SearchResult result;
 
     for (int depth = 1; depth <= std::min(limits.depth, MAX_PLY - 1); ++depth) {
+        s.rootDepth = depth;
         // Aspiration windows: search a narrow window around the last score and
         // widen whichever side fails until the score lands inside it.
         int delta = 25;
