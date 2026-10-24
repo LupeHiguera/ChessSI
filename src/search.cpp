@@ -13,7 +13,8 @@
 
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
-// with MVV-LVA ordering, killer moves, a history heuristic, null-move pruning,
+// with MVV-LVA ordering, killer moves, a history heuristic with continuation
+// history (one and two plies back), null-move pruning,
 // late move reductions, late move pruning, futility pruning, SEE pruning in
 // quiescence and aspiration windows. Other pruning is left out on purpose: each
 // is a separate experiment for the ideas log.
@@ -40,6 +41,10 @@ const ReductionTable Reductions;
 // Quiet-move history, [side to move][from][to]. It is kept between searches and halved at the
 // start of each one, so what the last search learned still orders moves but fades.
 int history[2][64][64];
+// Continuation history: how a quiet move fared right after a given move one or two plies earlier,
+// as [earlier piece * 64 + its to][piece * 64 + to]. Both distances share the table, which is kept
+// and halved like the history.
+int contHist[12 * 64][12 * 64];
 
 struct Searcher {
     Position& pos;
@@ -54,6 +59,7 @@ struct Searcher {
     int pvLength[MAX_PLY + 1];
     Move killers[MAX_PLY + 1][2] = {};
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
+    Piece pieceStack[MAX_PLY + 1] = {}; // piece that played it
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
 
@@ -101,19 +107,38 @@ struct Searcher {
                 scores[i] = 80'000;
             else if (ply >= 0 && m == killers[ply][1])
                 scores[i] = 70'000;
-            else if (ply >= 0)
+            else if (ply >= 0) {
                 scores[i] = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
-            else
+                for (int back = 1; back <= 2; ++back)
+                    if (const int* c = cont_entry(ply, back, m))
+                        scores[i] += *c;
+            } else
                 scores[i] = 0;
         }
     }
 
-    // Moves the entry toward +/-MaxHistory so it never leaves the quiet band
-    // of the move ordering (below killers at 70,000).
-    void update_history(Move m, int bonus) {
+    // The continuation-history entry for quiet move m after the move `back`
+    // plies earlier, or null at the root or after a null move.
+    int* cont_entry(int ply, int back, Move m) {
+        if (ply < back || moveStack[ply - back] == MOVE_NONE)
+            return nullptr;
+        return &contHist[pieceStack[ply - back] * 64 + to_sq(moveStack[ply - back])]
+                        [pos.piece_on(from_sq(m)) * 64 + to_sq(m)];
+    }
+
+    // Moves an entry toward +/-MaxHistory so the history and both continuation
+    // entries together stay in the quiet band of the move ordering (below
+    // killers at 70,000).
+    static void gravity(int& h, int bonus) {
         constexpr int MaxHistory = 16384;
-        int& h = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
         h += bonus - h * std::abs(bonus) / MaxHistory;
+    }
+
+    void update_history(int ply, Move m, int bonus) {
+        gravity(history[pos.side_to_move()][from_sq(m)][to_sq(m)], bonus);
+        for (int back = 1; back <= 2; ++back)
+            if (int* c = cont_entry(ply, back, m))
+                gravity(*c, bonus);
     }
 
     // Static exchange evaluation: does capturing on the target square, with
@@ -313,12 +338,14 @@ struct Searcher {
             if (!pvNode && !inCheck && quiet && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
                 && staticEval + 120 * depth <= alpha)
                 continue;
+            Piece moved = pos.piece_on(from_sq(m));
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
             }
             ++legalMoves;
             moveStack[ply] = m;
+            pieceStack[ply] = moved;
 
             int score;
             if (legalMoves == 1)
@@ -359,9 +386,9 @@ struct Searcher {
                                 killers[ply][0] = m;
                             }
                             int bonus = std::min(depth * depth, 1200);
-                            update_history(m, bonus);
+                            update_history(ply, m, bonus);
                             for (int j = 0; j < quietCount; ++j)
-                                update_history(quietsTried[j], -bonus);
+                                update_history(ply, quietsTried[j], -bonus);
                         }
                         break;
                     }
@@ -404,6 +431,7 @@ struct Searcher {
 void Search::clear() {
     TT.clear();
     std::fill(&history[0][0][0], &history[0][0][0] + 2 * 64 * 64, 0);
+    std::fill(&contHist[0][0], &contHist[0][0] + 12 * 64 * 12 * 64, 0);
 }
 
 SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbose) {
@@ -411,6 +439,9 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
         for (auto& from : side)
             for (int& h : from)
                 h /= 2;
+    for (auto& prev : contHist)
+        for (int& h : prev)
+            h /= 2;
     Searcher s(pos, limits);
     s.set_time_limits();
     SearchResult result;
