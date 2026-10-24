@@ -42,8 +42,11 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known | Eight material output buckets (by piece count), net7's recipe and data, vs net7 in one binary (`claude/output-buckets`) | Inconclusive (stopped to free cores, LLR −0.15) | −0.7 ± 14.7 | 1,002 (4 concurrent, cores 0-3) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | Continuation history, 1 and 2 plies back, in quiet-move ordering (tables reset on every `go`, like history) | Failed (pre-screen) | −2.9 ± 18.1 (pre-screen) | 600 (4 concurrent, cores 0-3) | Failed, 600 games; full SPRT skipped by the gate |
 | 2026-10-23 | Claude Opus 5.5 | Known | History heuristic kept between moves (cleared only on `ucinewgame`), no decay | Failed (pre-screen) | −9.9 ± 18.5 (pre-screen) | 600 (4 concurrent, cores 0-3) | Failed, 600 games; full SPRT skipped by the gate |
+| 2026-10-23 | Claude Opus 5.5 | Known | TT replacement by depth and age (an entry from the current search stays unless the new one, for another position, is at least as deep; older entries always give way), on the PeSTO engine against afe9aab | Inconclusive (stopped when main moved to NNUE, LLR 1.50) | +10.4 ± 8.9 | 2,998 (4 concurrent, 4-core cloud containers on two CPU types) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | TT replacement by depth and age, the same change on the NNUE engine (net4, against fb4d163) | Inconclusive (cloud container stopped; handed to the PC, now `claude/tt-replacement` rebased onto main, LLR 0.56) | +4.4 ± 7.9 | 3,660 (4 concurrent, 4-core cloud container) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net8 replaces net7: net7's recipe (with the training-only auxiliary head) on 1.4× the data, 91.3M self-play positions including 20.3M from net7 | Passed | +43.1 ± 13.2 | 1,208 (4 concurrent, cores 6-9) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net9 replaces net8: net8's recipe on 1.3× the data (119.8M self-play positions, adding 29.6M more from net7 and 4.1M from net8), the first with deterministic dedup keys and the stable validation split | Passed | +48.4 ± 14.3 | 1,062 (12 concurrent, cores 0-3 and 6-13) | Not run |
+| 2026-10-23 | GPT-6 (Codex) proposed, Claude Opus 5.5 implemented | Novel | TT instability flag: a TT entry is flagged when two searches of its position (depths ≥ 4, within 2 plies) give score ranges ≥ 64 cp apart, and flagged nodes reduce one ply less (`claude/astra-tt-conflict`) | Failed (Astra's preregistered frequency gate, no SPRT) | Not run | 0 (47 flags in a depth-11 bench; 0.3% of reductions changed) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -93,10 +96,10 @@ top one, test it, log it, then move on.
 7. Late move pruning and futility pruning - *Claude Code*
 8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning - *Claude Code*
 9. Check evasions in quiescence search - *Astra / GPT-6 (Codex)*
-10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud); quiescence part taken over by Claude Code*
-11. Internal iterative reductions when there is no TT move - *Claude Code*
+10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud); quiescence part taken over by Claude Code. The replacement change, rebased onto main, is ready for PC 2 on `claude/tt-replacement`*
+11. Internal iterative reductions when there is no TT move - *Claude Code (ready on `claude/iir`: depth ≥ 4, one ply)*
 12. Mate distance pruning; insufficient-material draws
-13. Time management: stop early when the best move is stable - *Claude Code*
+13. Time management: stop early when the best move is stable - *Claude Code (ready on `claude/tm-stability`: Stash's best-move stability and score-trend scaling of the soft limit)*
 14. Phase 3: self-play data generation and a first NNUE network - *Claude Code, done (net4)*
 
 Added 2026-10-22 from a prior-art review by Claude Code research agents (Stash's per-version
@@ -105,28 +108,51 @@ first network is in, since pruning margins are in eval units and must be recheck
 
 15. Probe and store the TT in quiescence (Stash +35.7 and +28.5)
 16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main
-    search - *Claude Code (ordering first)*
+    search - *Claude Code (ordering first; SEE pruning in the main search is ready on
+    `claude/see-pruning`)*
 17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
-    (LMR alone was inconclusive, +6.7 ± 13.9; RFP and LMP untried)*
+    (LMR alone was inconclusive, +6.7 ± 13.9; RFP untried; the LMP part, half the moves when not
+    improving as in Stockfish, is ready on `claude/lmp-improving`)*
 18. Continuation history (1 and 2 plies back), then capture history - *Claude Code (continuation
     history failed its pre-screen, −2.9 ± 18.1; its 590k-entry table resets on every `go`, so retest
     after item 19)*
 19. Keep killers and history between moves (they reset on every `go`) - *Claude Code (history
-    without decay failed its pre-screen, −9.9 ± 18.5; halving it at each new search is untried)*
-20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets
+    without decay failed its pre-screen, −9.9 ± 18.5; halving it at each new search is ready on
+    `claude/history-decay`)*
+20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets - *Claude
+    Code (singular extensions with multi-cut ready on `claude/singular`, stacked on TT replacement)*
 21. Hard time limit capped below the remaining clock; node-fraction time management
 22. Small fixes: no futility/LMP pruning of checking moves; a rule50 guard on TT cutoffs (Astra's
     TT draw-clock probe showed a +562 score from clock 0 reused at clock 98); checkmate before the
-    fifty-move draw; RFP's stalemate check costs a full move generation per cutoff. For the rule50
+    fifty-move draw; RFP's stalemate check costs a full move generation per cutoff (now answered
+    from a few attack lookups with the same result, on `claude/rfp-fast-legal`). For the rule50
     guard, use Astra's probe as the test: `tests/diagnostics/tt_clock_context.cpp` on branch
     `astra/research-workflow`. Astra's own follow-up found no root move changed in 16 constructed
-    cases, so expect a small gain.
+    cases, so expect a small gain. Also a real bug, fixed on `claude/fix-zero-time`: with no
+    increment and under 75 ms left, both time limits rounded to 0 ("no limit"), so the engine
+    searched until stopped and lost on time. Increment games, and so every SPRT, never hit it.
+23. Correction history: pawn key first (Caissa 2023; Alexandria +11.29 ± 4.66 at 8+0.08), then
+    non-pawn and continuation keys, then abs(correction) in pruning margins - *Claude Code (pawn
+    version ready on `claude/corrhist`)*
 
 NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
 
 - Hidden size 128 vs 256 vs 512 at equal training time; NPS counts, so compare in games
 - Game-result weight 0.25 → 0.4 (`--lambda 0.6`); filter early plies and score/result contradictions
-- Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes
+- Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes.
+  *Claude Code:* the SCReLU multiply trick was already in `nnue.cpp`. A speed series with identical
+  search (bench and depth-11 node counts unchanged) is ready: `claude/acc-no-zero-fill` (the
+  accumulator stack stops zero-filling 1 KB per move, +2.6% nps), `claude/nnue-simd` on top (the
+  output layer hand-vectorized with vpmaddwd and AVX-VNNI vpdpwssd where GCC 13 had emitted 32-bit
+  multiplies, +18%), and `claude/rfp-fast-legal` on top (see item 22, +2.7%). Together about +21%
+  nps against main in alternating depth-11 runs, measured while the PC was in use. A gprof profile
+  of main put the network at about 22% of search time (output layer 18%, accumulator updates 4%),
+  but the +18% from the output layer alone implies its true share was higher: sampling profilers
+  overcharge many small calls. The accumulator update is already vectorized (vpaddw and vpsubw on
+  ymm), so lazy updates are the remaining NNUE lever.
+- Datagen records the static eval before each search as a fourth field (`claude/datagen-eval`):
+  same games with the same seed, and the trainer reads old and new files alike. Several queued ideas
+  need it, so PC 2's first generation should use it.
 - Validation split by game, not by position (same-game positions make validation loss optimistic)
 - Material output buckets (*Claude Code*: level with net7 at 64.6M positions, −0.7 ± 14.7; code on
   branch `claude/output-buckets`, worth retrying with more data); horizontal mirroring; king buckets
@@ -166,7 +192,10 @@ Proposals:
   separates their effects (verified against single-idea SPRTs before it is trusted).
 - **GPU teacher for data (phase 3).** Data generation is CPU-bound. Train a larger network on the GPUs
   from our own games and use it to relabel positions in large batches, so the CPU plays games and the
-  GPU supplies the evaluation targets.
+  GPU supplies the evaluation targets. **Known** (prior art found by the cloud research, PR #16):
+  Viridithas's `relabel` tool rescores stored positions with a network, Stockfish relabels its
+  training data with an Lc0 network, and YaneuraOu's recommended loop relabels NNUE self-play data
+  with a dlshogi model.
 - **Uncertainty-aware evaluation.** Train the network to also predict how unsure it is, and use that to
   set pruning margins and time use instead of fixed values. Partially known: Stockfish widens its RFP
   margin by the size of its correction history, which comes from search, not a learned head. Check
@@ -182,18 +211,30 @@ Proposals:
   that predict the next two moves ([arXiv 2409.12272](https://arxiv.org/abs/2409.12272)). Not found
   for NNUE: nnue-pytorch, bullet, the chessprogramming wiki and TalkChess were searched on 2026-10-23
   (Discord, where much NNUE work is discussed, could not be).
-  Needs no new data: games are contiguous in the datagen files.
+  Needs no new data: games are contiguous in the datagen files. Correction from the cloud research
+  (PR #16): Lc0's optional categorical value head is training-only and left out of its exported
+  networks, so it is the nearest chess precedent, though its target is the same value split into
+  buckets rather than a second, cleaner target. A second web and TalkChess search on 2026-10-23
+  (Claude Code on the PC) again found no training-only head for an NNUE; the only hit was this repo.
 - **Adaptive LMR from reduced-versus-full disagreement.** *Proposed by Astra (GPT-6 (Codex)), to be
   implemented and tested by Claude Code on the second PC; the log row will name both models.* At one
   node, a late move's reduced search can fail high while its full-depth re-search fails low. That
   says the reduction was over-optimistic there, so later siblings are reduced one ply less. Idea 4
   in Astra's notes (`docs/research/codex-2026-10-22/search.md` on branch `astra/research-workflow`),
   with its prior-art check. Its cheap falsification comes first: does the disagreement predict
-  costly misses among later siblings?
+  costly misses among later siblings? *Implemented 2026-10-23 on `claude/astra-lmr-disagreement`
+  (bench 168915).* The trigger is common: in a depth-11 bench, 1.6% of reduced searches failed high
+  (4,606 of 290,867), 61% of those failed low at full depth, and 22,333 later reductions shrank. So
+  most reduced fail-highs are false alarms. The full predictive check (verifying a sample of reduced
+  fail-lows) needs an isolated diagnostic build; the SPRT on PC 2 comes first, as the owner asked.
 - **TT instability flag.** *Proposed by Astra (GPT-6 (Codex)), queued for Claude Code after the one
   above.* When two searches of the same position give disjoint score intervals (both depths at
   least 4 and within 2 of each other, a gap of at least 64 cp), a 2-bit warning is stored in the TT
   entry, and that position gets one ply less LMR reduction. Idea 3 in the same notes.
+  *Implemented 2026-10-23 on `claude/astra-tt-conflict` (a one-bit flag in the entry's padding,
+  still 16 bytes; bench 164124).* **It fails Astra's frequency gate:** in a depth-11 bench only 47
+  of 117,804 same-key stores set the flag, changing 799 of 263,385 reductions (0.3%). Astra's notes
+  say to stop rather than widen the gates in that case, so no SPRT unless the owner asks for one.
 - **Self-distillation head (transplant).** *Claude Code.* A training-only head that learns an earlier
   ChessSI network's static evaluation of each position (`train.py --teacher`), dropped at export.
   It follows from the auxiliary-head ablation: a low-noise target helps the shared layer, and a
@@ -224,12 +265,65 @@ Proposals:
   closest prior art does the opposite: [arXiv 2412.17948](https://arxiv.org/abs/2412.17948) keeps
   only positions where static eval, quiescence and search agree. Test: three networks from the same
   `datagen` positions and the same training budget (uniform, agreement-filtered, disagreement-
-  weighted), compared by SPRT. Needs `datagen` to also record the static eval.
+  weighted), compared by SPRT. Needs `datagen` to also record the static eval. **Known** (prior art
+  found by the cloud research, PR #16): Lc0's "diff focus" samples positions by abs(best_q − orig_q)
+  plus policy divergence, and KataGo weights by value and policy surprise. RHO-LOSS selection is
+  the untried successor (see the report).
 - **History prior learned offline.** *Claude Code.* Start each search with history scores learned
   from our own games, keyed by piece, from and to square and game phase, instead of zeros. No prior
   art found yet. It depends on a known fix that comes first: ChessSI rebuilds its searcher on every
   move, so killers and history reset each move. Test keeping them between moves (Known) first; the
-  prior can only add on top of that.
+  prior can only add on top of that. Prior art found by the cloud research (PR #16): learned move
+  ordering by Kocsis et al. and the Neural MoveMap heuristic in chess, and Giraffe's move evaluator.
+  Its label waits on the owner's decision about a "Partially known" value for the Kind column.
+
+Added 2026-10-23 from the cloud research (`docs/research/novel-elo-ideas-2026-10-24/`, PR #16), with
+prior art rechecked on the web and TalkChess from the PC the same day (the cloud session saw those
+only as search snippets). Each is a GPU screen or offline gate first; switches for the first three
+are on `claude/trainer-screens` (`nnue/train.py`, all off by default).
+
+- **Route the game result's gradient away from the first layer.** *Claude Code.* A hypothesis for
+  why the auxiliary head works: it changes how much of the first layer's training signal comes from
+  the noisy game result. Without the head, 25% of the target is the result. With a weight-1.0 head
+  learning pure search score, the result's share of the gradient reaching the first layer falls to
+  about 12.5%, while the exported output still learns the 75/25 blend. `--result-grad B` scales only
+  the result's gradient into the first layer (the output layer still learns the whole blend, so
+  calibration is unchanged); at B = 0.5 the share is about 14%, close to the head's. Screen on
+  net9's frozen snapshot: B = 1, 0.5 and 0 without a head, and the head with B = 0.5. If B = 0.5
+  alone matches the head, the head's gain is gradient routing, and B = 0 may go further; if not, the
+  head's extra readout matters. Prior art: KataGo trains its error heads behind a stop-gradient and
+  Lc0's trainer has `propagate_value_gradients`, but neither applies it to the outcome part of a value
+  target, and nnue-pytorch and bullet have nothing like it (cloud research; no TalkChess hit).
+- **Mirror castling-free positions left to right.** *Claude Code.* Without castling rights the rules
+  are symmetric under the a↔h mirror, so such positions can be flipped at random in training with
+  the same score and result: free extra data, which has been ChessSI's strongest lever. `--mirror`
+  judges castling from king and rook placement (the data cache has no castling field) and prints the
+  share of positions that qualify; under about 40% leaves little to gain. Partially known: AlphaGo
+  Zero trained on board symmetries, and NNUE's horizontally mirrored inputs build the symmetry into
+  the encoding instead. No augmentation was found in nnue-pytorch, bullet, Viridithas or Stormphrax,
+  nor on TalkChess.
+- **HL-Gauss histogram head.** *Claude Code.* A training-only head predicts a 51-bin histogram of
+  sigmoid(score / 400), by cross-entropy against a Gaussian-smoothed target (Farebrother et al.,
+  ICML 2024, found it degrades less than MSE as targets get noisier). `--hl-weight` at 0.003, 0.01
+  and 0.03, since cross-entropy runs at a few nats against MSE's 0.0065. The nearest chess result is
+  a TalkChess thread where plain cross-entropy on the main output trained weaker than MSE, which is
+  a different design. Watch for the failure that sank the policy head: a cross-entropy head
+  competing with the value for 256 units.
+- **Branched ("vine") self-play.** Proposed by the cloud research. Fork datagen games mid-game into
+  two continuations and give the shared prefix the mean of both results, halving the result noise
+  on those positions at no extra search (TRPO's vine estimator; KataGo branches games for coverage
+  but never averages). No forking was found in any own-data datagen or on TalkChess. Gate first, for
+  PC 2: from 2,000 positions of old games, play two continuations each and stop if fewer than about
+  10% end differently.
+- **Correction history keyed by the network's own hidden units.** Proposed by the cloud research,
+  after pawn correction history passes: hash the signs of 12-20 accumulator units into a correction
+  table, so a bias the search finds generalises along the network's notion of similarity. Every key
+  found in engines is a hand-chosen piece set or move history, and the web search found none.
+  Offline gate: residual variance explained against a random-bit key of the same width.
+- **Randomised pruning audits.** Proposed by the cloud research. With probability about 1/256, a node
+  that RFP, futility, LMP or null-move pruning would cut is searched anyway and the outcome logged:
+  false-prune rates by technique and depth, and unbiased data for fitting margins. Verified null-move
+  pruning re-searches every null-move cutoff, but no random-sample measurement was found.
 
 ### NNUE training measurements (2026-10-23)
 
