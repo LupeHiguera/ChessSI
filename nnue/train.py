@@ -79,6 +79,42 @@ def white_features(board_field):
     return out
 
 
+# Positions are kept in memory as an occupancy mask (one bit per square, a1 = bit 0) and a 4-bit
+# piece code (feature // 64: 0-5 White, 6-11 Black) per occupied square in ascending square order,
+# 24 bytes instead of the 64 of the padded feature list. decode() rebuilds that list exactly, in
+# FEN order with PAD at the end, so training sees the same tensors.
+SQ_FEN = np.array([r * 8 + f for r in range(7, -1, -1) for f in range(8)], dtype=np.int64)
+
+
+def encode(feats, chunk=1 << 20):
+    """(n, 32) White-perspective feature lists padded with PAD -> occupancy uint64[n], pieces uint8[n, 16]."""
+    n = len(feats)
+    occ, pcs = np.empty(n, dtype=np.uint64), np.empty((n, 16), dtype=np.uint8)
+    for s in range(0, n, chunk):
+        f = feats[s:s + chunk].astype(np.int64)
+        valid = f != PAD
+        sq = np.where(valid, f % 64, 64)
+        order = np.argsort(sq, axis=1, kind="stable")
+        sq, pc = np.take_along_axis(sq, order, 1), np.take_along_axis(np.where(valid, f // 64, 0), order, 1)
+        bits = np.where(sq < 64, np.left_shift(np.uint64(1), np.minimum(sq, 63).astype(np.uint64)), np.uint64(0))
+        occ[s:s + chunk] = np.bitwise_or.reduce(bits, axis=1)
+        pcs[s:s + chunk] = (pc[:, 0::2] | (pc[:, 1::2] << 4)).astype(np.uint8)
+    return occ, pcs
+
+
+def decode(occ, pcs):
+    """occupancy int64[b] (the uint64 bits) and pieces uint8[b, 16] (torch, same device) -> the
+    (b, 32) feature lists encode() started from."""
+    dev = occ.device
+    asc = torch.arange(64, device=dev)
+    bits = (occ.unsqueeze(1) >> asc) & 1
+    nib = torch.stack((pcs & 15, pcs >> 4), 2).reshape(-1, 32).long()
+    piece = torch.gather(nib, 1, (torch.cumsum(bits, 1) - 1).clamp(0, 31))
+    f = torch.where(bits.bool(), piece * 64 + asc, PAD)[:, torch.from_numpy(SQ_FEN).to(dev)]
+    order = torch.sort((f == PAD).to(torch.int8), dim=1, stable=True).indices[:, :32]
+    return torch.gather(f, 1, order)
+
+
 FIELDS = ("feats", "white", "scores", "results", "keys", "ply")
 # Cache files are named <data file>.v<CACHE_VERSION>.<byte offset>.npz. Version 2: deterministic
 # position keys (version 1 used Python's hash(), which differs between processes, so duplicates in
@@ -198,17 +234,18 @@ def load(paths, cache_dir=None, future_plies=8, frozen=False, moves=False):
     first.sort()
     out = {k: d.pop(k)[first] for k in ("white", "scores", "results", "game", "future", "gkey")}
 
-    # Every file is cached by now, so frozen reads return exactly what was just used.
-    feats = np.empty((len(first), 32), dtype=np.int16)
+    # Every file is cached by now, so frozen reads return exactly what was just used. The kept
+    # positions are stored compactly (see encode) as each file is read.
+    occ, pcs = np.empty(len(first), dtype=np.uint64), np.empty((len(first), 16), dtype=np.uint8)
     offset = filled = 0
     for path, n in used:
         f = load_file(path, cache_dir, frozen=True)["feats"]
         if len(f) != n:
             raise RuntimeError(f"{path} changed while loading ({n} then {len(f)} positions)")
         lo, hi = np.searchsorted(first, (offset, offset + n))
-        feats[filled:filled + hi - lo] = f[first[lo:hi] - offset]
+        occ[filled:filled + hi - lo], pcs[filled:filled + hi - lo] = encode(f[first[lo:hi] - offset])
         filled, offset = filled + hi - lo, offset + n
-    out["feats"] = feats
+    out["occ"], out["pcs"] = occ, pcs
     return out
 
 
@@ -383,10 +420,14 @@ def main():
           f"loaded in {time.time() - t0:.0f}s{moves_text}", flush=True)
 
     dev = torch.device("cuda")
-    # Features are int16 (64 bytes a position), widened and flipped per batch on the GPU. Above
-    # --gpu-data-gb they stay in host RAM and each batch is copied over.
-    on_gpu = d["feats"].nbytes <= args.gpu_data_gb * 1e9
-    feats_t = torch.from_numpy(d["feats"]).to(dev) if on_gpu else torch.from_numpy(d["feats"])
+    # Positions are stored compactly (24 bytes, see encode) and decoded and flipped per batch on the
+    # GPU. Above --gpu-data-gb they stay in host RAM and each batch is copied over.
+    if "feats" in d:  # load_at_once keeps the feature lists
+        d["occ"], d["pcs"] = encode(d.pop("feats"))
+    on_gpu = d["occ"].nbytes + d["pcs"].nbytes <= args.gpu_data_gb * 1e9
+    occ_t, pcs_t = torch.from_numpy(d["occ"].view(np.int64)), torch.from_numpy(d["pcs"])
+    if on_gpu:
+        occ_t, pcs_t = occ_t.to(dev), pcs_t.to(dev)
     white_t = torch.from_numpy(d["white"]).to(dev).bool()
     flip_t = torch.from_numpy(FLIP).to(dev)
     sign = white_t.float() * 2 - 1
@@ -401,7 +442,11 @@ def main():
     del score_t, result_w, future_w, d
 
     def inputs(idx):
-        w = (feats_t[idx] if on_gpu else feats_t[idx.cpu()].to(dev, non_blocking=True)).long()
+        if on_gpu:
+            w = decode(occ_t[idx], pcs_t[idx])
+        else:
+            i = idx.cpu()
+            w = decode(occ_t[i].to(dev, non_blocking=True), pcs_t[i].to(dev, non_blocking=True))
         b = flip_t[w]
         wt = white_t[idx].unsqueeze(1)
         return torch.where(wt, w, b), torch.where(wt, b, w)
