@@ -6,6 +6,7 @@
 #include <random>
 #include <vector>
 
+#include "eval.h"
 #include "movegen.h"
 #include "search.h"
 
@@ -18,6 +19,7 @@ constexpr int WinPlies = 6;         // ...held by the same side for this many pl
 struct Sample {
     std::string fen;
     int whiteScore;
+    int whiteEval; // the static evaluation, before any search
 };
 
 std::vector<Move> legal_moves(Position& pos) {
@@ -60,11 +62,12 @@ double play_game(std::mt19937_64& rng, uint64_t nodes, int randomPlies, std::vec
 
         SearchLimits limits;
         limits.nodes = nodes;
+        int whiteEval = pos.side_to_move() == WHITE ? evaluate(pos) : -evaluate(pos);
         SearchResult r = Search::think(pos, limits, false);
         int whiteScore = pos.side_to_move() == WHITE ? r.score : -r.score;
 
         if (!pos.in_check() && !is_noisy(pos, r.best) && std::abs(r.score) < VALUE_MATE_IN_MAX_PLY)
-            samples.push_back({pos.fen(), whiteScore});
+            samples.push_back({pos.fen(), whiteScore, whiteEval});
 
         if (whiteScore >= WinScore)
             winStreak = winStreak > 0 ? winStreak + 1 : 1;
@@ -100,7 +103,7 @@ void Datagen::run(const std::string& path, int games, uint64_t seed, uint64_t no
             continue;
         const char* resultText = result == 1.0 ? "1.0" : result == 0.0 ? "0.0" : "0.5";
         for (const Sample& s : samples)
-            out << s.fen << " | " << s.whiteScore << " | " << resultText << "\n";
+            out << s.fen << " | " << s.whiteScore << " | " << resultText << " | " << s.whiteEval << "\n";
         positions += samples.size();
         if (g % 100 == 0) {
             out.flush();

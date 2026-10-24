@@ -99,7 +99,7 @@ def parse_lines(lines):
     bad = 0
     for line in lines:
         try:
-            fen, score, result = (x.strip() for x in line.split("|"))
+            fen, score, result = (x.strip() for x in line.split("|")[:3])  # a 4th field, the static eval, is unused
             parts = fen.split()
             w = white_features(parts[0])
             cp, res = int(score), float(result)
@@ -147,43 +147,88 @@ def load_file(path, cache_dir, frozen=False):
     return {k: np.concatenate([c[k] for c in chunks]) for k in FIELDS} if chunks else None
 
 
+def per_file(d, game_base, future_plies):
+    """Game numbers (from game_base), the win probability future_plies later and each game's stable
+    key, for one file's raw arrays. Games never span files, so this is the same per file as over
+    all of them at once."""
+    n = len(d["ply"])
+    ply = d["ply"].astype(np.int64)
+    new_game = np.ones(n, dtype=bool)
+    new_game[1:] = (ply[1:] <= ply[:-1]) | (d["results"][1:] != d["results"][:-1])
+    game = game_base + np.cumsum(new_game) - 1
+    # Win probability future_plies later: the first recorded position at least that far ahead.
+    order_key = game * 4096 + ply
+    j = np.searchsorted(order_key, order_key + future_plies)
+    jc = np.minimum(j, n - 1)
+    valid = (j < n) & (game[jc] == game)
+    future = np.where(valid, 1 / (1 + np.exp(-d["scores"][jc] / SCALE)), d["results"]).astype(np.float32)
+    # A stable identity for each game, for the validation split: the key of its first recorded
+    # position. Unlike the game number, it does not change when files grow or are added.
+    starts = np.flatnonzero(np.r_[True, game[1:] != game[:-1]])
+    gkey = d["keys"][starts][game - game[0]]
+    return game, future, gkey
+
+
 def load(paths, cache_dir=None, future_plies=8, frozen=False, moves=False):
     """Unique positions from datagen text files: White-perspective features int16[n, 32] padded
     with PAD, side to move (1 for White), White-relative score and result, a game number, and the
     White-relative win probability `future_plies` later in the same game (the game result if it
     ends first). With `moves`, also the played move's squares (see played_moves), which takes
     several minutes on tens of millions of positions. Games are contiguous in each file; a new one
-    starts where the ply goes back or the result changes."""
+    starts where the ply goes back or the result changes.
+
+    With a cache, the files are read twice so the memory peak stays near one copy of the result:
+    first everything but the features, to find the unique positions, then the features of the
+    positions kept, one file at a time. Without one, or with `moves`, everything is loaded at once."""
+    if moves or not cache_dir:
+        return load_at_once(paths, cache_dir, future_plies, frozen, moves)
+    small, used, game_base = [], [], 0
+    for path in paths:
+        d = load_file(path, cache_dir, frozen)
+        if d is None:
+            continue
+        game, future, gkey = per_file(d, game_base, future_plies)
+        game_base = int(game[-1]) + 1
+        small.append({"keys": d["keys"], "white": d["white"], "scores": d["scores"], "results": d["results"],
+                      "game": game, "future": future, "gkey": gkey})
+        used.append((path, len(game)))
+        del d  # the features are read again below, file by file
+    d = {k: np.concatenate([p.pop(k) for p in small]) for k in ("keys", "white", "scores", "results", "game", "future", "gkey")}
+    _, first = np.unique(d.pop("keys"), return_index=True)
+    first.sort()
+    out = {k: d.pop(k)[first] for k in ("white", "scores", "results", "game", "future", "gkey")}
+
+    # Every file is cached by now, so frozen reads return exactly what was just used.
+    feats = np.empty((len(first), 32), dtype=np.int16)
+    offset = filled = 0
+    for path, n in used:
+        f = load_file(path, cache_dir, frozen=True)["feats"]
+        if len(f) != n:
+            raise RuntimeError(f"{path} changed while loading ({n} then {len(f)} positions)")
+        lo, hi = np.searchsorted(first, (offset, offset + n))
+        feats[filled:filled + hi - lo] = f[first[lo:hi] - offset]
+        filled, offset = filled + hi - lo, offset + n
+    out["feats"] = feats
+    return out
+
+
+def load_at_once(paths, cache_dir=None, future_plies=8, frozen=False, moves=False):
+    """load() with every file in memory at once; peaks at about twice the raw data."""
     parts, game_base = [], 0
     for path in paths:
         d = load_file(path, cache_dir, frozen)
         if d is None:
             continue
-        n = len(d["ply"])
-        ply = d["ply"].astype(np.int64)
-        new_game = np.ones(n, dtype=bool)
-        new_game[1:] = (ply[1:] <= ply[:-1]) | (d["results"][1:] != d["results"][:-1])
-        d["game"] = game_base + np.cumsum(new_game) - 1
+        d["game"], d["future"], d["gkey"] = per_file(d, game_base, future_plies)
         game_base = int(d["game"][-1]) + 1
         parts.append(d)
     d = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
 
-    # Win probability future_plies later: the first recorded position at least that far ahead.
-    order_key = d["game"] * 4096 + d["ply"].astype(np.int64)
-    j = np.searchsorted(order_key, order_key + future_plies)
-    jc = np.minimum(j, len(j) - 1)
-    valid = (j < len(j)) & (d["game"][jc] == d["game"])
-    future = np.where(valid, 1 / (1 + np.exp(-d["scores"][jc] / SCALE)), d["results"]).astype(np.float32)
-    # A stable identity for each game, for the validation split: the key of its first recorded
-    # position. Unlike the game number, it does not change when files grow or are added.
-    starts = np.flatnonzero(np.r_[True, d["game"][1:] != d["game"][:-1]])
-    gkey = d["keys"][starts][d["game"]]
-
     _, first = np.unique(d["keys"], return_index=True)
     first.sort()
     out = {"feats": d["feats"][first], "white": d["white"][first], "scores": d["scores"][first],
-           "results": d["results"][first], "game": d["game"][first], "future": future[first],
-           "gkey": gkey[first]}
+           "results": d["results"][first], "game": d["game"][first], "future": d["future"][first],
+           "gkey": d["gkey"][first]}
     if moves:
         pfrom, pto = played_moves(d)
         out["pfrom"], out["pto"] = pfrom[first], pto[first]
