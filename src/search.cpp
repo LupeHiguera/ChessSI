@@ -66,7 +66,9 @@ struct Searcher {
         } else if (limits.time[us]) {
             int64_t available = std::max<int64_t>(1, limits.time[us] - overhead);
             int movesToGo = limits.movestogo ? limits.movestogo : 25;
-            softLimit = std::min(available, available / movesToGo + limits.inc[us] * 3 / 4);
+            // At least 1 ms each: 0 means "no limit", which with a nearly empty clock and no
+            // increment would search until told to stop.
+            softLimit = std::max<int64_t>(1, std::min(available, available / movesToGo + limits.inc[us] * 3 / 4));
             hardLimit = std::min(available, softLimit * 3);
         }
     }
