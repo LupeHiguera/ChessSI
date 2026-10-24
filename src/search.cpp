@@ -37,6 +37,10 @@ struct ReductionTable {
 };
 const ReductionTable Reductions;
 
+// Quiet-move history, [side to move][from][to]. It is kept between searches and halved at the
+// start of each one, so what the last search learned still orders moves but fades.
+int history[2][64][64];
+
 struct Searcher {
     Position& pos;
     SearchLimits limits;
@@ -49,7 +53,6 @@ struct Searcher {
     Move pv[MAX_PLY + 1][MAX_PLY + 1];
     int pvLength[MAX_PLY + 1];
     Move killers[MAX_PLY + 1][2] = {};
-    int history[2][64][64] = {}; // [side to move][from][to], quiet moves only
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
@@ -400,9 +403,14 @@ struct Searcher {
 
 void Search::clear() {
     TT.clear();
+    std::fill(&history[0][0][0], &history[0][0][0] + 2 * 64 * 64, 0);
 }
 
 SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbose) {
+    for (auto& side : history)
+        for (auto& from : side)
+            for (int& h : from)
+                h /= 2;
     Searcher s(pos, limits);
     s.set_time_limits();
     SearchResult result;
