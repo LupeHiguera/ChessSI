@@ -46,6 +46,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known | TT replacement by depth and age, the same change on the NNUE engine (net4, against fb4d163) | Inconclusive (cloud container stopped; handed to the PC, now `claude/tt-replacement` rebased onto main, LLR 0.56) | +4.4 ± 7.9 | 3,660 (4 concurrent, 4-core cloud container) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net8 replaces net7: net7's recipe (with the training-only auxiliary head) on 1.4× the data, 91.3M self-play positions including 20.3M from net7 | Passed | +43.1 ± 13.2 | 1,208 (4 concurrent, cores 6-9) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net9 replaces net8: net8's recipe on 1.3× the data (119.8M self-play positions, adding 29.6M more from net7 and 4.1M from net8), the first with deterministic dedup keys and the stable validation split | Passed | +48.4 ± 14.3 | 1,062 (12 concurrent, cores 0-3 and 6-13) | Not run |
+| 2026-10-23 | GPT-6 (Codex) proposed, Claude Opus 5.5 implemented | Novel | TT instability flag: a TT entry is flagged when two searches of its position (depths ≥ 4, within 2 plies) give score ranges ≥ 64 cp apart, and flagged nodes reduce one ply less (`claude/astra-tt-conflict`) | Failed (Astra's preregistered frequency gate, no SPRT) | Not run | 0 (47 flags in a depth-11 bench; 0.3% of reductions changed) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -221,11 +222,19 @@ Proposals:
   says the reduction was over-optimistic there, so later siblings are reduced one ply less. Idea 4
   in Astra's notes (`docs/research/codex-2026-10-22/search.md` on branch `astra/research-workflow`),
   with its prior-art check. Its cheap falsification comes first: does the disagreement predict
-  costly misses among later siblings?
+  costly misses among later siblings? *Implemented 2026-10-23 on `claude/astra-lmr-disagreement`
+  (bench 168915).* The trigger is common: in a depth-11 bench, 1.6% of reduced searches failed high
+  (4,606 of 290,867), 61% of those failed low at full depth, and 22,333 later reductions shrank. So
+  most reduced fail-highs are false alarms. The full predictive check (verifying a sample of reduced
+  fail-lows) needs an isolated diagnostic build; the SPRT on PC 2 comes first, as the owner asked.
 - **TT instability flag.** *Proposed by Astra (GPT-6 (Codex)), queued for Claude Code after the one
   above.* When two searches of the same position give disjoint score intervals (both depths at
   least 4 and within 2 of each other, a gap of at least 64 cp), a 2-bit warning is stored in the TT
   entry, and that position gets one ply less LMR reduction. Idea 3 in the same notes.
+  *Implemented 2026-10-23 on `claude/astra-tt-conflict` (a one-bit flag in the entry's padding,
+  still 16 bytes; bench 164124).* **It fails Astra's frequency gate:** in a depth-11 bench only 47
+  of 117,804 same-key stores set the flag, changing 799 of 263,385 reductions (0.3%). Astra's notes
+  say to stop rather than widen the gates in that case, so no SPRT unless the owner asks for one.
 - **Self-distillation head (transplant).** *Claude Code.* A training-only head that learns an earlier
   ChessSI network's static evaluation of each position (`train.py --teacher`), dropped at export.
   It follows from the auxiliary-head ablation: a low-noise target helps the shared layer, and a
