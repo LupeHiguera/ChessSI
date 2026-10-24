@@ -261,7 +261,7 @@ struct Searcher {
             && (pos.pieces(pos.side_to_move()) & ~(pos.pieces(PAWN) | pos.pieces(KING)))) {
             if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 150 * depth >= beta)
                 // A static advantage cannot override stalemate.
-                return first_legal_move() == MOVE_NONE ? 0 : staticEval;
+                return has_legal_move() ? staticEval : 0;
         }
 
         // Null-move pruning: if passing the turn still fails high, a real move
@@ -393,6 +393,36 @@ struct Searcher {
                 return m;
         }
         return MOVE_NONE;
+    }
+
+    // Whether the side to move, not in check, has a legal move. A piece on no line through its own
+    // king cannot be pinned, so when not in check any move it has is legal; most positions have one,
+    // which spares generating every move. Otherwise (and for en passant) try the moves.
+    bool has_legal_move() {
+        Color us = pos.side_to_move();
+        Square k = pos.king_square(us);
+        Bitboard own = pos.pieces(us), occ = pos.pieces();
+        for (Bitboard b = own & ~pos.pieces(KING); b;) {
+            Square s = pop_lsb(b);
+            int df = file_of(s) - file_of(k), dr = rank_of(s) - rank_of(k);
+            if (df == 0 || dr == 0 || df == dr || df == -dr)
+                continue;
+            Bitboard targets;
+            switch (type_of(pos.piece_on(s))) {
+            case PAWN: {
+                Square push = us == WHITE ? s + 8 : s - 8; // pawns never stand on the last rank
+                targets = (PawnAttacks[us][s] & pos.pieces(~us)) | (pos.piece_on(push) == NO_PIECE ? square_bb(push) : 0);
+                break;
+            }
+            case KNIGHT: targets = KnightAttacks[s] & ~own; break;
+            case BISHOP: targets = bishop_attacks(s, occ) & ~own; break;
+            case ROOK: targets = rook_attacks(s, occ) & ~own; break;
+            default: targets = queen_attacks(s, occ) & ~own; break;
+            }
+            if (targets)
+                return true;
+        }
+        return first_legal_move() != MOVE_NONE;
     }
 };
 
