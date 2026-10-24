@@ -111,22 +111,29 @@ Added 2026-10-22 from a prior-art review by Claude Code research agents (Stash's
 changelog gives most of the expected gains, measured at 10+0.1 or 8+0.08). Rough order, after the
 first network is in, since pruning margins are in eval units and must be rechecked against it:
 
-15. Probe and store the TT in quiescence (Stash +35.7 and +28.5)
+15. Probe and store the TT in quiescence (Stash +35.7 and +28.5) - *Claude Code (both earlier tries
+    failed on an always-replace table and a probe without prefetch; the retest on the depth-and-age
+    table, which also keeps a much deeper same-key bound, is ready on `claude/qs-tt`, stacked on
+    `claude/tt-replacement`: 15% fewer nodes to depth 11)*
 16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main
-    search - *Claude Code (ordering first; SEE pruning in the main search is ready on
-    `claude/see-pruning`)*
+    search - *Claude Code (the ordering is ready on `claude/bad-captures-last`, which reached
+    +14.5 ± 11.6 in 1,340 games on an older engine before a memory kill stopped it; SEE pruning in
+    the main search is ready on `claude/see-pruning`)*
 17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
     (LMR alone was inconclusive, +6.7 ± 13.9; RFP untried; the LMP part, half the moves when not
     improving as in Stockfish, is ready on `claude/lmp-improving`)*
 18. Continuation history (1 and 2 plies back), then capture history - *Claude Code (continuation
-    history failed its pre-screen, −2.9 ± 18.1; its 590k-entry table resets on every `go`, so retest
-    after item 19)*
+    history failed its pre-screen, −2.9 ± 18.1; its 590k-entry table resets on every `go`. The
+    retest keeps the table and halves it at each search, like item 19's history: ready on
+    `claude/conthist2`, stacked on `claude/history-decay`)*
 19. Keep killers and history between moves (they reset on every `go`) - *Claude Code (history
     without decay failed its pre-screen, −9.9 ± 18.5; halving it at each new search is ready on
     `claude/history-decay`)*
 20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets - *Claude
     Code (singular extensions with multi-cut ready on `claude/singular`, stacked on TT replacement)*
-21. Hard time limit capped below the remaining clock; node-fraction time management
+21. Hard time limit capped below the remaining clock; node-fraction time management - *Claude Code
+    (node fraction, Ethereal's max(0.5, 2(1 - share) + 0.4) on the soft limit, is ready on
+    `claude/tm-nodes`, stacked on `claude/tm-stability`)*
 22. Small fixes: no futility/LMP pruning of checking moves; a rule50 guard on TT cutoffs (Astra's
     TT draw-clock probe showed a +562 score from clock 0 reused at clock 98); checkmate before the
     fifty-move draw; RFP's stalemate check costs a full move generation per cutoff (now answered
@@ -139,6 +146,10 @@ first network is in, since pruning margins are in eval units and must be recheck
 23. Correction history: pawn key first (Caissa 2023; Alexandria +11.29 ± 4.66 at 8+0.08), then
     non-pawn and continuation keys, then abs(correction) in pruning margins - *Claude Code (pawn
     version ready on `claude/corrhist`)*
+24. Lazy SMP: helper threads on copies of the position sharing the TT, for games on more than one
+    thread (owner's decision, 2026-10-24; single-thread strength and SPRTs are unchanged) - *Claude
+    Code (ready on `claude/lazy-smp`; bench identical at one thread, ThreadSanitizer shows only the
+    lockless TT races; a 4-thread vs 1-thread match is queued)*
 
 NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
 
