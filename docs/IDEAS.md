@@ -36,6 +36,13 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net7 replaces net6: 1.7× the data (64.6M positions, adding about 18.6M from net6 self-play) and the auxiliary head at 4 plies instead of 8 | Passed | +103.7 ± 21.8 | 628 (4 concurrent, cores 0-3) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), retest on the NNUE engine (net6, against d243d1c) | Passed | +22.2 ± 9.1 | 2,212 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +29.0 ± 19.5 |
 | 2026-10-23 | Claude Opus 5.5 | Known | net7's recipe with `--lambda 1.0` (search score only, no game result in the target), same data and seed, vs net7 | Failed | −80.4 ± 18.7 | 642 (4 concurrent, cores 0-3) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | Improving flag in LMR: one more ply of reduction when the static eval is not above its value two plies earlier | Inconclusive (stopped to free cores, LLR 0.32) | +6.7 ± 13.9 | 940 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +7.0 ± 17.7 |
+| 2026-10-23 | Claude Opus 5.5 | Novel | Policy auxiliary head: a training-only head predicting the played move's from and to squares, on net7's recipe and data | Failed (validation loss, no SPRT) | Not run | 0 (validation only: worse than no head at every weight tried) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | net7's recipe with `--lambda 0.6` (more game result in the target), same data and seed, vs net7 | Inconclusive (stopped to free cores for datagen, LLR 0.01) | +1.8 ± 13.4 | 1,160 (4 concurrent, cores 6-9) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | Eight material output buckets (by piece count), net7's recipe and data, vs net7 in one binary (`claude/output-buckets`) | Inconclusive (stopped to free cores, LLR −0.15) | −0.7 ± 14.7 | 1,002 (4 concurrent, cores 0-3) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Known | Continuation history, 1 and 2 plies back, in quiet-move ordering (tables reset on every `go`, like history) | Failed (pre-screen) | −2.9 ± 18.1 (pre-screen) | 600 (4 concurrent, cores 0-3) | Failed, 600 games; full SPRT skipped by the gate |
+| 2026-10-23 | Claude Opus 5.5 | Known | History heuristic kept between moves (cleared only on `ucinewgame`), no decay | Failed (pre-screen) | −9.9 ± 18.5 (pre-screen) | 600 (4 concurrent, cores 0-3) | Failed, 600 games; full SPRT skipped by the gate |
+| 2026-10-23 | Claude Opus 5.5 | Known + Novel | net8 replaces net7: net7's recipe (with the training-only auxiliary head) on 1.4× the data, 91.3M self-play positions including 20.3M from net7 | Passed | +43.1 ± 13.2 | 1,208 (4 concurrent, cores 6-9) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -96,16 +103,23 @@ changelog gives most of the expected gains, measured at 10+0.1 or 8+0.08). Rough
 first network is in, since pruning margins are in eval units and must be rechecked against it:
 
 15. Probe and store the TT in quiescence (Stash +35.7 and +28.5)
-16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main search
+16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main
+    search - *Claude Code (ordering first)*
 17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
-    (LMR first)*
-18. Continuation history (1 and 2 plies back), then capture history
-19. Keep killers and history between moves (they reset on every `go`)
+    (LMR alone was inconclusive, +6.7 ± 13.9; RFP and LMP untried)*
+18. Continuation history (1 and 2 plies back), then capture history - *Claude Code (continuation
+    history failed its pre-screen, −2.9 ± 18.1; its 590k-entry table resets on every `go`, so retest
+    after item 19)*
+19. Keep killers and history between moves (they reset on every `go`) - *Claude Code (history
+    without decay failed its pre-screen, −9.9 ± 18.5; halving it at each new search is untried)*
 20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets
 21. Hard time limit capped below the remaining clock; node-fraction time management
 22. Small fixes: no futility/LMP pruning of checking moves; a rule50 guard on TT cutoffs (Astra's
     TT draw-clock probe showed a +562 score from clock 0 reused at clock 98); checkmate before the
-    fifty-move draw; RFP's stalemate check costs a full move generation per cutoff
+    fifty-move draw; RFP's stalemate check costs a full move generation per cutoff. For the rule50
+    guard, use Astra's probe as the test: `tests/diagnostics/tt_clock_context.cpp` on branch
+    `astra/research-workflow`. Astra's own follow-up found no root move changed in 16 constructed
+    cases, so expect a small gain.
 
 NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
 
@@ -113,8 +127,14 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
 - Game-result weight 0.25 → 0.4 (`--lambda 0.6`); filter early plies and score/result contradictions
 - Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes
 - Validation split by game, not by position (same-game positions make validation loss optimistic)
-- Material output buckets (*Claude Code*, branch `claude/output-buckets`); horizontal mirroring; king
-  buckets only past ~1B positions
+- Material output buckets (*Claude Code*: level with net7 at 64.6M positions, −0.7 ± 14.7; code on
+  branch `claude/output-buckets`, worth retrying with more data); horizontal mirroring; king buckets
+  only past ~1B positions
+- **Labelled experiment: games against other engines as data** (*Claude Code*; the owner keeps it to
+  one experiment, off the main line). ChessSI at 5,000 nodes plays Stash 25-36 at 12,500 nodes,
+  scoring 48.7% over 42,000 games. Only ChessSI's side is kept, with its own scores (see AGENTS.md):
+  1.6M positions from the first run, about 3.2M after the second. Test: net9 with and without that
+  data, otherwise identical, by SPRT. Networks that include it are marked in `nets/README.md`.
 - Second generation: data from the NNUE engine itself
 
 ## Novel ideas
@@ -124,7 +144,20 @@ techniques raise the baseline that novel ideas must beat; novel ideas are what t
 Any part of the project counts: search, evaluation, training, data, or the testing method itself.
 
 Before testing a novel idea, check the prior-art sources above. If it turns out to exist, log it as
-Known and note where it was found. Proposals:
+Known and note where it was found.
+
+Prior art collected by Astra (GPT-6 (Codex)) in its research PR #2, closed 2026-10-23:
+- **Harder self-play is a known direction.** Joshi's search-contempt paper
+  ([arXiv 2504.07757](https://arxiv.org/html/2504.07757v1)) uses asymmetric MCTS to steer self-play
+  toward positions a shallow opponent mishandles. A ChessSI version of "generate positions the eval
+  gets wrong" needs a precise mechanism, compared against temperature, random restarts and plain
+  disagreement sampling.
+- **Selecting which positions get deeper labels needs a downstream test.** Braun's preprint
+  ([arXiv 2609.37447](https://arxiv.org/html/2609.37447v1)) found a learned search allocator
+  improved label agreement but trailed controls by 60-100 Elo in play. Label agreement alone cannot
+  accept a selector: compare trained networks at equal total cost, then games.
+
+Proposals:
 
 - **Cheaper testing (methodology).** CPU time for SPRTs is the bottleneck. Ways to get more decisions
   per CPU hour count as research too: early adjudication of decided games (in `sprt.sh`), cheap
@@ -149,7 +182,19 @@ Known and note where it was found. Proposals:
   for NNUE: nnue-pytorch, bullet, the chessprogramming wiki and TalkChess were searched on 2026-10-23
   (Discord, where much NNUE work is discussed, could not be).
   Needs no new data: games are contiguous in the datagen files.
-- **Policy auxiliary head (transplant).** *Claude Code, branch `claude/policy-aux`.* A second
+- **Self-distillation head (transplant).** *Claude Code.* A training-only head that learns an earlier
+  ChessSI network's static evaluation of each position (`train.py --teacher`), dropped at export.
+  It follows from the auxiliary-head ablation: a low-noise target helps the shared layer, and a
+  network's own evaluation is smoother than any search score. Two variants on net8's data: net7 as
+  the teacher (the previous generation), and net8 itself (a born-again network). The teacher's
+  network is ChessSI's own, so this stays within the data rule. Prior art: born-again networks
+  ([arXiv 1805.04770](https://arxiv.org/abs/1805.04770)), where students trained on their
+  teacher's outputs beat it, and distillation for compression in
+  [DeepChess](https://arxiv.org/abs/1711.09667). Not found for NNUE training (web searched
+  2026-10-23).
+- **Policy auxiliary head (transplant).** *Claude Code.* **Failed: validation loss worse than no
+  head at every weight tried** (see "NNUE training measurements"); `--policy-weight` stays in the
+  trainer, off by default. A second
   training-only head on the accumulator, predicting the from and to squares of the move played
   (cross-entropy), dropped at export like the value head. Datagen plays the search's best move, so
   the move is the difference between a recorded position and the next ply's; 79% of positions have
@@ -199,6 +244,35 @@ training. *Claude Code.*
   head learns a blend that is 25% game result, which is noisy, and the auxiliary head adds pure search
   score. Farther horizons lose because a later score is a worse estimate of the current position's
   value. That points at the blend itself, tested next as `--lambda 1.0` and `--lambda 0.6`.
+- **The game result matters, and λ 0.75 is about right.** `--lambda 1.0` lost −80.4 ± 18.7
+  against net7 (λ 0.75), while `--lambda 0.6` was level (+1.8 ± 13.4 over 1,160 games). Validation
+  loss is not comparable across λ. So the noisy game result carries information the search score
+  lacks. The auxiliary head lets the network keep it and still get a clean score target.
+- **Wider networks are only slightly better at 64.6M positions.** With net7's recipe: h256 0.00653,
+  h384 0.00649, h512 0.00649. At 47.4M all three were level. The gap is opening as data grows, but
+  h512 searches about 40% slower, so h256 stays for now.
+- **A policy head hurts at every weight tried.** The move played (from and to squares,
+  cross-entropy), on net7's recipe and data: weight 0.0003 0.00655, 0.001 0.00657, 0.003 0.00668,
+  0.03 0.00726 at epoch 12 (stopped), against 0.00653 without it. The harm grows steadily with the
+  weight. Predicting moves seems to compete with the value target for 256 hidden units rather than
+  teach them anything useful. A wider first layer might change that.
+- **A self-distillation head helps a little, and a validation pitfall turned up.** On net8's
+  snapshot (91.3M positions, net8 0.00674), a head learning net8's own evaluation (born-again)
+  reached 0.00671. That result is clean, since net8 never saw its validation games. A head
+  learning net7 reached 0.00667, but that number is contaminated. The validation split is redrawn
+  whenever the data changes, so most of net8's validation games were in net7's training data. That
+  is why net7 itself scores 0.00671 there, better than net8, while losing to net8 by 43 Elo in
+  games. Fix: choose validation games by a stable hash of each game, so networks from different
+  generations share the same unseen games. Both variants need SPRTs.
+- **Two data-pipeline fixes for net9 onward.** Position keys came from Python's `hash()`, which is
+  randomised per process, so duplicates across cache chunks from different runs were never removed.
+  On the 79.0M positions of generations 1-3 and the SPRT games, deterministic keys remove 10.19% as
+  duplicates against 9.03% before: 918k positions (1.16%) had been counted twice. Validation games
+  are now chosen by a stable per-game key (the key of the game's first position), the fix for the
+  pitfall above. Networks up to net8 were trained without either fix.
+- **Training hyperparameters barely move validation loss.** Against net7's 0.00653: 40 epochs
+  0.00649, learning rate 0.002 0.00651, batch 8,192 0.00651. Eight material output buckets reached
+  0.00650; their SPRT is running.
 - **More hidden neurons don't help yet.** At 47.4M positions with the head: h256 0.00651, h384
   0.00652, h512 0.00653, while h512 searches about 40% slower. Data, not network size, is the limit.
 
@@ -237,6 +311,7 @@ each result here with the date, the commit and its bench.
 | --- | --- | --- | --- | --- | --- |
 | 2026-10-22 | `74412b7` | 864538 | Stash 12, 13, 14, 15.3, 17, 19 (CCRL Blitz 1883-2474) | 2,400 at 10+0.1, 8moves_v3 book, 13 concurrent | **2440 ± 19** |
 | 2026-10-23 | `cdfc298` (net7) | 264979 | Stash 19, 20.0.1, 21, 25, 27, 30, 31, 33, 34, 36 (CCRL Blitz 2474-3375) | 959 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 0-3) | **3150 ± 26** |
+| 2026-10-23 | `d2b1e25` (net8, SEE in quiescence) | 137954 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 600 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 6-9) | **3176 ± 29** |
 
 The 2026-10-22 gauntlet used a balanced book (`8moves_v3`), not the SPRT book: UHO openings give one
 side an edge, which stretches rating gaps. Run it with `scripts/gauntlet.sh`. The ± is statistical
@@ -256,3 +331,8 @@ ChessSI scored 49% against Stash 30 (3153). Performance was 3090-3150 against th
 opponents and 3200 against Stash 27, so compression at the extremes again lifts the combined figure
 a little. Each Stash build reproduces the bench in its release commit. The same caveat applies: this
 is 10+0.1 under WSL, not CCRL's conditions.
+
+The net8 gauntlet used only the Stash 27-36 pool, where net7 had scored 3140 ± 30. So the gain is
++36 against outside engines, from net8 and SEE pruning together, whose self-play gains were +43
+and +22. Against the same opponents: Stash 30 went from 49% to 62%, Stash 33 from 30% to 36%, and
+Stash 36 from 18% to 22%.
