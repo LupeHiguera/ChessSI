@@ -7,6 +7,22 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net10-h256.nnue
+
+- **SHA-256:** `4b2b65ce654fae027029cc15aafdf7de8aaf22263cae559078b05a3e8bebc9ee`
+- **Data:** 233,675,072 unique positions from 2,783,964 games, all self-play (no games against other
+  engines): net9's data (generations 1-5 and the SPRT games) plus 113.9M more unique positions from
+  generation 6, 129.6M lines of `chesssi datagen` at `0ff9ff1` (net9, with the speed series and the
+  static-eval field), 5,000 nodes a move, 13 cores from 01:48 to 06:00 on 2026-10-24.
+- **Training:** net9's recipe: `train.py <data files> net10-h256.nnue --hidden 256 --epochs 20 --seed 1
+  --cache-dir <dir> --frozen --aux-weight 1.0 --future-plies 4 --gpu-data-gb 0` at `4bf3ecd`, whose
+  two-pass loader fits the data in WSL's 46 GB (peak 25.9 GB; the old loader was killed at 43 GB).
+  The features stay in host RAM. Validation loss is 0.00696 on the same split rule, not comparable
+  with net9's 0.00684 because the validation games now include generation 6. It took 1 h 56 min on
+  an RTX 5060 Ti.
+- **Result:** replaced net9, +56.8 ± 14.5 Elo, SPRT [0, 5] at 10+0.1, H1 after 840 games (both
+  networks loaded in the same binary, 12 concurrent).
+
 ## net9-h256.nnue
 
 - **SHA-256:** `98971f10c9c6dff1c4370c1014766a3a0ea664b831897988e20f5f7208ee0f61`
