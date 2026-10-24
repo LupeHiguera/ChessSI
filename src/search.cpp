@@ -51,6 +51,7 @@ struct Searcher {
     Move killers[MAX_PLY + 1][2] = {};
     int history[2][64][64] = {}; // [side to move][from][to], quiet moves only
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
+    int evalStack[MAX_PLY + 1] = {};  // static eval at each ply (-VALUE_INF when in check)
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
 
@@ -252,6 +253,9 @@ struct Searcher {
         }
 
         int staticEval = inCheck ? -VALUE_INF : evaluate(pos);
+        evalStack[ply] = staticEval;
+        // Improving: the static eval is above its value two plies ago, our previous turn here.
+        bool improving = !inCheck && (ply < 2 || staticEval > evalStack[ply - 2]);
 
         // Reverse futility pruning: at shallow null-window nodes, a large
         // static advantage may make the remaining search unnecessary.
@@ -300,9 +304,9 @@ struct Searcher {
 
             // Late move pruning: near the leaves, quiet moves this far down
             // the ordering almost never matter, so skip them once a move has
-            // kept us out of a mate score.
+            // kept us out of a mate score; half as many when not improving.
             if (!pvNode && !inCheck && quiet && depth <= 8 && best > -VALUE_MATE_IN_MAX_PLY
-                && quietCount >= 3 + depth * depth)
+                && quietCount >= (improving ? 3 + depth * depth : (3 + depth * depth) / 2))
                 continue;
 
             // Futility pruning: if even a generous margin over the static
