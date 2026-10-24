@@ -13,7 +13,11 @@ struct TTEntry {
     int16_t score;
     int8_t depth;
     uint8_t bound;
+    // 1 once two comparable searches of this position gave score ranges at least 64 cp apart
+    // (an instability warning, proposed by Astra, GPT-6 Codex). Fits the struct's padding.
+    uint8_t conflict;
 };
+static_assert(sizeof(TTEntry) == 16, "the conflict flag must not grow the entry");
 
 // Single-entry buckets with always-replace; a better replacement scheme is an
 // obvious early experiment.

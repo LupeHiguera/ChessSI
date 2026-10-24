@@ -243,6 +243,8 @@ struct Searcher {
 
         const TTEntry* tte = TT.probe(pos.key());
         Move ttMove = tte ? tte->move : MOVE_NONE;
+        // Read now: the entry can be overwritten while the children are searched.
+        bool unstable = tte && tte->conflict;
         if (tte && !pvNode && tte->depth >= depth) {
             int ttScore = score_from_tt(tte->score, ply);
             if (tte->bound == BOUND_EXACT
@@ -327,6 +329,8 @@ struct Searcher {
                 if (depth >= 3 && legalMoves > 3 && quiet && !inCheck && !pos.in_check()) {
                     r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
                     if (pvNode)
+                        --r;
+                    if (unstable) // searches of this position have contradicted each other
                         --r;
                     r = std::clamp(r, 0, depth - 2);
                 }
