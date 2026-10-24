@@ -12,7 +12,8 @@ Phase 3 of 5 (neural evaluation). Measured rating, on the CCRL Blitz scale:
 | --- | --- | --- | --- |
 | 2026-10-22 | Classical search through late move reductions, PeSTO evaluation | 2440 ± 19 | 2,400 vs Stash 12-19 |
 | 2026-10-23 | net7 and the full pruning set | 3150 ± 26 | 959 vs Stash 19-36 |
-| 2026-10-23 | net8 and SEE pruning in quiescence | **3176 ± 29** | 600 vs Stash 27-36 |
+| 2026-10-23 | net8 and SEE pruning in quiescence | 3176 ± 29 | 600 vs Stash 27-36 |
+| 2026-10-24 | net10 and a 21% faster search | **3284 ± 21** | 1,200 vs Stash 27-36 |
 
 Gauntlets are played at 10+0.1 against Stash versions with known CCRL ratings, so the figure is
 approximate. Details are in [docs/IDEAS.md](docs/IDEAS.md).
@@ -27,10 +28,11 @@ The engine:
   move pruning and late move reductions.
 - **Move ordering:** killer moves and a history heuristic.
 - **Evaluation:** NNUE, (768 → 256) × 2 → SCReLU → 1, compiled into the binary.
-  - The network is trained only on ChessSI's own games. The default, net9, saw 119.8M positions; the
+  - The network is trained only on ChessSI's own games. The default, net10, saw 233.7M positions; the
     history is in [nets/README.md](nets/README.md).
+  - The output layer is vectorized by hand (AVX2 and AVX-VNNI).
   - PeSTO tables are the fallback.
-- **Bench:** `163764` nodes.
+- **Bench:** `158506` nodes.
 
 Research so far:
 
