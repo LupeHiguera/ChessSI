@@ -15,6 +15,10 @@ code matters, but so does the record: **every idea is measured and logged, inclu
 | `./chesssi bench` | Fixed-depth search over 14 positions; last line is `<nodes> nodes <nps> nps` |
 | `make debug` | `./chesssi-debug` with AddressSanitizer + UBSan, for crashes |
 | `scripts/sprt.sh [base-ref]` | SPRT the working tree against a git ref (default `HEAD`) with fastchess |
+| `scripts/run-idea.sh <name>` | The whole loop for one idea: perft, bench, pre-screen, then the full SPRT unless the pre-screen rejects it |
+| `scripts/nnue-sprt.sh <new.nnue> <base.nnue>` | SPRT two networks in one binary built from `REF` (default `HEAD`); `NAME` lets several run at once |
+| `scripts/datagen.sh <gen> "<cores>"` | Self-play training data, one process per core, from `REF`; `scripts/datagen.sh stop` stops it |
+| `scripts/gauntlet.sh` | Rate `HEAD` against engines with known CCRL ratings |
 
 The engine speaks UCI on stdin. Extra commands: `perft <depth>`, `d` (show board), `eval`, `bench [depth]`.
 

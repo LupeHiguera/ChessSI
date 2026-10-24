@@ -14,12 +14,12 @@ Steps for the 265K PC (and later the MacBook). Do them in order; each ends with 
 git clone https://github.com/LupeHiguera/ChessSI.git
 cd ChessSI
 make
-make test           # last line must say "35 passed, 0 failed"
-./chesssi bench     # last line: "20648203 nodes ... nps"
+make test           # last line must end "0 failed"
+./chesssi bench     # last line: "<nodes> nodes <nps> nps"
 ```
 
-If the bench node count differs from the one in `docs/IDEAS.md`, the build is not the same engine: stop
-and find out why before testing anything.
+If the bench node count differs from the one in `README.md`, the build is not the same engine: stop and
+find out why before testing anything.
 
 ## 3. Coding agents
 
@@ -43,7 +43,25 @@ the machine otherwise idle.
 
 Add `chesssi` as a UCI engine in Cute Chess, Arena or En Croissant and play a few games against it.
 
-## 6. OpenBench (once more than one machine tests)
+## 6. A dedicated Linux worker (no GPU needed)
+
+A second machine running an Ubuntu-based Linux (Pop!_OS works) can take the datagen and SPRTs, so they
+keep going while the main PC is in use. Networks are still trained on the PC with the GPU.
+
+1. Install the OS, then `sudo apt install openssh-server`. Turn off automatic suspend, and give the
+   machine a fixed IP or hostname.
+2. Clone the repo and run `scripts/setup-worker.sh`. It installs build tools, fastchess, both opening
+   books and the Stash gauntlet pool, then checks perft and the bench.
+3. Run jobs under `nohup`, `tmux` or systemd user services so they survive the SSH session:
+   `scripts/datagen.sh <gen> "<cores>"`, `scripts/nnue-sprt.sh`, `scripts/run-idea.sh`.
+4. Move data with `rsync` over SSH. For example, from the training PC:
+   `rsync -a worker:nnue/data/dg5/ ~/nnue/data/dg5/` before training, and copy networks back the same
+   way.
+
+The 265K's 8 P-cores and 12 E-cores differ in speed. Keep each SPRT on one core type (`lscpu -e` shows
+which is which).
+
+## 7. OpenBench (once more than one machine tests)
 
 The engine is ready for it: `make EXE=<name>` builds it, and `chesssi bench` prints `<nodes> nodes <nps>
 nps` as its last line. Follow the OpenBench README (https://github.com/AndyGrant/OpenBench) to run the
