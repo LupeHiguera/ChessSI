@@ -107,9 +107,11 @@ first network is in, since pruning margins are in eval units and must be recheck
 
 15. Probe and store the TT in quiescence (Stash +35.7 and +28.5)
 16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main
-    search - *Claude Code (ordering first)*
+    search - *Claude Code (ordering first; SEE pruning in the main search is ready on
+    `claude/see-pruning`)*
 17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
-    (LMR alone was inconclusive, +6.7 ± 13.9; RFP and LMP untried)*
+    (LMR alone was inconclusive, +6.7 ± 13.9; RFP untried; the LMP part, half the moves when not
+    improving as in Stockfish, is ready on `claude/lmp-improving`)*
 18. Continuation history (1 and 2 plies back), then capture history - *Claude Code (continuation
     history failed its pre-screen, −2.9 ± 18.1; its 590k-entry table resets on every `go`, so retest
     after item 19)*
@@ -121,7 +123,8 @@ first network is in, since pruning margins are in eval units and must be recheck
 21. Hard time limit capped below the remaining clock; node-fraction time management
 22. Small fixes: no futility/LMP pruning of checking moves; a rule50 guard on TT cutoffs (Astra's
     TT draw-clock probe showed a +562 score from clock 0 reused at clock 98); checkmate before the
-    fifty-move draw; RFP's stalemate check costs a full move generation per cutoff. For the rule50
+    fifty-move draw; RFP's stalemate check costs a full move generation per cutoff (now answered
+    from a few attack lookups with the same result, on `claude/rfp-fast-legal`). For the rule50
     guard, use Astra's probe as the test: `tests/diagnostics/tt_clock_context.cpp` on branch
     `astra/research-workflow`. Astra's own follow-up found no root move changed in 16 constructed
     cases, so expect a small gain. Also a real bug, fixed on `claude/fix-zero-time`: with no
@@ -135,7 +138,20 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
 
 - Hidden size 128 vs 256 vs 512 at equal training time; NPS counts, so compare in games
 - Game-result weight 0.25 → 0.4 (`--lambda 0.6`); filter early plies and score/result contradictions
-- Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes
+- Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes.
+  *Claude Code:* the SCReLU multiply trick was already in `nnue.cpp`. A speed series with identical
+  search (bench and depth-11 node counts unchanged) is ready: `claude/acc-no-zero-fill` (the
+  accumulator stack stops zero-filling 1 KB per move, +2.6% nps), `claude/nnue-simd` on top (the
+  output layer hand-vectorized with vpmaddwd and AVX-VNNI vpdpwssd where GCC 13 had emitted 32-bit
+  multiplies, +18%), and `claude/rfp-fast-legal` on top (see item 22, +2.7%). Together about +21%
+  nps against main in alternating depth-11 runs, measured while the PC was in use. A gprof profile
+  of main put the network at about 22% of search time (output layer 18%, accumulator updates 4%),
+  but the +18% from the output layer alone implies its true share was higher: sampling profilers
+  overcharge many small calls. The accumulator update is already vectorized (vpaddw and vpsubw on
+  ymm), so lazy updates are the remaining NNUE lever.
+- Datagen records the static eval before each search as a fourth field (`claude/datagen-eval`):
+  same games with the same seed, and the trainer reads old and new files alike. Several queued ideas
+  need it, so PC 2's first generation should use it.
 - Validation split by game, not by position (same-game positions make validation loss optimistic)
 - Material output buckets (*Claude Code*: level with net7 at 64.6M positions, −0.7 ± 14.7; code on
   branch `claude/output-buckets`, worth retrying with more data); horizontal mirroring; king buckets
