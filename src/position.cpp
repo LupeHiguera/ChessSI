@@ -146,10 +146,12 @@ bool Position::set(const std::string& fen) {
 
     accGeneration = NNUE::generation();
     accHidden = NNUE::hidden();
-    accStack.clear();
+    accTop = 0;
     if (accGeneration) {
-        accStack.reserve(256 * 2 * size_t(accHidden));
-        accStack.resize(2 * size_t(accHidden));
+        size_t n = 2 * size_t(accHidden);
+        if (accStack.size() < 256 * n)
+            accStack.resize(256 * n);
+        accTop = n;
         NNUE::refresh(*this, accStack.data());
     }
     return true;
@@ -158,7 +160,7 @@ bool Position::set(const std::string& fen) {
 const int16_t* Position::accumulator() const {
     if (!accGeneration || accGeneration != NNUE::generation())
         return nullptr;
-    return accStack.data() + accStack.size() - 2 * size_t(accHidden);
+    return accStack.data() + accTop - 2 * size_t(accHidden);
 }
 
 // Pushes the next ply's accumulator: the current one with the move's piece changes applied. Does
@@ -167,8 +169,10 @@ void Position::push_accumulator(const NNUE::Delta& delta) {
     if (!accGeneration)
         return;
     size_t n = 2 * size_t(accHidden);
-    accStack.resize(accStack.size() + n);
-    int16_t* acc = accStack.data() + accStack.size() - n;
+    if (accTop + n > accStack.size())
+        accStack.resize(2 * accStack.size()); // deeper than ever before; rare
+    int16_t* acc = accStack.data() + accTop;
+    accTop += n;
     NNUE::apply(acc - n, acc, delta);
 }
 
@@ -342,7 +346,7 @@ void Position::undo_move(Move m) {
     }
 
     if (accGeneration)
-        accStack.resize(accStack.size() - 2 * size_t(accHidden));
+        accTop -= 2 * size_t(accHidden);
     states.pop_back();
 }
 
