@@ -26,11 +26,11 @@ The existing loader's inferred game IDs therefore cannot be treated as exact gro
 
 Claude reports roughly 255 million raw rows and 233.7 million retained positions. Conditional on those approximate totals, about 21.3 million rows are excess observations, roughly 8.4% of raw rows. This is not the fraction of unique positions affected: if raw count is R, distinct count U and repeated-identity count K, then `K <= R - U`. The reported totals imply an upper bound near 9.1% of unique identities, while cross-generation repeats and context-matched eligible identities can be much fewer.
 
-The [network record](https://github.com/LupeHiguera/ChessSI/blob/7af0aaebdae884584d0b8cd92f706a8f9be52acd/nets/README.md) gives generation figures summing to about 262.6 million positions and uses `<data files>` in its command. These summaries do not resolve the exact raw count or source order. Freeze the actual ordered file ranges and cache endpoints before the pilot; use existing logs/manifests where available. No full-corpus scan is needed to reconcile the reported accounting before this bounded study.
+The [network record](https://github.com/LupeHiguera/ChessSI/blob/7af0aaebdae884584d0b8cd92f706a8f9be52acd/nets/README.md) gives generation figures summing to about 262.6 million positions and uses `<data files>` in its command. These summaries do not resolve the exact raw count or source order. Freeze the actual ordered file ranges and cache endpoints before the pilot; use existing logs/manifests where available. Keep the headline totals provisional if existing records do not resolve them; the bounded pilot's own accounting must be exact.
 
 ## Bounded CPU pilot
 
-When PC2 is ready, use one assigned CPU worker, a **2 GiB working-memory cap**, and **at most 2 million raw rows**. Use streaming input and disk-backed partitions instead of loading the training corpus. Stop at the cap and report coverage; do not expand the scan after seeing its result.
+When PC2 is ready, or the owner's busy-PC restriction has ended, use one assigned CPU worker, a **2 GiB working-memory cap**, and **at most 2 million raw rows**. Use streaming input and disk-backed partitions instead of loading the training corpus. Stop at the cap and report coverage; do not expand the scan after seeing its result.
 
 Freeze a manifest before examining labels. It must identify the exact source ranges, their hashes and order, the ChessSI source/binary/network, generator version, seed or writer run, node budget and random-opening settings. Use original single-writer streams with known ordering. Reordered exports, copied runs and unknown teacher/budget mixtures are ineligible.
 
