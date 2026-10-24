@@ -183,17 +183,32 @@ struct Searcher {
         if (stopped)
             return 0;
 
+        // Any entry is deep enough here. Its move orders the captures only
+        // if it is one of them.
+        bool pvNode = beta - alpha > 1;
+        const TTEntry* tte = TT.probe(pos.key());
+        Move ttMove = tte ? tte->move : MOVE_NONE;
+        if (tte && !pvNode) {
+            int ttScore = score_from_tt(tte->score, ply);
+            if (tte->bound == BOUND_EXACT
+                || (tte->bound == BOUND_LOWER && ttScore >= beta)
+                || (tte->bound == BOUND_UPPER && ttScore <= alpha))
+                return ttScore;
+        }
+
         int standPat = evaluate(pos);
         if (ply >= MAX_PLY - 1 || standPat >= beta)
             return standPat;
+        int oldAlpha = alpha;
         alpha = std::max(alpha, standPat);
 
         MoveList list;
         generate(pos, list, NOISY_MOVES);
         int scores[256];
-        score_moves(list, scores, MOVE_NONE, -1);
+        score_moves(list, scores, ttMove, -1);
 
         int best = standPat;
+        Move bestMove = MOVE_NONE;
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
             if (!see_ge(m, 0)) // losing captures cannot raise the stand-pat score
@@ -211,11 +226,16 @@ struct Searcher {
                 best = score;
                 if (score > alpha) {
                     alpha = score;
+                    bestMove = m;
                     if (score >= beta)
                         break;
                 }
             }
         }
+
+        // Depth 0, so these entries never cut off a main-search node.
+        Bound bound = best >= beta ? BOUND_LOWER : best > oldAlpha ? BOUND_EXACT : BOUND_UPPER;
+        TT.store(pos.key(), bestMove, score_to_tt(best, ply), 0, bound);
         return best;
     }
 
