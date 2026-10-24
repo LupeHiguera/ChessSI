@@ -78,7 +78,9 @@ check that a binary matches its source.
 - Keep each test on one machine and, where the OS allows, one core type (P-cores vs E-cores, Apple vs
   Intel). Under WSL, Windows moves engines between core types anyway, so record the concurrency used.
 - Don't change the bench positions or depth without saying so in the commit; it resets the signature.
-- Keep the search single-threaded until the roadmap calls for more. `Threads` exists only for OpenBench.
+- Test search changes with `Threads` at 1, its default, so results stay comparable. Since 2026-10-24 more
+  threads use Lazy SMP (owner's decision); test changes to it with several threads per engine and record
+  the threads used.
 - Prefer measured simplicity: if removing code passes a `[-5, 0]` test, remove it.
 - Networks are trained only on ChessSI's own games and searches: no external datasets, networks or
   engine evaluations. Games ChessSI plays against other engines count, but only its own side of
