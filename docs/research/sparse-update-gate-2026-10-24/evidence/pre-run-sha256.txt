@@ -1,0 +1,2 @@
+2907052e836d39bf44dd7336a0bf81ac59961502e60378be21fe4092b5b2964a  tools/research/sparse_update_gate.cpp
+aee0e9fd723397cae211c40c41e9c50404d2c9f8f15704057799953eab2bc47b  docs/research/sparse-update-gate-2026-10-24/PROTOCOL.md

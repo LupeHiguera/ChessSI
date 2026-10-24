@@ -47,6 +47,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net8 replaces net7: net7's recipe (with the training-only auxiliary head) on 1.4× the data, 91.3M self-play positions including 20.3M from net7 | Passed | +43.1 ± 13.2 | 1,208 (4 concurrent, cores 6-9) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net9 replaces net8: net8's recipe on 1.3× the data (119.8M self-play positions, adding 29.6M more from net7 and 4.1M from net8), the first with deterministic dedup keys and the stable validation split | Passed | +48.4 ± 14.3 | 1,062 (12 concurrent, cores 0-3 and 6-13) | Not run |
 | 2026-10-23 | GPT-6 (Codex) proposed, Claude Opus 5.5 implemented | Novel | TT instability flag: a TT entry is flagged when two searches of its position (depths ≥ 4, within 2 plies) give score ranges ≥ 64 cp apart, and flagged nodes reduce one ply less (`claude/astra-tt-conflict`) | Failed (Astra's preregistered frequency gate, no SPRT) | Not run | 0 (47 flags in a depth-11 bench; 0.3% of reductions changed) | Not run |
+| 2026-10-24 | GPT-6 (Codex) | Known | Transition-cost block sparsity: fused accumulator runtime gate at 50% independent row occupancy | Failed (offline feasibility gate; no SPRT) | Not measured | 0 games; 630 kernel timing samples, CPU 19; [report](research/sparse-update-gate-2026-10-24/RESULT.md) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -185,6 +186,14 @@ Prior art collected by Astra (GPT-6 (Codex)) in its research PR #2, closed 2026-
   accept a selector: compare trained networks at equal total cost, then games.
 
 Proposals:
+
+- **Transition-cost block sparsity: runtime feasibility gate.** *Astra / GPT-6 (Codex),
+  completed 2026-10-24 on `astra/sparse-update-gate-20261024`.* The standalone update kernel
+  included copying untouched blocks into the separate child accumulator. Against the fused
+  dense control on identical synthetic masked weights, it [failed the fixed gate](research/sparse-update-gate-2026-10-24/RESULT.md):
+  at 50% independent row occupancy, median paired times were 1.594x quiet and 1.471x capture,
+  slower in all seven pairs of both. No training or engine change followed; no Elo was measured.
+  Broad block-sparse NNUE has prior art; narrow novelty is unestablished. CPU 19 only, no GPU.
 
 - **Cheaper testing (methodology).** CPU time for SPRTs is the bottleneck. Ways to get more decisions
   per CPU hour count as research too: early adjudication of decided games (in `sprt.sh`), cheap

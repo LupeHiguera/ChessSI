@@ -1,0 +1,1 @@
+Correctness: 61440 operations; both perspectives, dense/sparse/oracle, full writes, guards, unchanged inputs, intermediate int16 bounds; parents [-2048,2048], nonzero weights +/-[1,64]; check_only=0

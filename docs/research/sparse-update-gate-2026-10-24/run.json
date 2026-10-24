@@ -1,0 +1,150 @@
+{
+    "date":  "2026-10-24",
+    "base_commit":  "ea8a13d5635808b3a7d43f3d6db2aa68dbe484f3",
+    "branch":  "astra/sparse-update-gate-20261024",
+    "model":  "GPT-6 (Codex)",
+    "method_reviewer":  "GPT-6 Astra (ultra)",
+    "outcome":  "Failed predeclared offline kernel feasibility gate",
+    "elo":  null,
+    "games":  0,
+    "cpu":  "WSL Ubuntu CPU 19; no GPU",
+    "concurrent_work":  "One fastchess manager and 24 engine processes; follow-up affinity verified 0-12 for all 25",
+    "sample_start_utc":  "2026-10-24T07:29:23Z",
+    "sample_end_utc":  "2026-10-24T07:29:25Z",
+    "compiler":  "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+    "optimized_flags":  "-std=c++20 -O3 -march=native -DNDEBUG -Wall -Wextra -fopt-info-vec-optimized=engines/sparse-gate/vectorization.txt",
+    "seed":  "0x81936a42b7d5e0c1",
+    "raw_rows":  630,
+    "cases":  30,
+    "pairs_per_case":  7,
+    "calls_per_sample":  65536,
+    "correctness_operations_per_binary":  61440,
+    "baseline_perft_passed":  35,
+    "baseline_rfp_passed":  17,
+    "baseline_bench":  163764,
+    "baseline_binary_sha256":  "c4312268f0479af5f2e157c59ac7e8e45e4c4eea5655a274c8cd1b47ad036f02",
+    "net9_sha256":  "98971f10c9c6dff1c4370c1014766a3a0ea664b831897988e20f5f7208ee0f61",
+    "primary":  [
+                    {
+                        "q":  0.5,
+                        "correlation":  "independent",
+                        "kind":  "capture_A1S2",
+                        "active_fraction":  0.499348958333,
+                        "union_fraction":  0.872955322266,
+                        "dense_ns_median":  40.9067382812,
+                        "sparse_ns_median":  56.9370727539,
+                        "copy_ns_median":  16.7408294678,
+                        "paired_ratio_median":  1.4714244239489864,
+                        "paired_ratios":  [
+                                              1.5467777687257764,
+                                              1.4969084992408885,
+                                              1.438743661866338,
+                                              1.3918751566674592,
+                                              1.5283216492310694,
+                                              1.2182262997730817,
+                                              1.4714244239489864
+                                          ],
+                        "faster_pairs":  0,
+                        "meets_threshold":  false
+                    },
+                    {
+                        "q":  0.5,
+                        "correlation":  "independent",
+                        "kind":  "quiet_A1S1",
+                        "active_fraction":  0.499348958333,
+                        "union_fraction":  0.754821777344,
+                        "dense_ns_median":  39.4169464111,
+                        "sparse_ns_median":  56.4786529541,
+                        "copy_ns_median":  16.085647583,
+                        "paired_ratio_median":  1.5939154577482977,
+                        "paired_ratios":  [
+                                              1.7218844536796827,
+                                              1.5939154577482977,
+                                              1.727935927313755,
+                                              1.7931860701628122,
+                                              1.5901946381537688,
+                                              1.5792037794579348,
+                                              1.3312553140364891
+                                          ],
+                        "faster_pairs":  0,
+                        "meets_threshold":  false
+                    }
+                ],
+    "source_sha256":  "2907052e836d39bf44dd7336a0bf81ac59961502e60378be21fe4092b5b2964a",
+    "analyzer_sha256":  "66280e092a393dbaad47fa0ab306c5170915611507627818e37613d5e613ad23",
+    "artifacts":  [
+                      {
+                          "path":  "evidence/baseline-sha256.txt",
+                          "bytes":  160,
+                          "sha256":  "c1fc7160a0ff412d88584893f9ef27cf5407ea71bcb9fd193713e253c2f5a743"
+                      },
+                      {
+                          "path":  "evidence/bench.log",
+                          "bytes":  37,
+                          "sha256":  "df53d03d825277f1785eda5e005c0e96878b2120924ee04545f53c9574c4bc33"
+                      },
+                      {
+                          "path":  "evidence/claude-affinity-after.txt",
+                          "bytes":  1168,
+                          "sha256":  "928d341c81c9b4390fc6ebee41a26320316722b6f943e6addbd7dbefa69202ad"
+                      },
+                      {
+                          "path":  "evidence/compiler.txt",
+                          "bytes":  246,
+                          "sha256":  "59d1cbef41d4ae78d5063d525b7aa13d18dc0493ea00537efc19b2ee398cb5a8"
+                      },
+                      {
+                          "path":  "evidence/harness-binary-sha256.txt",
+                          "bytes":  196,
+                          "sha256":  "d066e9ec9c5fc7b1bc067589643ea1015ee8a62cb6f8d8ee04cedf30a15b0a44"
+                      },
+                      {
+                          "path":  "evidence/kernel.txt",
+                          "bytes":  39,
+                          "sha256":  "fd8e54b63cb5abf636a307eda0d668bbffb485e53996ad9408c17c6b65f8b7fb"
+                      },
+                      {
+                          "path":  "evidence/pre-run-sha256.txt",
+                          "bytes":  226,
+                          "sha256":  "6da28ec5a4599ced23dc808a66b12762f701dea87660427a2510c8fda9d37b67"
+                      },
+                      {
+                          "path":  "evidence/processes-before.txt",
+                          "bytes":  1835,
+                          "sha256":  "be6164aa305493e374e375f884af3d15ceec1c6ed18489a8551fa34bbb0b63c2"
+                      },
+                      {
+                          "path":  "evidence/sanitizer.log",
+                          "bytes":  199,
+                          "sha256":  "05d3a19f5d5ce89546daf7aecd4dbfb4b2c11535b94eff504e7b0acdc3f250f9"
+                      },
+                      {
+                          "path":  "evidence/tests.log",
+                          "bytes":  4084,
+                          "sha256":  "208c36966efbbe829b9b2f4d82e0941b62a930f687f95d2f2df8fe8607083b69"
+                      },
+                      {
+                          "path":  "evidence/timing-affinity.txt",
+                          "bytes":  38,
+                          "sha256":  "94dd38dcd4cf3edeb6b70742325fa70892a7573cce45f9fd43b71fbe4295ae1f"
+                      },
+                      {
+                          "path":  "evidence/timing-checks.log",
+                          "bytes":  199,
+                          "sha256":  "adde84097a7ca4ec0d232bbb156cf61086252ed0b89b7d352d3240b6a9d38aff"
+                      },
+                      {
+                          "path":  "evidence/vectorization.txt",
+                          "bytes":  10071,
+                          "sha256":  "5613dc7d40dec053e687dde0818c3f62ab168063a8097c9a2d1c05fdf464e074"
+                      }
+                  ],
+    "protocol_sha256":  "aee0e9fd723397cae211c40c41e9c50404d2c9f8f15704057799953eab2bc47b",
+    "raw_sha256":  "0018968b29c0626681002dfce5d7cc0835b920882e434dcb79f4f672c97e25aa",
+    "limitations":  [
+                        "Synthetic repeated move shapes; no legal search distribution",
+                        "Short variable samples on shared PC",
+                        "No training, whole-engine speed measurement, match or novelty finding",
+                        "Copy-only reference is intentionally non-equivalent"
+                    ]
+}

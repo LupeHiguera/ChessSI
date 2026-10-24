@@ -1,0 +1,1 @@
+pid 36360's current affinity list: 19

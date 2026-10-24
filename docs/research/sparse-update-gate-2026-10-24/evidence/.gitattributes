@@ -1,0 +1,2 @@
+# Preserve recorded bytes, including original line endings and trailing spaces.
+* -text -whitespace
