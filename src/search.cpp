@@ -43,6 +43,7 @@ struct Searcher {
     Clock::time_point start = Clock::now();
     int64_t softLimit = 0; // stop deepening after this many ms (0 = none)
     int64_t hardLimit = 0; // abort the search after this many ms (0 = none)
+    int64_t baseSoft = 0;  // the soft limit before stability scaling (0 = no clock)
     uint64_t nodes = 0;
     bool stopped = false;
 
@@ -66,7 +67,9 @@ struct Searcher {
         } else if (limits.time[us]) {
             int64_t available = std::max<int64_t>(1, limits.time[us] - overhead);
             int movesToGo = limits.movestogo ? limits.movestogo : 25;
-            softLimit = std::min(available, available / movesToGo + limits.inc[us] * 3 / 4);
+            // At least 1 ms each: 0 means "no limit", which with a nearly empty clock and no
+            // increment would search until told to stop.
+            baseSoft = softLimit = std::max<int64_t>(1, std::min(available, available / movesToGo + limits.inc[us] * 3 / 4));
             hardLimit = std::min(available, softLimit * 3);
         }
     }
@@ -437,6 +440,11 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
     s.set_time_limits();
     SearchResult result;
 
+    // Soft-limit scale by how many iterations in a row the best move has held (after Stash).
+    constexpr double StabilityScale[5] = {2.50, 1.20, 0.90, 0.80, 0.75};
+    int stability = 0;
+    Move prevBest = MOVE_NONE;
+
     for (int depth = 1; depth <= std::min(limits.depth, MAX_PLY - 1); ++depth) {
         // Aspiration windows: search a narrow window around the last score and
         // widen whichever side fails until the score lands inside it.
@@ -462,6 +470,7 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
         if (s.stopped)
             break;
 
+        int prevScore = result.score;
         if (s.pvLength[0] > 0)
             result.best = s.pv[0][0];
         result.score = score;
@@ -474,6 +483,17 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
             for (int i = 0; i < s.pvLength[0]; ++i)
                 info << " " << move_to_uci(s.pv[0][i]);
             UCI::send(info.str());
+        }
+
+        // Stop sooner when the best move keeps holding and the score is not falling; take
+        // longer while either changes. The hard limit still caps the soft one.
+        if (s.baseSoft) {
+            stability = result.best == prevBest ? std::min(stability + 1, 4) : 0;
+            prevBest = result.best;
+            double scale = StabilityScale[stability];
+            if (depth > 1) // a 100 cp drop doubles the time, a 100 cp rise halves it
+                scale *= std::exp2(std::clamp(prevScore - score, -100, 100) / 100.0);
+            s.softLimit = std::max<int64_t>(1, std::min(s.hardLimit, int64_t(double(s.baseSoft) * scale)));
         }
 
         if (s.softLimit && s.elapsed() >= s.softLimit)
