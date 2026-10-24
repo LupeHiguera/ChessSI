@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <memory>
 #include <sstream>
 #include <thread>
+#include <vector>
 
 #include "eval.h"
 #include "movegen.h"
@@ -16,7 +18,8 @@
 // with MVV-LVA ordering, killer moves, a history heuristic, null-move pruning,
 // late move reductions, late move pruning, futility pruning, SEE pruning in
 // quiescence and aspiration windows. Other pruning is left out on purpose: each
-// is a separate experiment for the ideas log.
+// is a separate experiment for the ideas log. With more than one thread, helper
+// threads search the same root and share only the transposition table (Lazy SMP).
 
 std::atomic<bool> Search::stop{false};
 
@@ -37,6 +40,8 @@ struct ReductionTable {
 };
 const ReductionTable Reductions;
 
+int threadCount = 1; // the UCI Threads option
+
 struct Searcher {
     Position& pos;
     SearchLimits limits;
@@ -46,6 +51,10 @@ struct Searcher {
     int64_t baseSoft = 0;  // the soft limit before stability scaling (0 = no clock)
     uint64_t nodes = 0;
     bool stopped = false;
+    // Helper threads only: set by the main thread to stop them, and their node
+    // count so far, for the main thread's info lines.
+    const std::atomic<bool>* abort = nullptr;
+    std::atomic<uint64_t> sharedNodes{0};
 
     Move pv[MAX_PLY + 1][MAX_PLY + 1];
     int pvLength[MAX_PLY + 1];
@@ -77,6 +86,12 @@ struct Searcher {
     void check_limits() {
         if ((nodes & 1023) != 0)
             return;
+        if (abort) { // a helper: the main thread keeps the clock and the node limit
+            sharedNodes.store(nodes, std::memory_order_relaxed);
+            if (abort->load(std::memory_order_relaxed))
+                stopped = true;
+            return;
+        }
         if (Search::stop || (hardLimit && elapsed() >= hardLimit) || (limits.nodes && nodes >= limits.nodes))
             stopped = true;
     }
@@ -379,6 +394,42 @@ struct Searcher {
         return best;
     }
 
+    // One iteration from the root. Aspiration windows: search a narrow window
+    // around the last score and widen whichever side fails until the score
+    // lands inside it.
+    int search_root(int depth, int prevScore) {
+        int delta = 25;
+        int alpha = -VALUE_INF, beta = VALUE_INF;
+        if (depth >= 5) {
+            alpha = std::max(prevScore - delta, -VALUE_INF);
+            beta = std::min(prevScore + delta, int(VALUE_INF));
+        }
+        while (true) {
+            int score = search(alpha, beta, depth, 0);
+            if (stopped)
+                return score;
+            if (score <= alpha)
+                alpha = std::max(score - delta, -VALUE_INF);
+            else if (score >= beta)
+                beta = std::min(score + delta, int(VALUE_INF));
+            else
+                return score;
+            delta *= 2;
+        }
+    }
+
+    // A helper thread's search: the main thread's iterative deepening, with no
+    // output and no clock. It helps only through what it leaves in the TT.
+    void helper_search(int maxDepth) {
+        int score = 0;
+        for (int depth = 1; depth <= maxDepth; ++depth) {
+            int s = search_root(depth, score);
+            if (stopped)
+                return;
+            score = s;
+        }
+    }
+
     std::string score_string(int score) const {
         if (std::abs(score) < VALUE_MATE_IN_MAX_PLY)
             return "cp " + std::to_string(score);
@@ -435,38 +486,42 @@ void Search::clear() {
     TT.clear();
 }
 
+void Search::set_threads(int n) {
+    threadCount = std::max(1, n);
+}
+
 SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbose) {
     Searcher s(pos, limits);
     s.set_time_limits();
     SearchResult result;
+    int maxDepth = std::min(limits.depth, MAX_PLY - 1);
 
     // Soft-limit scale by how many iterations in a row the best move has held (after Stash).
     constexpr double StabilityScale[5] = {2.50, 1.20, 0.90, 0.80, 0.75};
     int stability = 0;
     Move prevBest = MOVE_NONE;
 
-    for (int depth = 1; depth <= std::min(limits.depth, MAX_PLY - 1); ++depth) {
-        // Aspiration windows: search a narrow window around the last score and
-        // widen whichever side fails until the score lands inside it.
-        int delta = 25;
-        int alpha = -VALUE_INF, beta = VALUE_INF;
-        if (depth >= 5) {
-            alpha = std::max(result.score - delta, -VALUE_INF);
-            beta = std::min(result.score + delta, int(VALUE_INF));
-        }
-        int score;
-        while (true) {
-            score = s.search(alpha, beta, depth, 0);
-            if (s.stopped)
-                break;
-            if (score <= alpha)
-                alpha = std::max(score - delta, -VALUE_INF);
-            else if (score >= beta)
-                beta = std::min(score + delta, int(VALUE_INF));
-            else
-                break;
-            delta *= 2;
-        }
+    // Helper threads, each with its own copy of the position and its own
+    // history and killers, until the main thread stops them.
+    std::atomic<bool> stopHelpers{false};
+    std::vector<std::unique_ptr<Position>> helperPositions;
+    std::vector<std::unique_ptr<Searcher>> helpers;
+    std::vector<std::thread> helperThreads;
+    for (int i = 1; i < threadCount; ++i) {
+        helperPositions.push_back(std::make_unique<Position>(pos));
+        helpers.push_back(std::make_unique<Searcher>(*helperPositions.back(), SearchLimits{}));
+        helpers.back()->abort = &stopHelpers;
+        helperThreads.emplace_back([h = helpers.back().get(), maxDepth] { h->helper_search(maxDepth); });
+    }
+    auto totalNodes = [&] {
+        uint64_t n = s.nodes;
+        for (const auto& h : helpers)
+            n += h->sharedNodes.load(std::memory_order_relaxed);
+        return n;
+    };
+
+    for (int depth = 1; depth <= maxDepth; ++depth) {
+        int score = s.search_root(depth, result.score);
         if (s.stopped)
             break;
 
@@ -478,8 +533,9 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
         if (verbose) {
             int64_t ms = s.elapsed();
             std::ostringstream info;
-            info << "info depth " << depth << " score " << s.score_string(score) << " nodes " << s.nodes
-                 << " nps " << s.nodes * 1000 / (ms + 1) << " time " << ms << " pv";
+            uint64_t nodes = totalNodes();
+            info << "info depth " << depth << " score " << s.score_string(score) << " nodes " << nodes
+                 << " nps " << nodes * 1000 / (ms + 1) << " time " << ms << " pv";
             for (int i = 0; i < s.pvLength[0]; ++i)
                 info << " " << move_to_uci(s.pv[0][i]);
             UCI::send(info.str());
@@ -504,8 +560,14 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
     while (limits.infinite && !Search::stop)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
+    stopHelpers = true;
+    for (std::thread& t : helperThreads)
+        t.join();
+
     if (result.best == MOVE_NONE)
         result.best = s.first_legal_move();
     result.nodes = s.nodes;
+    for (const auto& h : helpers)
+        result.nodes += h->nodes;
     return result;
 }

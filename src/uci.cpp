@@ -1,5 +1,6 @@
 #include "uci.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
@@ -19,6 +20,7 @@
 namespace {
 
 constexpr int DefaultHashMB = 16;
+constexpr int MaxThreads = 256;
 constexpr int BenchDepth = 7;
 
 // Fixed positions for the bench command. Its node count is the engine's
@@ -131,7 +133,8 @@ void set_option(std::istringstream& is) {
     else if (name == "EvalFile" && !value.empty() && value != "<empty>")
         UCI::send(NNUE::load(value) ? "info string loaded network " + value
                                     : "info string could not load network " + value);
-    // Threads is accepted for OpenBench but the search is single-threaded.
+    else if (name == "Threads" && !value.empty())
+        Search::set_threads(std::clamp(std::stoi(value), 1, MaxThreads));
 }
 
 } // namespace
@@ -180,7 +183,7 @@ int UCI::loop(int argc, char* argv[]) {
             send("id name ChessSI");
             send("id author Lupe Higuera");
             send("option name Hash type spin default " + std::to_string(DefaultHashMB) + " min 1 max 65536");
-            send("option name Threads type spin default 1 min 1 max 1");
+            send("option name Threads type spin default 1 min 1 max " + std::to_string(MaxThreads));
             send(std::string("option name EvalFile type string default ") + (NNUE::has_embedded() ? "<embedded>" : "<empty>"));
             send("uciok");
         } else if (token == "isready")
