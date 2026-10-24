@@ -15,6 +15,14 @@ from and to squares of the move played (cross-entropy), where the next recorded 
 With --teacher <net.nnue>, a training-only head learns that network's evaluation of each position
 (self-distillation from an earlier ChessSI network), weighted by --teacher-weight.
 
+Screens for training ideas, all off by default:
+--result-grad B   the game result's share of the gradient reaches the first layer scaled by B (0: the
+                  result trains only the output layer; the reported loss is unchanged).
+--mirror          flips positions that cannot have castling rights left to right (files a <-> h) at
+                  random during training, with the same score and result.
+--hl-weight W     a training-only head learns a histogram of sigmoid(score / SCALE) over --hl-bins
+                  bins (HL-Gauss: cross-entropy against a Gaussian-smoothed target), weighted by W.
+
 Export (little-endian, see src/nnue.cpp): magic "CSNN", hidden size (int32), feature weights
 int16[768][H] and biases int16[H] scaled by QA, output weights int16[2H] scaled by QB, output bias
 int32 scaled by QA * QB.
@@ -61,6 +69,34 @@ def features(board_field):
 # FLIP[f] is feature f seen from the other side: colours swap, squares mirror vertically. So one
 # White-perspective list per position is enough; the Black one is FLIP applied to it.
 FLIP = np.array([((f + 384) % 768) ^ 56 for f in range(PAD)] + [PAD], dtype=np.int64)
+
+# MIRROR[f] is feature f on a board mirrored left to right (files a <-> h). Without castling rights
+# the rules are symmetric under this mirror, so a mirrored position keeps its score and result.
+MIRROR = np.array([f ^ 7 for f in range(PAD)] + [PAD], dtype=np.int64)
+
+
+def castling_free(feats, chunk=1 << 20):
+    """Positions in which neither side can have castling rights, judged from the pieces alone (the
+    cache keeps no castling field): a side can castle only with its king on its original square and
+    a rook on one of its corners. Castling-free positions whose king and rook never moved are missed."""
+    wk, wr = 5 * 64 + 4, (3 * 64 + 0, 3 * 64 + 7)                    # White: Ke1; Ra1, Rh1
+    bk, br = 384 + 5 * 64 + 60, (384 + 3 * 64 + 56, 384 + 3 * 64 + 63)  # Black: Ke8; Ra8, Rh8
+    out = np.empty(len(feats), dtype=bool)
+    for s in range(0, len(feats), chunk):
+        f = feats[s:s + chunk]
+        white = (f == wk).any(1) & ((f == wr[0]).any(1) | (f == wr[1]).any(1))
+        black = (f == bk).any(1) & ((f == br[0]).any(1) | (f == br[1]).any(1))
+        out[s:s + chunk] = ~(white | black)
+    return out
+
+
+def hl_gauss(p, bins):
+    """HL-Gauss histogram targets (Imani and White 2018; Farebrother et al. 2024): the mass of
+    N(p, sigma^2) in each of `bins` equal bins over [0, 1], renormalised, with sigma 0.75 bin widths."""
+    sigma = 0.75 / bins
+    edges = torch.linspace(0, 1, bins + 1, device=p.device)
+    cdf = 0.5 * (1 + torch.erf((edges[None, :] - p[:, None]) / (sigma * math.sqrt(2))))
+    return (cdf[:, 1:] - cdf[:, :-1]) / (cdf[:, -1:] - cdf[:, :1])
 
 
 def white_features(board_field):
@@ -250,7 +286,7 @@ def teacher_predictions(path, inputs, n, dev, chunk=1 << 18):
 
 
 class Net(torch.nn.Module):
-    def __init__(self, hidden, aux=False, policy=False, teacher=False):
+    def __init__(self, hidden, aux=False, policy=False, teacher=False, hl_bins=0):
         super().__init__()
         self.ft = torch.nn.EmbeddingBag(PAD + 1, hidden, mode="sum", padding_idx=PAD)
         self.ft_bias = torch.nn.Parameter(torch.zeros(hidden))
@@ -268,6 +304,8 @@ class Net(torch.nn.Module):
         # the first layer's initialisation, so a run with a teacher starts from the same weights
         # as one without.
         self.teach = torch.nn.Linear(2 * hidden, 1) if teacher else None
+        # HL-Gauss histogram head, training only, made last for the same reason.
+        self.hl = torch.nn.Linear(2 * hidden, hl_bins) if hl_bins else None
 
     def forward(self, stm, nstm):
         a = torch.clamp(self.ft(stm) + self.ft_bias, 0, 1) ** 2
@@ -275,7 +313,8 @@ class Net(torch.nn.Module):
         x = torch.cat([a, b], dim=1)
         return (self.out(x).squeeze(1), self.aux(x).squeeze(1) if self.aux is not None else None,
                 self.policy(x) if self.policy is not None else None,
-                self.teach(x).squeeze(1) if self.teach is not None else None)
+                self.teach(x).squeeze(1) if self.teach is not None else None,
+                self.hl(x) if self.hl is not None else None, x)
 
     def clip(self):
         # Keeps quantised values in range: QA * w and QB * w must fit int16, and the int32
@@ -318,6 +357,10 @@ def main():
     ap.add_argument("--policy-weight", type=float, default=0.0, help="weight of the auxiliary played-move loss")
     ap.add_argument("--teacher", help="an exported network whose evaluation a training-only head learns")
     ap.add_argument("--teacher-weight", type=float, default=1.0, help="weight of the teacher loss (with --teacher)")
+    ap.add_argument("--result-grad", type=float, default=1.0, help="scale of the result's gradient into the first layer")
+    ap.add_argument("--mirror", action="store_true", help="randomly mirror castling-free positions left to right")
+    ap.add_argument("--hl-weight", type=float, default=0.0, help="weight of the HL-Gauss histogram head's loss")
+    ap.add_argument("--hl-bins", type=int, default=51, help="bins of the HL-Gauss head (with --hl-weight)")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -334,8 +377,10 @@ def main():
     is_val = d["gkey"] % 50 == 0
     val, train = np.flatnonzero(is_val), np.flatnonzero(~is_val)
     moves_text = f"; {np.mean(d['pfrom'] >= 0):.0%} have the played move" if policy else ""
+    mirror_ok = castling_free(d["feats"]) if args.mirror else None
+    mirror_text = f"; {np.mean(mirror_ok):.1%} cannot castle and may be mirrored" if args.mirror else ""
     print(f"{n} unique positions from {len(games)} games ({len(train)} train, {len(val)} validation), "
-          f"loaded in {time.time() - t0:.0f}s{moves_text}", flush=True)
+          f"loaded in {time.time() - t0:.0f}s{moves_text}{mirror_text}", flush=True)
 
     dev = torch.device("cuda")
     # Features are int16 (64 bytes a position), widened and flipped per batch on the GPU. Above
@@ -348,15 +393,26 @@ def main():
     score_t = torch.from_numpy(d["scores"]).to(dev) * sign
     result_w = torch.from_numpy(d["results"]).to(dev)
     target = args.lam * torch.sigmoid(score_t / SCALE) + (1 - args.lam) * torch.where(white_t, result_w, 1 - result_w)
+    split = args.result_grad != 1.0
+    score_p = torch.sigmoid(score_t / SCALE) if split or args.hl_weight > 0 else None
+    result_p = torch.where(white_t, result_w, 1 - result_w) if split else None
     future_w = torch.from_numpy(d["future"]).to(dev)
     future_t = torch.where(white_t, future_w, 1 - future_w)
     if policy:
         pfrom_t = torch.from_numpy(d["pfrom"].astype(np.int64)).to(dev)
         pto_t = torch.from_numpy(d["pto"].astype(np.int64)).to(dev)
-    del score_t, result_w, future_w, d
+    mirror_t = torch.from_numpy(MIRROR).to(dev)
+    mirror_ok_t = torch.from_numpy(mirror_ok).to(dev) if args.mirror else None
+    # Mirror coin flips have their own generator, so the batch order matches a run without them.
+    flips = torch.Generator(device=dev)
+    flips.manual_seed(args.seed + 1)
+    del score_t, result_w, future_w, d, mirror_ok
 
-    def inputs(idx):
+    def inputs(idx, augment=False):
         w = (feats_t[idx] if on_gpu else feats_t[idx.cpu()].to(dev, non_blocking=True)).long()
+        if augment and mirror_ok_t is not None:
+            flip = mirror_ok_t[idx] & (torch.rand(len(idx), device=dev, generator=flips) < 0.5)
+            w = torch.where(flip.unsqueeze(1), mirror_t[w], w)
         b = flip_t[w]
         wt = white_t[idx].unsqueeze(1)
         return torch.where(wt, w, b), torch.where(wt, b, w)
@@ -368,14 +424,26 @@ def main():
         tv = torch.mean((teacher_t[val_t] - target[val_t]) ** 2).item()
         print(f"teacher {os.path.basename(args.teacher)}: validation loss {tv:.5f} on this run's target", flush=True)
 
-    net = Net(args.hidden, aux=args.aux_weight > 0, policy=args.policy_weight > 0, teacher=teacher).to(dev)
+    hl_bins = args.hl_bins if args.hl_weight > 0 else 0
+    net = Net(args.hidden, aux=args.aux_weight > 0, policy=args.policy_weight > 0, teacher=teacher,
+              hl_bins=hl_bins).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
     zero = torch.zeros((), device=dev)
 
-    def losses(idx):
-        main, aux, pol, teach = net(*inputs(idx))
+    def losses(idx, training=False):
+        main, aux, pol, teach, hl, x = net(*inputs(idx, augment=training))
         main_loss = torch.mean((torch.sigmoid(main) - target[idx]) ** 2)
+        # The loss trained on. With --result-grad, the blend splits into its score and result parts
+        # (the same gradient up to a constant), and the result part reaches the first layer through
+        # activations whose gradient is scaled by result_grad.
+        fit_loss = main_loss
+        if training and split:
+            xr = args.result_grad * x + (1 - args.result_grad) * x.detach()
+            pr = torch.sigmoid(net.out(xr).squeeze(1))
+            fit_loss = (args.lam * torch.mean((torch.sigmoid(main) - score_p[idx]) ** 2)
+                        + (1 - args.lam) * torch.mean((pr - result_p[idx]) ** 2))
+        hl_loss = -(hl_gauss(score_p[idx], hl_bins) * torch.log_softmax(hl, 1)).sum(1).mean() if hl is not None else zero
         aux_loss = torch.mean((torch.sigmoid(aux) - future_t[idx]) ** 2) if aux is not None else zero
         pol_loss = zero
         if pol is not None:
@@ -385,7 +453,7 @@ def main():
                 ce = torch.nn.functional.cross_entropy
                 pol_loss = ce(pol[ok, :64], f[ok]) + ce(pol[ok, 64:], t[ok])
         teach_loss = torch.mean((torch.sigmoid(teach) - teacher_t[idx]) ** 2) if teach is not None else zero
-        return main_loss, aux_loss, pol_loss, teach_loss
+        return main_loss, fit_loss, aux_loss, pol_loss, teach_loss, hl_loss
 
     for epoch in range(1, args.epochs + 1):
         net.train()
@@ -394,26 +462,28 @@ def main():
         for i in range(0, len(order), args.batch):
             idx = order[i:i + args.batch]
             opt.zero_grad()
-            main_loss, aux_loss, pol_loss, teach_loss = losses(idx)
-            (main_loss + args.aux_weight * aux_loss + args.policy_weight * pol_loss
-             + args.teacher_weight * teach_loss).backward()
+            main_loss, fit_loss, aux_loss, pol_loss, teach_loss, hl_loss = losses(idx, training=True)
+            (fit_loss + args.aux_weight * aux_loss + args.policy_weight * pol_loss
+             + args.teacher_weight * teach_loss + args.hl_weight * hl_loss).backward()
             opt.step()
             net.clip()
             total += main_loss.item() * len(idx)
         sched.step()
         net.eval()
-        v = va = vp = vt = 0.0
+        v = va = vp = vt = vh = 0.0
         with torch.no_grad():
             for i in range(0, len(val_t), 65536):
                 idx = val_t[i:i + 65536]
-                main_loss, aux_loss, pol_loss, teach_loss = losses(idx)
+                main_loss, _, aux_loss, pol_loss, teach_loss, hl_loss = losses(idx)
                 v += main_loss.item() * len(idx)
                 va += aux_loss.item() * len(idx)
                 vp += pol_loss.item() * len(idx)
                 vt += teach_loss.item() * len(idx)
+                vh += hl_loss.item() * len(idx)
         aux_text = f" aux {va / len(val):.5f}" if args.aux_weight > 0 else ""
         aux_text += f" policy {vp / len(val):.3f}" if args.policy_weight > 0 else ""
         aux_text += f" teacher {vt / len(val):.5f}" if teacher else ""
+        aux_text += f" hl {vh / len(val):.4f}" if hl_bins else ""
         print(f"epoch {epoch:3d} train {total / len(train):.5f} val {v / len(val):.5f}{aux_text}  "
               f"({time.time() - t0:.0f}s)", flush=True)
 
