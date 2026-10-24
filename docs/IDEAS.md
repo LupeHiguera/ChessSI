@@ -49,6 +49,9 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | GPT-6 (Codex) proposed, Claude Opus 5.5 implemented | Novel | TT instability flag: a TT entry is flagged when two searches of its position (depths ≥ 4, within 2 plies) give score ranges ≥ 64 cp apart, and flagged nodes reduce one ply less (`claude/astra-tt-conflict`) | Failed (Astra's preregistered frequency gate, no SPRT) | Not run | 0 (47 flags in a depth-11 bench; 0.3% of reductions changed) | Not run |
 | 2026-10-24 | Claude Opus 5.5 | Known | Speed series with an identical search: keep the accumulator stack's buffer instead of resizing it every move (+2.6% nps), the NNUE output layer vectorized by hand with AVX2 and AVX-VNNI (+18%), and RFP's stalemate check answered from a few attack lookups (+2.7%); about +21% nps together, bench unchanged (`claude/rfp-fast-legal`) | Passed | +28.4 ± 10.2 | 1,618 (12 concurrent, cores 0-12) | Inconclusive at 600-game cap, +29.0 ± 17.3 |
 | 2026-10-24 | Claude Opus 5.5 | Known + Novel | net10 replaces net9: net9's recipe on 1.95× the data (233.7M self-play positions, adding 113.9M from net9's generation 6), trained with a two-pass loader that fits it in RAM | Passed | +56.8 ± 14.5 | 840 (12 concurrent, cores 0-12) | Not run |
+| 2026-10-24 | Claude Opus 5.5 | Known + Novel | Mirror castling-free positions a↔h at random in training (`--mirror`; 76.6% of positions qualify), net9's recipe on its frozen data snapshot, vs net9 | Failed | −18.2 ± 9.2 | 2,370 (12 concurrent, cores 0-12) | Not run |
+| 2026-10-24 | Claude Opus 5.5 | Novel | Route half of the game result's gradient away from the first layer (`--result-grad 0.5`, with the aux head), net9's recipe on its frozen data snapshot, vs net9 | Failed | −34.5 ± 12.4 | 1,312 (12 concurrent, cores 0-12) | Not run |
+| 2026-10-24 | Claude Opus 5.5 | Known + Novel | Training-only HL-Gauss histogram head, 51 bins, weight 0.01 (`--hl-weight 0.01`), net9's recipe on its frozen data snapshot, vs net9 | Failed | −49.3 ± 14.9 | 1,014 (12 concurrent, cores 0-12) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -296,6 +299,10 @@ are on `claude/trainer-screens` (`nnue/train.py`, all off by default).
   head's extra readout matters. Prior art: KataGo trains its error heads behind a stop-gradient and
   Lc0's trainer has `propagate_value_gradients`, but neither applies it to the outcome part of a value
   target, and nnue-pytorch and bullet have nothing like it (cloud research; no TalkChess hit).
+  **Result (2026-10-24): B = 0.5 with the head lost, −34.5 ± 12.4 against net9** (validation 0.00697
+  against 0.00684; B = 0 with the head trained much worse, 0.00755, and was not played). Halving the
+  result's gradient into the first layer hurts, so the routing explanation of the head looks unlikely.
+  The cleaner test, B = 0.5 without a head against a headless control, is trained and queued.
 - **Mirror castling-free positions left to right.** *Claude Code.* Without castling rights the rules
   are symmetric under the a↔h mirror, so such positions can be flipped at random in training with
   the same score and result: free extra data, which has been ChessSI's strongest lever. `--mirror`
@@ -304,6 +311,11 @@ are on `claude/trainer-screens` (`nnue/train.py`, all off by default).
   Zero trained on board symmetries, and NNUE's horizontally mirrored inputs build the symmetry into
   the encoding instead. No augmentation was found in nnue-pytorch, bullet, Viridithas or Stormphrax,
   nor on TalkChess.
+  **Result (2026-10-24): −18.2 ± 9.2 against net9, 2,370 games.** The augmentation did what it was
+  built to: on 400 castling-free positions the mirrored network's eval differs from its mirror image's
+  by 32 cp on average, against net9's 55 cp. Symmetry still cost strength. Likely reason: mirrored
+  positions are ones games rarely reach (a king castled short ends up on b1), so the network spends
+  capacity on them.
 - **HL-Gauss histogram head.** *Claude Code.* A training-only head predicts a 51-bin histogram of
   sigmoid(score / 400), by cross-entropy against a Gaussian-smoothed target (Farebrother et al.,
   ICML 2024, found it degrades less than MSE as targets get noisier). `--hl-weight` at 0.003, 0.01
@@ -311,6 +323,10 @@ are on `claude/trainer-screens` (`nnue/train.py`, all off by default).
   a TalkChess thread where plain cross-entropy on the main output trained weaker than MSE, which is
   a different design. Watch for the failure that sank the policy head: a cross-entropy head
   competing with the value for 256 units.
+  **Result (2026-10-24): weight 0.01 lost, −49.3 ± 14.9 against net9.** Exactly that failure: the
+  head's cross-entropy (2.11) times 0.01 is 0.021, three times the main loss (0.0068), so the head
+  dominated the shared units. The other two weights were not trained. A retest would use about 0.0005,
+  so the head stays a small share of the loss.
 - **Branched ("vine") self-play.** Proposed by the cloud research. Fork datagen games mid-game into
   two continuations and give the shared prefix the mean of both results, halving the result noise
   on those positions at no extra search (TRPO's vine estimator; KataGo branches games for coverage
