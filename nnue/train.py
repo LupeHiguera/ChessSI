@@ -99,7 +99,7 @@ def parse_lines(lines):
     bad = 0
     for line in lines:
         try:
-            fen, score, result = (x.strip() for x in line.split("|"))
+            fen, score, result = (x.strip() for x in line.split("|")[:3])  # a 4th field, the static eval, is unused
             parts = fen.split()
             w = white_features(parts[0])
             cp, res = int(score), float(result)
