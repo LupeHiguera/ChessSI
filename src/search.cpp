@@ -311,6 +311,9 @@ struct Searcher {
         int legalMoves = 0;
         Move quietsTried[256];
         int quietCount = 0;
+        // Set once a reduced search at this node fails high and its full-depth re-search does not
+        // (proposed by Astra, GPT-6 Codex): reductions here have been unreliable.
+        bool reductionMissed = false;
 
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
@@ -346,11 +349,16 @@ struct Searcher {
                     r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
                     if (pvNode)
                         --r;
+                    if (reductionMissed) // later quiet siblings get one ply less reduction
+                        --r;
                     r = std::clamp(r, 0, depth - 2);
                 }
                 score = -search(-alpha - 1, -alpha, depth - 1 - r, ply + 1);
-                if (score > alpha && r > 0)
+                if (score > alpha && r > 0) {
                     score = -search(-alpha - 1, -alpha, depth - 1, ply + 1);
+                    if (score <= alpha)
+                        reductionMissed = true;
+                }
                 if (score > alpha && score < beta)
                     score = -search(-beta, -alpha, depth - 1, ply + 1);
             }
