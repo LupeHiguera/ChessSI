@@ -183,6 +183,17 @@ Proposals:
   for NNUE: nnue-pytorch, bullet, the chessprogramming wiki and TalkChess were searched on 2026-10-23
   (Discord, where much NNUE work is discussed, could not be).
   Needs no new data: games are contiguous in the datagen files.
+- **Adaptive LMR from reduced-versus-full disagreement.** *Proposed by Astra (GPT-6 (Codex)), to be
+  implemented and tested by Claude Code on the second PC; the log row will name both models.* At one
+  node, a late move's reduced search can fail high while its full-depth re-search fails low. That
+  says the reduction was over-optimistic there, so later siblings are reduced one ply less. Idea 4
+  in Astra's notes (`docs/research/codex-2026-10-22/search.md` on branch `astra/research-workflow`),
+  with its prior-art check. Its cheap falsification comes first: does the disagreement predict
+  costly misses among later siblings?
+- **TT instability flag.** *Proposed by Astra (GPT-6 (Codex)), queued for Claude Code after the one
+  above.* When two searches of the same position give disjoint score intervals (both depths at
+  least 4 and within 2 of each other, a gap of at least 64 cp), a 2-bit warning is stored in the TT
+  entry, and that position gets one ply less LMR reduction. Idea 3 in the same notes.
 - **Self-distillation head (transplant).** *Claude Code.* A training-only head that learns an earlier
   ChessSI network's static evaluation of each position (`train.py --teacher`), dropped at export.
   It follows from the auxiliary-head ablation: a low-noise target helps the shared layer, and a
