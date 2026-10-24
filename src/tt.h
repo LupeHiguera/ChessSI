@@ -13,14 +13,16 @@ struct TTEntry {
     int16_t score;
     int8_t depth;
     uint8_t bound;
+    uint8_t generation;
 };
 
-// Single-entry buckets with always-replace; a better replacement scheme is an
-// obvious early experiment.
+// Single-entry buckets. An entry from the current search is only replaced by
+// one for another position if the new one is at least as deep.
 class TranspositionTable {
 public:
     void resize(size_t megabytes);
     void clear();
+    void new_search() { ++generation; }
 
     // Returns the entry if it holds this key, else nullptr.
     const TTEntry* probe(uint64_t key) const;
@@ -31,6 +33,7 @@ public:
 private:
     size_t index(uint64_t key) const { return size_t((__uint128_t(key) * table.size()) >> 64); }
     std::vector<TTEntry> table;
+    uint8_t generation = 0;
 };
 
 extern TranspositionTable TT;
