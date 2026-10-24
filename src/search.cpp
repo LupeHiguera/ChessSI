@@ -37,6 +37,20 @@ struct ReductionTable {
 };
 const ReductionTable Reductions;
 
+// Correction history (Caissa 2023, then Alexandria and Stockfish): how far the static eval has
+// been off from search results in positions with the same pawns and side to move. It lasts for
+// the whole game. Entries are in 1/16 cp, so a correction never exceeds 64 cp.
+constexpr int CorrHistSize = 16384;
+constexpr int CorrHistLimit = 1024;
+int corrHist[2][CorrHistSize];
+
+int pawn_index(const Position& pos) {
+    uint64_t h = pos.pieces(WHITE, PAWN) * 0x9E3779B97F4A7C15ull ^ pos.pieces(BLACK, PAWN) * 0xC2B2AE3D27D4EB4Full;
+    h ^= h >> 31;
+    h *= 0xBF58476D1CE4E5B9ull;
+    return int(h >> 50); // top 14 bits: 0 to CorrHistSize - 1
+}
+
 struct Searcher {
     Position& pos;
     SearchLimits limits;
@@ -113,6 +127,20 @@ struct Searcher {
         h += bonus - h * std::abs(bonus) / MaxHistory;
     }
 
+    // The network's eval plus what correction history has learned for these pawns.
+    int corrected_eval() {
+        int correction = corrHist[pos.side_to_move()][pawn_index(pos)] / 16;
+        return std::clamp(evaluate(pos) + correction, -VALUE_MATE_IN_MAX_PLY + 1, VALUE_MATE_IN_MAX_PLY - 1);
+    }
+
+    // Moves the entry toward the search result, more for deeper searches; the gravity term
+    // keeps it within +/-CorrHistLimit.
+    void update_corrhist(int diff, int depth) {
+        int& e = corrHist[pos.side_to_move()][pawn_index(pos)];
+        int bonus = std::clamp(diff * depth / 4, -CorrHistLimit / 4, CorrHistLimit / 4);
+        e += bonus - e * std::abs(bonus) / CorrHistLimit;
+    }
+
     // Static exchange evaluation: does capturing on the target square, with
     // both sides then recapturing with their least valuable attacker, gain at
     // least `threshold`? Castling, en passant and promotions count as even.
@@ -183,7 +211,7 @@ struct Searcher {
         if (stopped)
             return 0;
 
-        int standPat = evaluate(pos);
+        int standPat = corrected_eval();
         if (ply >= MAX_PLY - 1 || standPat >= beta)
             return standPat;
         alpha = std::max(alpha, standPat);
@@ -251,7 +279,7 @@ struct Searcher {
                 return ttScore;
         }
 
-        int staticEval = inCheck ? -VALUE_INF : evaluate(pos);
+        int staticEval = inCheck ? -VALUE_INF : corrected_eval();
 
         // Reverse futility pruning: at shallow null-window nodes, a large
         // static advantage may make the remaining search unnecessary.
@@ -372,6 +400,11 @@ struct Searcher {
             return inCheck ? -VALUE_MATE + ply : 0;
 
         Bound bound = best >= beta ? BOUND_LOWER : alpha > originalAlpha ? BOUND_EXACT : BOUND_UPPER;
+        // Learn from the gap between search and static eval when it is trustworthy: not in
+        // check, no capture as the best move, and a bound that points away from the eval.
+        if (!inCheck && (bestMove == MOVE_NONE || is_quiet(bestMove)) && std::abs(best) < VALUE_MATE_IN_MAX_PLY
+            && !(bound == BOUND_LOWER && best <= staticEval) && !(bound == BOUND_UPPER && best >= staticEval))
+            update_corrhist(best - staticEval, depth);
         TT.store(pos.key(), bestMove, score_to_tt(best, ply), depth, bound);
         return best;
     }
@@ -400,6 +433,7 @@ struct Searcher {
 
 void Search::clear() {
     TT.clear();
+    std::fill(&corrHist[0][0], &corrHist[0][0] + 2 * CorrHistSize, 0);
 }
 
 SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbose) {
