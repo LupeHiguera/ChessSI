@@ -65,7 +65,10 @@ private:
     void push_accumulator(const NNUE::Delta& delta);
 
     // One NNUE accumulator per ply, 2 * accHidden values each, for network accGeneration (0: none).
+    // The first accTop values are in use. The buffer only grows, so moves never resize it (a resize
+    // would zero-fill each new accumulator before the update overwrites it).
     std::vector<int16_t> accStack;
+    size_t accTop = 0;
     int accGeneration = 0;
     int accHidden = 0;
 
