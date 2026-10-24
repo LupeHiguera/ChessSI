@@ -328,6 +328,10 @@ struct Searcher {
                     r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
                     if (pvNode)
                         --r;
+                    // Quiet moves with a good history are reduced less, bad ones more:
+                    // one ply from |history| 4096, two from 12288 (the limit is 16384).
+                    int h = history[us][from_sq(m)][to_sq(m)];
+                    r -= (h + (h >= 0 ? 4096 : -4096)) / 8192;
                     r = std::clamp(r, 0, depth - 2);
                 }
                 score = -search(-alpha - 1, -alpha, depth - 1 - r, ply + 1);
