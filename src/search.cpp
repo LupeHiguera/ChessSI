@@ -310,6 +310,13 @@ struct Searcher {
             if (!pvNode && !inCheck && quiet && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
                 && staticEval + 120 * depth <= alpha)
                 continue;
+
+            // SEE pruning: near the leaves, skip a move that loses more material in the exchange
+            // on its target square than a depth-scaled margin (wider for captures).
+            if (!root && !inCheck && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
+                && !see_ge(m, quiet ? -60 * depth : -30 * depth * depth))
+                continue;
+
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
