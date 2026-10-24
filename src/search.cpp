@@ -90,8 +90,12 @@ struct Searcher {
                 scores[i] = 1'000'000;
             else if (move_type(m) == EN_PASSANT)
                 scores[i] = 100'000 + PieceValue[PAWN] * 10 - PAWN;
-            else if (pos.piece_on(to_sq(m)) != NO_PIECE)
-                scores[i] = 100'000 + PieceValue[type_of(pos.piece_on(to_sq(m)))] * 10 - type_of(pos.piece_on(from_sq(m)));
+            else if (pos.piece_on(to_sq(m)) != NO_PIECE) {
+                // In the main search, captures that lose material by SEE go
+                // after the quiet moves (whose history scores are above -16,384).
+                int mvvLva = PieceValue[type_of(pos.piece_on(to_sq(m)))] * 10 - type_of(pos.piece_on(from_sq(m)));
+                scores[i] = (ply >= 0 && !see_ge(m, 0) ? -100'000 : 100'000) + mvvLva;
+            }
             else if (move_type(m) == PROMOTION && promotion_type(m) == QUEEN)
                 scores[i] = 90'000;
             else if (ply >= 0 && m == killers[ply][0])
