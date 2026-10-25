@@ -228,6 +228,7 @@ class GpuDatagen:
 
     def run(self, out_path, total_games, nodes, seed=1, random_plies=8, report_seconds=60):
         """Plays total_games games (openings that end in mate or stalemate are replaced) into out_path."""
+        assert random_plies < MAX_PLY, "each random ply takes one of the MAX_PLY + 2 accumulator slots"
         cap = self.capacity
         net = (self.ftw, self.ftb, self.outw, np.int32(self.outb))
         start = cp.asarray(compact("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"))
