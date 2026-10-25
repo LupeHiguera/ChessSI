@@ -7,6 +7,10 @@
 // global memory (same-address reads are broadcast and same-value writes merge), except the NNUE work:
 // each lane owns H / 32 hidden units of both perspectives. Every launch plays one ply of every game,
 // which keeps kernels well under the Windows GPU watchdog. Compiled at run time with NVRTC.
+//
+// The search is not recursive: a recursive call saves every lane's registers at each level, 32 copies
+// of what is one set of values. search() runs the calls of src/search.cpp's search and qsearch from
+// an explicit stack of frames, one copy per game (see Frame), which made data generation 32% faster.
 
 typedef unsigned long long u64;
 typedef unsigned short u16;
@@ -76,6 +80,17 @@ struct Sample { // one datagen line before formatting: the position, and White-r
     short rule50, fullmove, score, eval;
     int pad2;
 };
+// One call of search or qsearch in src/search.cpp: its arguments, the locals that live across a child
+// call, and the state to resume in when the child returns. The running call is in registers; the
+// calls waiting on it are in Game::frames.
+struct Frame {
+    int state, alpha, beta, depth, ply;
+    int originalAlpha, best, legalMoves, quietCount, staticEval, n, i, r, childScore;
+    u64 key;
+    u16 ttMove, bestMove, m;
+    bool inCheck, pvNode, root, quiet;
+};
+
 struct Game {
     // Position (src/position.h)
     u64 byType[6], byColor[2];
@@ -89,6 +104,7 @@ struct Game {
     u16 killers[MAX_PLY + 1][2];
     u16 moveStack[MAX_PLY + 1];
     int history[2][64][64];
+    Frame frames[MAX_PLY + 1];
     u16 moves[MAX_PLY + 1][256];
     int scores[MAX_PLY + 1][256];
     u16 quiets[MAX_PLY + 1][256];
@@ -625,160 +641,257 @@ __device__ bool has_legal_move(Game* g, const Net& net, short* acc, int ply) {
     return first_legal_move(g, net, acc, ply) != MOVE_NONE;
 }
 
-__device__ int qsearch(Game* g, const Net& net, short* acc, TTEntry* tt, int alpha, int beta, int ply) {
-    count_node(g);
-    check_limits(g);
-    __syncwarp();
-    if (g->stopped) return 0;
-    PB(5) int standPat = evaluate(g, net, acc); PE(5)
-    if (ply >= MAX_PLY - 1 || standPat >= beta) return standPat;
-    alpha = max(alpha, standPat);
-    u16* list = g->moves[ply];
-    int* scores = g->scores[ply];
-    PB(0) int n = generate(g, list, true);
-    __syncwarp(); PE(0)
-    PB(1) score_moves(g, list, n, scores, MOVE_NONE, -1); PE(1)
-    int best = standPat;
-    for (int i = 0; i < n; ++i) {
-        PB(2) u16 m = pick_move(list, scores, n, i); PE(2)
-        PB(7) bool seeOk = see_ge(g, m, 0); PE(7)
-        if (!seeOk) continue;
-        PB(3) bool legal = do_move(g, m, net, acc); PE(3)
-        if (!legal) {
-            PB(4) undo_move(g, m); PE(4)
-            continue;
-        }
-        int score = -qsearch(g, net, acc, tt, -beta, -alpha, ply + 1);
-        PB(4) undo_move(g, m); PE(4)
-        if (g->stopped) return 0;
-        if (score > best) {
-            best = score;
-            if (score > alpha) {
-                alpha = score;
-                if (score >= beta) break;
-            }
-        }
-    }
-    return best;
+// The states of a call. A search call starts in S_ENTRY, a quiescence call in Q_ENTRY; the others
+// resume a call after the child named by the state returns.
+enum { S_ENTRY, S_NULL_DONE, S_MOVES, S_LOOP, S_FIRST_DONE, S_RED_DONE, S_FULL_DONE, S_PV_DONE, Q_ENTRY, Q_LOOP, Q_DONE };
+
+__device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int depth, int ply) {
+    Frame f = {};
+    f.state = state;
+    f.alpha = alpha;
+    f.beta = beta;
+    f.depth = depth;
+    f.ply = ply;
+    return f;
 }
 
-__device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alpha, int beta, int depth, int ply) {
-    PB(8) bool inCheck = in_check(g); PE(8)
-    if (inCheck) ++depth;
-    if (depth <= 0) return qsearch(g, net, acc, tt, alpha, beta, ply);
-    count_node(g);
-    check_limits(g);
-    __syncwarp();
-    if (g->stopped) return 0;
-    bool root = ply == 0, pvNode = beta - alpha > 1;
-    if (root) g->rootPv = 0; // pvLength[0] = 0
-    if (!root) {
-        PB(9) bool draw = is_draw(g); PE(9)
-        if (draw) return 0;
-        if (ply >= MAX_PLY - 1) return evaluate(g, net, acc);
+// Call a child at ply + 1 (starting in ENTRY) and resume this call in RESUME when it returns.
+#define CALL(RESUME, ENTRY, A, B, D)                     \
+    {                                                     \
+        f.state = RESUME;                                 \
+        __syncwarp();                                     \
+        g->frames[sp++] = f;                              \
+        f = new_call(ENTRY, A, B, D, f.ply + 1);          \
+        continue;                                         \
     }
-    u64 key = g->states[g->nstates - 1].key;
-    PB(6) TTEntry e = *tt_entry(tt, key); PE(6)
-    bool hit = e.key == key && e.bound != BOUND_NONE;
-    u16 ttMove = hit ? e.move : MOVE_NONE;
-    if (hit && !pvNode && e.depth >= depth) {
-        int ttScore = score_from_tt(e.score, ply);
-        if (e.bound == BOUND_EXACT || (e.bound == BOUND_LOWER && ttScore >= beta) || (e.bound == BOUND_UPPER && ttScore <= alpha))
-            return ttScore;
+// Return V from the running call.
+#define RETURN(V)  \
+    {              \
+        ret = (V); \
+        break;     \
     }
-    PB(5) int staticEval = inCheck ? -VALUE_INF : evaluate(g, net, acc); PE(5)
-    int us = g->stm;
-    if (!root && !pvNode && !inCheck && depth <= 3 && g->states[g->nstates - 1].rule50 + depth < 100 && abs(beta) < VALUE_MATE_IN_MAX_PLY
-        && (g->byColor[us] & ~(g->byType[PAWN] | g->byType[KING]))) {
-        if (abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 150 * depth >= beta)
-            return has_legal_move(g, net, acc, ply) ? staticEval : 0;
-    }
-    bool hasPieces = (g->byColor[us] & ~g->byType[PAWN] & ~g->byType[KING]) != 0;
-    if (!pvNode && !inCheck && !root && depth >= 3 && hasPieces && g->moveStack[ply - 1] != MOVE_NONE && staticEval >= beta) {
-        int R = 3 + depth / 6;
-        g->moveStack[ply] = MOVE_NONE;
-        __syncwarp();
-        do_null_move(g);
-        int score = -search(g, net, acc, tt, -beta, -beta + 1, depth - 1 - R, ply + 1);
-        undo_null_move(g);
-        if (g->stopped) return 0;
-        if (score >= beta) return score >= VALUE_MATE_IN_MAX_PLY ? beta : score;
-    }
-    u16* list = g->moves[ply];
-    int* scores = g->scores[ply];
-    u16* quiets = g->quiets[ply];
-    PB(0) int n = generate(g, list, false);
-    __syncwarp(); PE(0)
-    PB(1) score_moves(g, list, n, scores, ttMove, ply); PE(1)
-    int originalAlpha = alpha, best = -VALUE_INF, legalMoves = 0, quietCount = 0;
-    u16 bestMove = MOVE_NONE;
-    for (int i = 0; i < n; ++i) {
-        PB(2) u16 m = pick_move(list, scores, n, i); PE(2)
-        bool quiet = is_quiet(g, m);
-        if (!pvNode && !inCheck && quiet && depth <= 8 && best > -VALUE_MATE_IN_MAX_PLY && quietCount >= 3 + depth * depth) continue;
-        if (!pvNode && !inCheck && quiet && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY && staticEval + 120 * depth <= alpha) continue;
-        PB(3) bool legal = do_move(g, m, net, acc); PE(3)
-        if (!legal) {
-            PB(4) undo_move(g, m); PE(4)
+
+// search(alpha, beta, depth, 0) and everything below it, in the same order as the recursive code.
+__device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alpha, int beta, int depth) {
+    Frame f = new_call(S_ENTRY, alpha, beta, depth, 0);
+    int sp = 0, ret = 0;
+    while (true) {
+        switch (f.state) {
+        case S_ENTRY: {
+            PB(8) f.inCheck = in_check(g); PE(8)
+            if (f.inCheck) ++f.depth;
+            if (f.depth <= 0) { // return qsearch(alpha, beta, ply)
+                f.state = Q_ENTRY;
+                continue;
+            }
+            count_node(g);
+            check_limits(g);
+            __syncwarp();
+            if (g->stopped) RETURN(0)
+            f.root = f.ply == 0;
+            f.pvNode = f.beta - f.alpha > 1;
+            if (f.root) g->rootPv = 0; // pvLength[0] = 0
+            if (!f.root) {
+                PB(9) bool draw = is_draw(g); PE(9)
+                if (draw) RETURN(0)
+                if (f.ply >= MAX_PLY - 1) RETURN(evaluate(g, net, acc))
+            }
+            f.key = g->states[g->nstates - 1].key;
+            PB(6) TTEntry e = *tt_entry(tt, f.key); PE(6)
+            bool hit = e.key == f.key && e.bound != BOUND_NONE;
+            f.ttMove = hit ? e.move : MOVE_NONE;
+            if (hit && !f.pvNode && e.depth >= f.depth) {
+                int ttScore = score_from_tt(e.score, f.ply);
+                if (e.bound == BOUND_EXACT || (e.bound == BOUND_LOWER && ttScore >= f.beta) || (e.bound == BOUND_UPPER && ttScore <= f.alpha))
+                    RETURN(ttScore)
+            }
+            PB(5) f.staticEval = f.inCheck ? -VALUE_INF : evaluate(g, net, acc); PE(5)
+            int us = g->stm;
+            if (!f.root && !f.pvNode && !f.inCheck && f.depth <= 3 && g->states[g->nstates - 1].rule50 + f.depth < 100
+                && abs(f.beta) < VALUE_MATE_IN_MAX_PLY && (g->byColor[us] & ~(g->byType[PAWN] | g->byType[KING]))) {
+                if (abs(f.staticEval) < VALUE_MATE_IN_MAX_PLY && f.staticEval - 150 * f.depth >= f.beta)
+                    RETURN(has_legal_move(g, net, acc, f.ply) ? f.staticEval : 0)
+            }
+            bool hasPieces = (g->byColor[us] & ~g->byType[PAWN] & ~g->byType[KING]) != 0;
+            if (!f.pvNode && !f.inCheck && !f.root && f.depth >= 3 && hasPieces && g->moveStack[f.ply - 1] != MOVE_NONE && f.staticEval >= f.beta) {
+                int R = 3 + f.depth / 6;
+                g->moveStack[f.ply] = MOVE_NONE;
+                __syncwarp();
+                do_null_move(g);
+                CALL(S_NULL_DONE, S_ENTRY, -f.beta, -f.beta + 1, f.depth - 1 - R)
+            }
+            f.state = S_MOVES;
             continue;
         }
-        ++legalMoves;
-        g->moveStack[ply] = m;
-        __syncwarp();
-        int score;
-        if (legalMoves == 1)
-            score = -search(g, net, acc, tt, -beta, -alpha, depth - 1, ply + 1);
-        else {
-            int r = 0;
-            PB(8) bool givesCheck = depth >= 3 && legalMoves > 3 && quiet && !inCheck && in_check(g); PE(8)
-            if (depth >= 3 && legalMoves > 3 && quiet && !inCheck && !givesCheck) {
-                r = REDUCTIONS[min(depth, 63)][min(legalMoves, 63)];
-                if (pvNode) --r;
-                r = max(0, min(r, depth - 2));
-            }
-            score = -search(g, net, acc, tt, -alpha - 1, -alpha, depth - 1 - r, ply + 1);
-            if (score > alpha && r > 0) score = -search(g, net, acc, tt, -alpha - 1, -alpha, depth - 1, ply + 1);
-            if (score > alpha && score < beta) score = -search(g, net, acc, tt, -beta, -alpha, depth - 1, ply + 1);
+        case S_NULL_DONE: {
+            int score = -f.childScore;
+            undo_null_move(g);
+            if (g->stopped) RETURN(0)
+            if (score >= f.beta) RETURN(score >= VALUE_MATE_IN_MAX_PLY ? f.beta : score)
+            f.state = S_MOVES;
+            continue;
         }
-        PB(4) undo_move(g, m); PE(4)
-        if (g->stopped) return 0;
-        if (score > best) {
-            best = score;
-            if (score > alpha) {
-                alpha = score;
-                bestMove = m;
-                if (root) {
-                    g->rootBest = m;
-                    g->rootPv = 1;
-                    __syncwarp();
+        case S_MOVES: {
+            PB(0) f.n = generate(g, g->moves[f.ply], false);
+            __syncwarp(); PE(0)
+            PB(1) score_moves(g, g->moves[f.ply], f.n, g->scores[f.ply], f.ttMove, f.ply); PE(1)
+            f.originalAlpha = f.alpha;
+            f.best = -VALUE_INF;
+            f.legalMoves = f.quietCount = f.i = 0;
+            f.bestMove = MOVE_NONE;
+            f.state = S_LOOP;
+        }
+        // fall through
+        case S_LOOP: {
+            // Make the next legal move that is not pruned, then search it below: CALL can't leave this
+            // loop, since its continue would continue the loop.
+            u16* list = g->moves[f.ply];
+            int* scores = g->scores[f.ply];
+            bool found = false;
+            while (f.i < f.n) {
+                PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
+                ++f.i;
+                bool quiet = is_quiet(g, m);
+                if (!f.pvNode && !f.inCheck && quiet && f.depth <= 8 && f.best > -VALUE_MATE_IN_MAX_PLY && f.quietCount >= 3 + f.depth * f.depth) continue;
+                if (!f.pvNode && !f.inCheck && quiet && f.depth <= 6 && f.best > -VALUE_MATE_IN_MAX_PLY && f.staticEval + 120 * f.depth <= f.alpha) continue;
+                PB(3) bool legal = do_move(g, m, net, acc); PE(3)
+                if (!legal) {
+                    PB(4) undo_move(g, m); PE(4)
+                    continue;
                 }
-                if (score >= beta) {
-                    if (quiet) {
-                        if (m != g->killers[ply][0]) {
-                            u16 k0 = g->killers[ply][0];
-                            __syncwarp();
-                            g->killers[ply][1] = k0;
-                            g->killers[ply][0] = m;
-                            __syncwarp();
-                        }
-                        int bonus = min(depth * depth, 1200);
-                        update_history(g, m, bonus);
-                        for (int j = 0; j < quietCount; ++j) update_history(g, quiets[j], -bonus);
+                ++f.legalMoves;
+                g->moveStack[f.ply] = m;
+                __syncwarp();
+                f.m = m;
+                f.quiet = quiet;
+                found = true;
+                break;
+            }
+            if (found) {
+                if (f.legalMoves == 1) CALL(S_FIRST_DONE, S_ENTRY, -f.beta, -f.alpha, f.depth - 1)
+                f.r = 0;
+                PB(8) bool givesCheck = f.depth >= 3 && f.legalMoves > 3 && f.quiet && !f.inCheck && in_check(g); PE(8)
+                if (f.depth >= 3 && f.legalMoves > 3 && f.quiet && !f.inCheck && !givesCheck) {
+                    int r = REDUCTIONS[min(f.depth, 63)][min(f.legalMoves, 63)];
+                    if (f.pvNode) --r;
+                    f.r = max(0, min(r, f.depth - 2));
+                }
+                CALL(S_RED_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, f.depth - 1 - f.r)
+            }
+            if (f.legalMoves == 0) RETURN(f.inCheck ? -VALUE_MATE + f.ply : 0)
+            int bound = f.best >= f.beta ? BOUND_LOWER : f.alpha > f.originalAlpha ? BOUND_EXACT : BOUND_UPPER;
+            { PB(6) tt_store(tt, f.key, f.bestMove, score_to_tt(f.best, f.ply), f.depth, bound); PE(6) }
+            RETURN(f.best)
+        }
+        case S_RED_DONE: // the reduced zero-window search returned
+            if (-f.childScore > f.alpha && f.r > 0) CALL(S_FULL_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, f.depth - 1)
+            // fall through: its score stands as the full-depth one
+        case S_FULL_DONE: // the full-depth zero-window search returned
+            if (-f.childScore > f.alpha && -f.childScore < f.beta) CALL(S_PV_DONE, S_ENTRY, -f.beta, -f.alpha, f.depth - 1)
+            // fall through
+        case S_FIRST_DONE:
+        case S_PV_DONE: {
+            int score = -f.childScore;
+            u16 m = f.m;
+            PB(4) undo_move(g, m); PE(4)
+            if (g->stopped) RETURN(0)
+            f.state = S_LOOP;
+            if (score > f.best) {
+                f.best = score;
+                if (score > f.alpha) {
+                    f.alpha = score;
+                    f.bestMove = m;
+                    if (f.root) {
+                        g->rootBest = m;
+                        g->rootPv = 1;
+                        __syncwarp();
                     }
-                    break;
+                    if (score >= f.beta) {
+                        if (f.quiet) {
+                            if (m != g->killers[f.ply][0]) {
+                                u16 k0 = g->killers[f.ply][0];
+                                __syncwarp();
+                                g->killers[f.ply][1] = k0;
+                                g->killers[f.ply][0] = m;
+                                __syncwarp();
+                            }
+                            int bonus = min(f.depth * f.depth, 1200);
+                            update_history(g, m, bonus);
+                            u16* quiets = g->quiets[f.ply];
+                            for (int j = 0; j < f.quietCount; ++j) update_history(g, quiets[j], -bonus);
+                        }
+                        f.i = f.n; // break
+                        continue;
+                    }
                 }
             }
+            if (f.quiet) {
+                g->quiets[f.ply][f.quietCount++] = m;
+                __syncwarp();
+            }
+            continue;
         }
-        if (quiet) {
-            quiets[quietCount++] = m;
+        case Q_ENTRY: {
+            count_node(g);
+            check_limits(g);
             __syncwarp();
+            if (g->stopped) RETURN(0)
+            PB(5) int standPat = evaluate(g, net, acc); PE(5)
+            if (f.ply >= MAX_PLY - 1 || standPat >= f.beta) RETURN(standPat)
+            f.alpha = max(f.alpha, standPat);
+            PB(0) f.n = generate(g, g->moves[f.ply], true);
+            __syncwarp(); PE(0)
+            PB(1) score_moves(g, g->moves[f.ply], f.n, g->scores[f.ply], MOVE_NONE, -1); PE(1)
+            f.best = standPat;
+            f.i = 0;
+            f.state = Q_LOOP;
         }
+        // fall through
+        case Q_LOOP: {
+            u16* list = g->moves[f.ply];
+            int* scores = g->scores[f.ply];
+            bool found = false;
+            while (f.i < f.n) {
+                PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
+                ++f.i;
+                PB(7) bool seeOk = see_ge(g, m, 0); PE(7)
+                if (!seeOk) continue;
+                PB(3) bool legal = do_move(g, m, net, acc); PE(3)
+                if (!legal) {
+                    PB(4) undo_move(g, m); PE(4)
+                    continue;
+                }
+                f.m = m;
+                found = true;
+                break;
+            }
+            if (found) CALL(Q_DONE, Q_ENTRY, -f.beta, -f.alpha, 0)
+            RETURN(f.best)
+        }
+        case Q_DONE: {
+            int score = -f.childScore;
+            PB(4) undo_move(g, f.m); PE(4)
+            if (g->stopped) RETURN(0)
+            if (score > f.best) {
+                f.best = score;
+                if (score > f.alpha) {
+                    f.alpha = score;
+                    if (score >= f.beta) RETURN(f.best)
+                }
+            }
+            f.state = Q_LOOP;
+            continue;
+        }
+        }
+        // The running call returned ret: resume its caller, or leave if it was the root.
+        if (sp == 0) return ret;
+        __syncwarp();
+        f = g->frames[--sp];
+        f.childScore = ret;
     }
-    if (legalMoves == 0) return inCheck ? -VALUE_MATE + ply : 0;
-    int bound = best >= beta ? BOUND_LOWER : alpha > originalAlpha ? BOUND_EXACT : BOUND_UPPER;
-    { PB(6) tt_store(tt, key, bestMove, score_to_tt(best, ply), depth, bound); PE(6) }
-    return best;
 }
+#undef CALL
+#undef RETURN
 
 __device__ int search_root(Game* g, const Net& net, short* acc, TTEntry* tt, int depth, int prevScore) {
     int delta = 25, alpha = -VALUE_INF, beta = VALUE_INF;
@@ -787,7 +900,7 @@ __device__ int search_root(Game* g, const Net& net, short* acc, TTEntry* tt, int
         beta = min(prevScore + delta, VALUE_INF);
     }
     while (true) {
-        int score = search(g, net, acc, tt, alpha, beta, depth, 0);
+        int score = search(g, net, acc, tt, alpha, beta, depth);
         if (g->stopped) return score;
         if (score <= alpha) alpha = max(score - delta, -VALUE_INF);
         else if (score >= beta) beta = min(score + delta, VALUE_INF);

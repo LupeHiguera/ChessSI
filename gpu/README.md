@@ -27,20 +27,22 @@ as the CPU's. The one difference is a 1 MB TT per game instead of 16 MB, which m
 Design: one game per warp. All 32 lanes run the same scalar search on one copy of the game in global
 memory. Same-address reads are broadcast, and every shared update goes snapshot, `__syncwarp`, write,
 since a warp's lanes are not guaranteed to stay in lockstep. Each lane owns 8 of the network's 256
-hidden units. A kernel launch plays one ply of every game, which keeps kernels well under the Windows
-GPU watchdog.
+hidden units. The search is not recursive: it runs from an explicit stack of frames, one per game,
+because a recursive call saves every lane's registers at each level. A kernel launch plays one ply of
+every game, which keeps kernels well under the Windows GPU watchdog.
 
 Throughput with net10 at 5,000 nodes a move:
 
 | GPU | Games in flight | Positions per second | Nodes per second |
 | --- | --- | --- | --- |
-| RTX 5080 | 3,072 | about 5,700 | 40M |
-| RTX 5060 Ti | 1,536 | about 3,400 | 24M |
+| RTX 5080 | 3,072 | about 7,700 | 55M |
+| RTX 5060 Ti (recursive search, not yet re-measured) | 1,536 | about 3,400 | 24M |
 | ChessSI on 13 CPU cores, for comparison | | about 8,300 | 39M |
 
-A GPU node still costs far more instructions than a CPU node. `-DPROFILE` timers put `do_move` at 32%
-of the time and search control at 20%. Capping registers to raise occupancy changes little, so memory
-traffic is the limit.
+The frame stack made the search 32% faster than the first, recursive version (7,743 positions per
+second against 5,868 and 5,897 on the 5080, 200-second runs). A GPU node still costs far more
+instructions than a CPU node. With the recursive search, `-DPROFILE` timers put `do_move` at 32% of the
+time and search control at 20%, and capping registers to raise occupancy changed little.
 
 ## Matches
 

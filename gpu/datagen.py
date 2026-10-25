@@ -149,7 +149,7 @@ class GpuDatagen:
         self.mod.get_function("datagen_sizes")((1,), (1,), (sizes,))
         self.game_bytes, sample_bytes, tt_bytes = (int(x) for x in sizes.get())
         assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16
-        cp.cuda.runtime.deviceSetLimit(0, 32 * 1024)  # cudaLimitStackSize: the recursive search
+        cp.cuda.runtime.deviceSetLimit(0, 1024)  # cudaLimitStackSize, the default: the search needs about 200 bytes
         self.ftw, self.ftb, self.outw = cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw)
         self.capacity = capacity
         self.games = cp.zeros(capacity * self.game_bytes, cp.uint8)
