@@ -6,9 +6,13 @@ playing both sides of thousands of games at once.
 Each opening from the book is played twice, A with White and then with Black. Games end like our
 fastchess SPRTs (see match_step). Prints A's score, Elo with a 95% interval from the game pairs
 (pentanomial), and the SPRT [0, 5] log-likelihood ratio. Both networks must have the same hidden size.
+The search's constants are src/search.cpp's, or GPU_PARAMS for A and GPU_PARAMS_B for B (JSON, as
+gpu/spsa.py prints them; B takes A's if GPU_PARAMS_B is unset), so A and B can also be one network
+with two sets of constants.
 A fixed node count leaves out speed, so this suits networks of one size; time-based SPRTs remain the
 test for anything that changes speed.
 """
+import json
 import math
 import os
 import random
@@ -20,7 +24,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from datagen import GpuDatagen, compact, load_net, wait  # noqa: E402
+from datagen import GpuDatagen, compact, load_net, make_params, wait  # noqa: E402
 
 TT_BITS = 16
 
@@ -63,6 +67,9 @@ def main():
     _, ftw, ftb, outw, outb = load_net(net_b)
     b = (cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw), np.int32(outb))
     a = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb))
+    params_b = dg.params  # GPU_PARAMS, read by GpuDatagen
+    if "GPU_PARAMS_B" in os.environ:
+        params_b = cp.asarray(make_params(json.loads(os.environ["GPU_PARAMS_B"])).view(np.uint8))
     tts_b = cp.zeros(n * (1 << TT_BITS) * 16, cp.uint8)
     k = {name: dg.mod.get_function(name) for name in ("match_init", "match_setup", "match_step", "match_results")}
     start = cp.asarray(np.stack([compact(openings[i // 2]) for i in range(n)]))
@@ -74,7 +81,7 @@ def main():
     res = cp.full(n, -1, cp.int32)
     t0, steps = time.perf_counter(), 0
     while True:
-        k["match_step"](warps, (128,), (dg.games, np.int32(n)) + a + b + (dg.params, dg.params, np.int32(0), dg.accs, dg.tts, tts_b,
+        k["match_step"](warps, (128,), (dg.games, np.int32(n)) + a + b + (dg.params, params_b, np.int32(0), dg.accs, dg.tts, tts_b,
                                                                           np.uint64(nodes), dg.budget))
         steps += 1
         if steps % 8 == 0:
