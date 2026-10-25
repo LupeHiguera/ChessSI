@@ -19,6 +19,8 @@ Fixed nodes leave speed out, which suits pruning and reduction constants. The ga
 than a CPU test's, though, so tuned values still need a time-based SPRT.
 """
 import collections
+import json
+import math
 import os
 import random
 import sys
@@ -152,8 +154,10 @@ def main():
             print(f"pairs {finished}/{total} {now - t0:.0f} s ({finished / (now - t0):.2f}/s, {(now - t0) / steps:.2f} s a ply, "
                   f"plus side {points / max(1, 2 * finished):.3f}) | {show(theta)}", flush=True)
     print(f"final: {show(theta)}", flush=True)
-    print("rounded: " + " ".join(f"{x}={theta[x]:.2f}" if isinstance(DEFAULTS[x], float) else f"{x}={int(theta[x] + 0.5)}"
-                                 for x in SPACE), flush=True)
+    # The values the games used, as make_params realizes them: integers by floor(x + 0.5), the LMR
+    # constants as they are (they only enter the reduction table). GPU_PARAMS takes this JSON.
+    print("params: " + json.dumps({x: theta[x] if isinstance(DEFAULTS[x], float) else math.floor(theta[x] + 0.5)
+                                   for x in SPACE}), flush=True)
 
 
 if __name__ == "__main__":

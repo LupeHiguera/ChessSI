@@ -14,6 +14,7 @@ and prints the same lines as gpu/ref.cpp ("<fen> | <score> | <result> | <eval>",
 result <r>"), so the two can be compared with diff. With -v it also prints each ply's search, as
 "#ply <n> <best> <score> <nodes>" before each game's lines.
 """
+import json
 import math
 import os
 import struct
@@ -160,7 +161,8 @@ class GpuDatagen:
         self.mod.get_function("datagen_sizes")((1,), (1,), (sizes,))
         self.game_bytes, sample_bytes, tt_bytes, params_bytes = (int(x) for x in sizes.get())
         assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16 and params_bytes == PARAMS.itemsize
-        self.params = cp.asarray(make_params().view(np.uint8))
+        # The search's constants: src/search.cpp's, or GPU_PARAMS (JSON, as gpu/spsa.py prints them).
+        self.params = cp.asarray(make_params(json.loads(os.environ.get("GPU_PARAMS", "{}"))).view(np.uint8))
         # Nodes a search may run per kernel launch before it pauses until the next; a search gives the
         # same result in any number of launches. Unlimited by default: 5,000-node searches are short.
         self.budget = np.uint64(int(os.environ.get("GPU_BUDGET", 1 << 62)))
