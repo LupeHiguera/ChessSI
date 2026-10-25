@@ -209,6 +209,14 @@ Proposals:
   per CPU hour count as research too: early adjudication of decided games (in `sprt.sh`), cheap
   pre-screening at very fast time controls (`scripts/prescreen.sh`, being validated), and testing several independent changes at once with a factorial design that
   separates their effects (verified against single-idea SPRTs before it is trusted).
+  **GPU matches (2026-10-25, `gpu/match.py`, PR #35).** ChessSI's exact search plays both sides of
+  thousands of games at once on a GPU, at a fixed node count. With 512 games at 20,000 nodes a move on
+  an RTX 5060 Ti, about two minutes each, it reproduced every CPU SPRT tried: net10 vs net9 +58.9 ±
+  34.9 (CPU +56.8 ± 14.5), mirror −22.4 ± 23.5 (−18.2 ± 9.2), rg05 −45.7 ± 24.9 (−34.5 ± 12.4), hl01
+  −58.9 ± 24.4 (−49.3 ± 14.9). A network against itself scores exactly 0.500. Fixed nodes leave speed
+  out, so it screens networks of one size; changes that affect speed still need a time-based SPRT.
+  Its search also generates training data: byte-identical to `chesssi datagen` from the same
+  positions, at about the 13 CPU cores' rate on an RTX 5080.
 - **GPU teacher for data (phase 3).** Data generation is CPU-bound. Train a larger network on the GPUs
   from our own games and use it to relabel positions in large batches, so the CPU plays games and the
   GPU supplies the evaluation targets. **Known** (prior art found by the cloud research, PR #16):
@@ -460,6 +468,7 @@ each result here with the date, the commit and its bench.
 | 2026-10-23 | `d2b1e25` (net8, SEE in quiescence) | 137954 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 600 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 6-9) | 3176 ± 29 |
 | 2026-10-24 | `7af0aae` (net10, speed series) | 158506 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 1,200 at 10+0.1, 8moves_v3 book, 12 concurrent (cores 0-12) | **3284 ± 21** |
 | 2026-10-24 | Claude Opus 5.5 | Known | Lazy SMP: helper threads on copies of the position sharing the TT (owner's decision), measured as 4 threads against 1 in the same binary (`eb10c7b`), 10+0.1, Hash 64 | Passed (fixed 400-game match, not an SPRT) | +129.0 ± 20.6 | 400 (2 concurrent × 5 threads, cores 0-12) | Not run |
+| 2026-10-24 | Claude Opus 5.5 | Known | net10's recipe at 512 hidden units on net10's data (validation 0.00679 against 0.00696), vs net10 at 256 | Inconclusive (stopped at 8,116 games: any gain is small, and h512 searches about 40% slower) | +3.4 ± 4.8 | 8,116 (12 concurrent, cores 0-12) | Not run |
 
 The 2026-10-22 gauntlet used a balanced book (`8moves_v3`), not the SPRT book: UHO openings give one
 side an edge, which stretches rating gaps. Run it with `scripts/gauntlet.sh`. The ± is statistical
