@@ -68,3 +68,26 @@ Validation against CPU SPRTs at 10+0.1, with 512 games at 20,000 nodes a move on
 | hl01 vs net9 | −58.9 ± 24.4 | −49.3 ± 14.9 |
 
 A 512-game match takes about two minutes on a 5060 Ti that is also generating data.
+
+## Tuning the search's constants
+
+```
+python gpu/spsa.py <net.nnue> <pairs> [nodes=50000] [games at once=1000] [seed=1] [book]
+```
+
+The 17 constants that `src/search.cpp` writes inline are fields of `Params` in `datagen.cu`. They
+cover the pruning margins and depths, the null-move reduction, the LMR table, the history bonus cap,
+the aspiration windows and the quiescence SEE threshold. A match can give each side its own set, per
+game. `spsa.py` runs fishtest's SPSA with them. Each game pair plays one opening twice, theta + c*delta
+against theta - c*delta, and theta moves as each pair ends. A finished game's slot takes the next
+game at once. On an RTX 5080, 800 games at once at 50,000 nodes play about 5.8 pairs a second.
+
+At the end it prints the values the games used as JSON. `GPU_PARAMS` takes that JSON for `datagen.py`,
+`match.py` and `spsa.py`. To move tuned values to the engine, write them into `src/search.cpp`, then
+check parity: `ref.cpp` built from that source and `datagen.py` with the same `GPU_PARAMS` must write
+identical lines. Then run the CPU SPRT.
+
+Two settings keep kernel launches under the Windows GPU watchdog (2 s). Keep games at once within
+what the GPU holds at a time (about 1,000 warps on a 5080). `GPU_BUDGET` caps the nodes a search runs
+per launch: it pauses with its state in the game and goes on in the next launch, with the same
+result, so any node count works.
