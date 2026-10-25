@@ -11,6 +11,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 
 | Date | Model | Kind | Idea | Result | Elo | Games | Pre-screen |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-25 | GPT-6 (Codex), GPT-6 Astra ultra | Known | Repeated-position label aggregation, bounded latest-teacher offline gate | Inconclusive (coverage) | Not run | 0 games; 2M rows, core 19, 2 GiB cap; 1 eligible identity / 3 groups | Not run |
 | 2026-10-21 | Claude Opus 5.5 | Known | Killer moves | Passed | +43.5 ± 14.2 | 1,332 (18 concurrent, no adjudication) | Passed, 364 games, +76.6 ± 27.5 |
 | 2026-10-21 | Claude Opus 5.5 | Known | History heuristic (gravity, bonus min(d², 1200), malus on earlier quiets) | Failed | −2.7 ± 4.7 | 11,690 (13 concurrent) | Inconclusive at 600-game cap, −23.8 ± 20.5 |
 | 2026-10-22 | GPT-6 (Codex) | Known | Check evasions in quiescence | Failed | -11.83 +/- 8.36 | 4,026 (5 concurrent, CPUs 14-19, adjudication) | Not run |
@@ -155,7 +156,7 @@ first network is in, since pruning margins are in eval units and must be recheck
 
 NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
 
-- **Repeated-position label aggregation** - *Astra / GPT-6 (Codex), with GPT-6 Astra ultra research review; claimed 2026-10-24.* Known technique. Compare first occurrence with a matched latest-teacher observation and a mean of probability targets within that teacher/budget cohort. Preserve one weight per position, independent game groups and validation separation. Research only while the PC is busy; no experiment or Elo result yet. Protocol: [`docs/research/repeated-labels-2026-10-24/PROTOCOL.md`](research/repeated-labels-2026-10-24/PROTOCOL.md), branch `astra/repeated-label-study-20261024`.
+- **Repeated-position label aggregation** - *Astra / GPT-6 (Codex), with GPT-6 Astra ultra research review; claimed 2026-10-24.* Known technique. Compare first occurrence with a matched latest-teacher observation and a mean of probability targets within that teacher/budget cohort. Preserve one weight per position, independent game groups and validation separation. **Pilot completed 2026-10-25: Inconclusive (coverage).** Two million generation-7/net10 rows yielded one eligible full-context identity in three groups, below the fixed thresholds. Pilot stopped; no training or Elo result. [Result](research/repeated-labels-2026-10-25/RESULT.md), branch `astra/repeated-label-pilot-20261025`. Protocol: [`docs/research/repeated-labels-2026-10-24/PROTOCOL.md`](research/repeated-labels-2026-10-24/PROTOCOL.md), branch `astra/repeated-label-study-20261024`.
 - Hidden size 128 vs 256 vs 512 at equal training time; NPS counts, so compare in games
 - Game-result weight 0.25 → 0.4 (`--lambda 0.6`); filter early plies and score/result contradictions
 - Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes.

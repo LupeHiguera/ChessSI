@@ -1,0 +1,40 @@
+{
+  "analysis_tests": {
+    "cpu": 19,
+    "failed": 0,
+    "passed": 15,
+    "version": "v2"
+  },
+  "bench": {
+    "cpu": 18,
+    "engine_source_changed": false,
+    "nodes": 158506
+  },
+  "execution": {
+    "analysis_address_space_limit": 2147483648,
+    "analysis_cpu": 19,
+    "analysis_cpu_seconds_limit": 900,
+    "build_and_test_cpus": "14-18",
+    "build_jobs": 5
+  },
+  "independent_review": "GPT-6 Astra ultra: source/capture metadata, metrics and interpretation reviewed; no extra snapshot scan",
+  "no_elo_claim": true,
+  "no_gpu_job": true,
+  "no_match": true,
+  "perft": {
+    "failed": 0,
+    "passed": 35
+  },
+  "result_checks": [
+    "manifest hash",
+    "analyzer hash",
+    "2M row total",
+    "per-identity aggregate",
+    "blend component identity",
+    "resource cap"
+  ],
+  "rfp_boundaries": {
+    "failed": 0,
+    "passed": 17
+  }
+}
