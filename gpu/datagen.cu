@@ -401,12 +401,16 @@ __device__ __forceinline__ void count_node(Game* g) {
 }
 
 __device__ bool is_draw(Game* g) {
-    const StateInfo& st = g->states[g->nstates - 1];
+    __syncwarp();
+    int n = g->nstates;
+    const StateInfo& st = g->states[n - 1];
     if (st.rule50 >= 100) return true;
-    int lookback = min(min(st.rule50, st.pliesFromNull), g->nstates - 1);
-    for (int i = 4; i <= lookback; i += 2)
-        if (g->states[g->nstates - 1 - i].key == st.key) return true;
-    return false;
+    u64 key = st.key;
+    int lookback = min(min(st.rule50, st.pliesFromNull), n - 1);
+    bool found = false;
+    for (int i = 4 + 2 * lane_id(); i <= lookback; i += 64) // lane l checks plies 4 + 2l, 4 + 2l + 64, ...
+        if (g->states[n - 1 - i].key == key) found = true;
+    return __any_sync(0xffffffffu, found);
 }
 
 // ---- Move generation (src/movegen.cpp order) ----
@@ -497,7 +501,8 @@ __device__ __forceinline__ bool is_quiet(const Game* g, u16 m) {
     return g->board[(m >> 6) & 63] == NO_PIECE && t != M_EN_PASSANT && t != M_PROMOTION;
 }
 __device__ void score_moves(Game* g, const u16* list, int n, int* scores, u16 ttMove, int ply) {
-    for (int i = 0; i < n; ++i) {
+    __syncwarp();
+    for (int i = lane_id(); i < n; i += 32) { // every lane scores every 32nd move
         u16 m = list[i];
         int from = m & 63, to = (m >> 6) & 63, t = m & (3 << 14), s;
         if (m == ttMove) s = 1000000;
@@ -521,14 +526,21 @@ __device__ void update_history(Game* g, u16 m, int bonus) {
     __syncwarp();
 }
 __device__ u16 pick_move(u16* list, int* scores, int n, int i) {
-    int best = i;
-    for (int j = i + 1; j < n; ++j)
-        if (scores[j] > scores[best]) best = j;
-    u16 mi = list[i], mb = list[best];
-    int si = scores[i], sb = scores[best];
     __syncwarp();
-    list[i] = mb; list[best] = mi;
-    scores[i] = sb; scores[best] = si;
+    int bestS = -2147483647 - 1, bestJ = n;
+    for (int j = i + lane_id(); j < n; j += 32) {
+        int sj = scores[j];
+        if (sj > bestS) { bestS = sj; bestJ = j; } // a lane's first maximum: its indices only grow
+    }
+    for (int off = 16; off; off >>= 1) {
+        int s2 = __shfl_xor_sync(0xffffffffu, bestS, off), j2 = __shfl_xor_sync(0xffffffffu, bestJ, off);
+        if (s2 > bestS || (s2 == bestS && j2 < bestJ)) { bestS = s2; bestJ = j2; }
+    }
+    u16 mi = list[i], mb = list[bestJ];
+    int si = scores[i];
+    __syncwarp();
+    list[i] = mb; list[bestJ] = mi;
+    scores[i] = bestS; scores[bestJ] = si;
     __syncwarp();
     return mb;
 }
