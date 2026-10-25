@@ -47,6 +47,17 @@ __constant__ u64 Z_EP[8];
 __constant__ u64 Z_SIDE[1];
 __constant__ int REDUCTIONS[64][64];
 
+// -DPROFILE: clock64() cycles per section, summed by lane 0 into Game::prof. Sections are timed at
+// their call sites in the search, so the step total minus the sections is the search's own control.
+enum { P_GEN, P_SCORE, P_PICK, P_DO, P_UNDO, P_EVAL, P_TT, P_SEE, P_CHECK, P_DRAW, P_STEP, P_COUNT };
+#ifdef PROFILE
+#define PB(id) long long _pb##id = clock64();
+#define PE(id) if ((threadIdx.x & 31) == 0) g->prof[id] += clock64() - _pb##id;
+#else
+#define PB(id)
+#define PE(id)
+#endif
+
 struct StateInfo {
     u64 key;
     int castling, ep, rule50, captured, pliesFromNull, pad;
@@ -88,11 +99,13 @@ struct Game {
     u16 lastBest, pad3;
     Sample samples[MAX_SAMPLES];
     int plyBest[MAX_PLIES], plyScore[MAX_PLIES], plyNodes[MAX_PLIES];
+    long long prof[P_COUNT];
 };
 struct Net {
     const short *ftw, *ftb, *outw;
     int outb;
 };
+
 
 #define NOT_A 0xFEFEFEFEFEFEFEFEULL
 #define NOT_AB 0xFCFCFCFCFCFCFCFCULL
@@ -615,24 +628,26 @@ __device__ int qsearch(Game* g, const Net& net, short* acc, TTEntry* tt, int alp
     check_limits(g);
     __syncwarp();
     if (g->stopped) return 0;
-    int standPat = evaluate(g, net, acc);
+    PB(5) int standPat = evaluate(g, net, acc); PE(5)
     if (ply >= MAX_PLY - 1 || standPat >= beta) return standPat;
     alpha = max(alpha, standPat);
     u16* list = g->moves[ply];
     int* scores = g->scores[ply];
-    int n = generate(g, list, true);
-    __syncwarp();
-    score_moves(g, list, n, scores, MOVE_NONE, -1);
+    PB(0) int n = generate(g, list, true);
+    __syncwarp(); PE(0)
+    PB(1) score_moves(g, list, n, scores, MOVE_NONE, -1); PE(1)
     int best = standPat;
     for (int i = 0; i < n; ++i) {
-        u16 m = pick_move(list, scores, n, i);
-        if (!see_ge(g, m, 0)) continue;
-        if (!do_move(g, m, net, acc)) {
-            undo_move(g, m);
+        PB(2) u16 m = pick_move(list, scores, n, i); PE(2)
+        PB(7) bool seeOk = see_ge(g, m, 0); PE(7)
+        if (!seeOk) continue;
+        PB(3) bool legal = do_move(g, m, net, acc); PE(3)
+        if (!legal) {
+            PB(4) undo_move(g, m); PE(4)
             continue;
         }
         int score = -qsearch(g, net, acc, tt, -beta, -alpha, ply + 1);
-        undo_move(g, m);
+        PB(4) undo_move(g, m); PE(4)
         if (g->stopped) return 0;
         if (score > best) {
             best = score;
@@ -646,7 +661,7 @@ __device__ int qsearch(Game* g, const Net& net, short* acc, TTEntry* tt, int alp
 }
 
 __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alpha, int beta, int depth, int ply) {
-    bool inCheck = in_check(g);
+    PB(8) bool inCheck = in_check(g); PE(8)
     if (inCheck) ++depth;
     if (depth <= 0) return qsearch(g, net, acc, tt, alpha, beta, ply);
     count_node(g);
@@ -656,11 +671,12 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
     bool root = ply == 0, pvNode = beta - alpha > 1;
     if (root) g->rootPv = 0; // pvLength[0] = 0
     if (!root) {
-        if (is_draw(g)) return 0;
+        PB(9) bool draw = is_draw(g); PE(9)
+        if (draw) return 0;
         if (ply >= MAX_PLY - 1) return evaluate(g, net, acc);
     }
     u64 key = g->states[g->nstates - 1].key;
-    TTEntry e = *tt_entry(tt, key);
+    PB(6) TTEntry e = *tt_entry(tt, key); PE(6)
     bool hit = e.key == key && e.bound != BOUND_NONE;
     u16 ttMove = hit ? e.move : MOVE_NONE;
     if (hit && !pvNode && e.depth >= depth) {
@@ -668,7 +684,7 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
         if (e.bound == BOUND_EXACT || (e.bound == BOUND_LOWER && ttScore >= beta) || (e.bound == BOUND_UPPER && ttScore <= alpha))
             return ttScore;
     }
-    int staticEval = inCheck ? -VALUE_INF : evaluate(g, net, acc);
+    PB(5) int staticEval = inCheck ? -VALUE_INF : evaluate(g, net, acc); PE(5)
     int us = g->stm;
     if (!root && !pvNode && !inCheck && depth <= 3 && g->states[g->nstates - 1].rule50 + depth < 100 && abs(beta) < VALUE_MATE_IN_MAX_PLY
         && (g->byColor[us] & ~(g->byType[PAWN] | g->byType[KING]))) {
@@ -689,18 +705,19 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
     u16* list = g->moves[ply];
     int* scores = g->scores[ply];
     u16* quiets = g->quiets[ply];
-    int n = generate(g, list, false);
-    __syncwarp();
-    score_moves(g, list, n, scores, ttMove, ply);
+    PB(0) int n = generate(g, list, false);
+    __syncwarp(); PE(0)
+    PB(1) score_moves(g, list, n, scores, ttMove, ply); PE(1)
     int originalAlpha = alpha, best = -VALUE_INF, legalMoves = 0, quietCount = 0;
     u16 bestMove = MOVE_NONE;
     for (int i = 0; i < n; ++i) {
-        u16 m = pick_move(list, scores, n, i);
+        PB(2) u16 m = pick_move(list, scores, n, i); PE(2)
         bool quiet = is_quiet(g, m);
         if (!pvNode && !inCheck && quiet && depth <= 8 && best > -VALUE_MATE_IN_MAX_PLY && quietCount >= 3 + depth * depth) continue;
         if (!pvNode && !inCheck && quiet && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY && staticEval + 120 * depth <= alpha) continue;
-        if (!do_move(g, m, net, acc)) {
-            undo_move(g, m);
+        PB(3) bool legal = do_move(g, m, net, acc); PE(3)
+        if (!legal) {
+            PB(4) undo_move(g, m); PE(4)
             continue;
         }
         ++legalMoves;
@@ -711,7 +728,8 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
             score = -search(g, net, acc, tt, -beta, -alpha, depth - 1, ply + 1);
         else {
             int r = 0;
-            if (depth >= 3 && legalMoves > 3 && quiet && !inCheck && !in_check(g)) {
+            PB(8) bool givesCheck = depth >= 3 && legalMoves > 3 && quiet && !inCheck && in_check(g); PE(8)
+            if (depth >= 3 && legalMoves > 3 && quiet && !inCheck && !givesCheck) {
                 r = REDUCTIONS[min(depth, 63)][min(legalMoves, 63)];
                 if (pvNode) --r;
                 r = max(0, min(r, depth - 2));
@@ -720,7 +738,7 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
             if (score > alpha && r > 0) score = -search(g, net, acc, tt, -alpha - 1, -alpha, depth - 1, ply + 1);
             if (score > alpha && score < beta) score = -search(g, net, acc, tt, -beta, -alpha, depth - 1, ply + 1);
         }
-        undo_move(g, m);
+        PB(4) undo_move(g, m); PE(4)
         if (g->stopped) return 0;
         if (score > best) {
             best = score;
@@ -756,7 +774,7 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
     }
     if (legalMoves == 0) return inCheck ? -VALUE_MATE + ply : 0;
     int bound = best >= beta ? BOUND_LOWER : alpha > originalAlpha ? BOUND_EXACT : BOUND_UPPER;
-    tt_store(tt, key, bestMove, score_to_tt(best, ply), depth, bound);
+    { PB(6) tt_store(tt, key, bestMove, score_to_tt(best, ply), depth, bound); PE(6) }
     return best;
 }
 
@@ -833,6 +851,7 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     if (w >= n) return;
     Game* g = games + w;
     if (g->done) return;
+    PB(10)
     short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
     TTEntry* tt = tts + ((size_t)w << TT_BITS);
     if (g->ply >= MAX_PLIES) { g->result = 0.5f; g->done = 1; return; }
@@ -882,6 +901,7 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     g->accTop = 0;
     g->ply = pl + 1;
     __syncwarp();
+    PE(10)
 }
 
 // ---- Host interface ----
@@ -920,6 +940,7 @@ __device__ void init_game(Game* g, const u8* p) {
     g->states[0] = st;
     g->accTop = 0;
     g->winStreak = 0; g->ply = 0; g->done = 0; g->nsamples = 0; g->result = 0.5f;
+    for (int k = 0; k < P_COUNT; ++k) g->prof[k] = 0;
 }
 extern "C" __global__ void datagen_init(Game* games, int n, const u8* start) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1020,4 +1041,10 @@ extern "C" __global__ void datagen_collect_slots(const Game* games, const int* s
     for (int p = 0; p < g->ply && p < MAX_PLIES; ++p) total += g->plyNodes[p];
     nodes[i] = total;
     for (int j = 0; j < g->nsamples; ++j) samples[(size_t)i * MAX_SAMPLES + j] = g->samples[j];
+}
+
+extern "C" __global__ void datagen_profile(const Game* games, int n, long long* out) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n)
+        for (int k = 0; k < P_COUNT; ++k) out[(size_t)i * P_COUNT + k] = games[i].prof[k];
 }

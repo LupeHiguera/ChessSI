@@ -137,7 +137,10 @@ class GpuDatagen:
     def __init__(self, net_path, capacity):
         self.h, ftw, ftb, outw, self.outb = load_net(net_path)
         src = open(os.path.join(HERE, "datagen.cu")).read()
-        self.mod = cp.RawModule(code=src, options=("--std=c++17", f"-DH={self.h}"))
+        options = ("--std=c++17", f"-DH={self.h}")
+        if os.environ.get("GPU_MAXRREG"):  # registers per thread: fewer let more warps (games) be resident
+            options += (f"--maxrregcount={os.environ['GPU_MAXRREG']}",)
+        self.mod = cp.RawModule(code=src, options=options)
         for name, arr in zip(("Z_PSQ", "Z_CASTLING", "Z_EP", "Z_SIDE"), zobrist()):
             cp.ndarray(arr.shape, arr.dtype, self.mod.get_global(name))[...] = cp.asarray(arr)
         r = reductions()
