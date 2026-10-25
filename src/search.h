@@ -28,6 +28,10 @@ extern std::atomic<bool> stop;
 // Forget everything learned in earlier games.
 void clear();
 
+// Search threads (the UCI Threads option). With more than one, helper threads
+// search the same root and share the transposition table (Lazy SMP).
+void set_threads(int n);
+
 // Iterative deepening from the root. Prints UCI "info" lines when verbose.
 SearchResult think(Position& pos, const SearchLimits& limits, bool verbose);
 
