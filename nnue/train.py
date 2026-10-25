@@ -326,10 +326,11 @@ def played_moves(d, chunk=1 << 18):
     return pfrom, pto
 
 
-def teacher_predictions(path, inputs, n, dev, chunk=1 << 18):
+def teacher_predictions(path, inputs, n, dev, data_dev, chunk=1 << 18):
     """Win probability, from the side to move's view, that an exported one-bucket network gives
-    each of the n positions (`inputs` maps position indices to feature tensors, as in main). The
-    weights are dequantised back to floats, so this matches the engine's eval up to rounding."""
+    each of the n positions (`inputs` maps position indices on data_dev to feature tensors on dev,
+    as in main), kept on data_dev. The weights are dequantised back to floats, so this matches the
+    engine's eval up to rounding."""
     with open(path, "rb") as f:
         assert f.read(4) == b"CSNN", "the teacher must be a one-bucket (CSNN) network"
         (h,) = struct.unpack("<i", f.read(4))
@@ -341,14 +342,14 @@ def teacher_predictions(path, inputs, n, dev, chunk=1 << 18):
     w[:PAD] = torch.from_numpy(ft_w.astype(np.float32)).to(dev) / QA
     b = torch.from_numpy(ft_b.astype(np.float32)).to(dev) / QA
     ow = torch.from_numpy(out_w.astype(np.float32)).to(dev) / QB
-    out = torch.empty(n, device=dev)
+    out = torch.empty(n, device=data_dev)
     with torch.no_grad():
         for s in range(0, n, chunk):
-            idx = torch.arange(s, min(s + chunk, n), device=dev)
+            idx = torch.arange(s, min(s + chunk, n), device=data_dev)
             stm, nstm = inputs(idx)[:2]
             a = torch.clamp(torch.nn.functional.embedding_bag(stm, w, mode="sum") + b, 0, 1) ** 2
             c = torch.clamp(torch.nn.functional.embedding_bag(nstm, w, mode="sum") + b, 0, 1) ** 2
-            out[s:s + len(idx)] = torch.sigmoid(a @ ow[:h] + c @ ow[h:] + out_b / (QA * QB))
+            out[s:s + len(idx)] = torch.sigmoid(a @ ow[:h] + c @ ow[h:] + out_b / (QA * QB)).to(data_dev)
     return out
 
 
@@ -442,40 +443,48 @@ def main():
 
     dev = torch.device("cuda")
     # Positions are stored compactly (24 bytes, see encode) and decoded and flipped per batch on the
-    # GPU. Above --gpu-data-gb they stay in host RAM and each batch is copied over.
+    # GPU. Up to --gpu-data-gb everything per position lives on the GPU. Above it, everything per
+    # position (positions, targets, indices, the shuffle) stays in host RAM, and each batch is gathered
+    # there and copied over: at 537M positions the targets and indices alone, with a GPU shuffle,
+    # passed a 16 GB card, and Windows paged GPU memory to RAM instead.
     if "feats" in d:  # load_at_once keeps the feature lists
         d["occ"], d["pcs"] = encode(d.pop("feats"))
     on_gpu = d["occ"].nbytes + d["pcs"].nbytes <= args.gpu_data_gb * 1e9
-    occ_t, pcs_t = torch.from_numpy(d["occ"].view(np.int64)), torch.from_numpy(d["pcs"])
-    if on_gpu:
-        occ_t, pcs_t = occ_t.to(dev), pcs_t.to(dev)
-    white_t = torch.from_numpy(d["white"]).to(dev).bool()
+    data_dev = dev if on_gpu else torch.device("cpu")
+    occ_t = torch.from_numpy(d["occ"].view(np.int64)).to(data_dev)
+    pcs_t = torch.from_numpy(d["pcs"]).to(data_dev)
+    white_t = torch.from_numpy(d["white"]).to(data_dev).bool()
     flip_t = torch.from_numpy(FLIP).to(dev)
-    sign = white_t.float() * 2 - 1
-    score_t = torch.from_numpy(d["scores"]).to(dev) * sign
-    result_w = torch.from_numpy(d["results"]).to(dev)
-    target = args.lam * torch.sigmoid(score_t / SCALE) + (1 - args.lam) * torch.where(white_t, result_w, 1 - result_w)
-    future_w = torch.from_numpy(d["future"]).to(dev)
-    future_t = torch.where(white_t, future_w, 1 - future_w)
+    # Targets are computed on the GPU in either case (chunk by chunk), so both modes train on the
+    # same float32 values.
+    target = torch.empty(n, device=data_dev)
+    future_t = torch.empty(n, device=data_dev)
+    for s in range(0, n, 1 << 24):
+        sl = slice(s, min(s + (1 << 24), n))
+        w = torch.from_numpy(d["white"][sl]).to(dev).bool()
+        score = torch.from_numpy(d["scores"][sl]).to(dev) * (w.float() * 2 - 1)
+        result_w = torch.from_numpy(d["results"][sl]).to(dev)
+        target[sl] = (args.lam * torch.sigmoid(score / SCALE) + (1 - args.lam) * torch.where(w, result_w, 1 - result_w)).to(data_dev)
+        future_w = torch.from_numpy(d["future"][sl]).to(dev)
+        future_t[sl] = torch.where(w, future_w, 1 - future_w).to(data_dev)
     if policy:
-        pfrom_t = torch.from_numpy(d["pfrom"].astype(np.int64)).to(dev)
-        pto_t = torch.from_numpy(d["pto"].astype(np.int64)).to(dev)
-    del score_t, result_w, future_w, d
+        pfrom_t = torch.from_numpy(d["pfrom"].astype(np.int64)).to(data_dev)
+        pto_t = torch.from_numpy(d["pto"].astype(np.int64)).to(data_dev)
+    del d
 
-    def inputs(idx):
-        if on_gpu:
-            w = decode(occ_t[idx], pcs_t[idx])
-        else:
-            i = idx.cpu()
-            w = decode(occ_t[i].to(dev, non_blocking=True), pcs_t[i].to(dev, non_blocking=True))
+    def to_dev(x):
+        return x.to(dev, non_blocking=True)
+
+    def inputs(idx):  # idx on data_dev
+        w = decode(to_dev(occ_t[idx]), to_dev(pcs_t[idx]))
         b = flip_t[w]
-        wt = white_t[idx].unsqueeze(1)
+        wt = to_dev(white_t[idx]).unsqueeze(1)
         return torch.where(wt, w, b), torch.where(wt, b, w)
 
-    train_t, val_t = torch.from_numpy(train).to(dev), torch.from_numpy(val).to(dev)
+    train_t, val_t = torch.from_numpy(train).to(data_dev), torch.from_numpy(val).to(data_dev)
     teacher = args.teacher is not None
     if teacher:
-        teacher_t = teacher_predictions(args.teacher, inputs, n, dev)
+        teacher_t = teacher_predictions(args.teacher, inputs, n, dev, data_dev)
         tv = torch.mean((teacher_t[val_t] - target[val_t]) ** 2).item()
         print(f"teacher {os.path.basename(args.teacher)}: validation loss {tv:.5f} on this run's target", flush=True)
 
@@ -486,21 +495,22 @@ def main():
 
     def losses(idx):
         main, aux, pol, teach = net(*inputs(idx))
-        main_loss = torch.mean((torch.sigmoid(main) - target[idx]) ** 2)
-        aux_loss = torch.mean((torch.sigmoid(aux) - future_t[idx]) ** 2) if aux is not None else zero
+        main_loss = torch.mean((torch.sigmoid(main) - to_dev(target[idx])) ** 2)
+        aux_loss = torch.mean((torch.sigmoid(aux) - to_dev(future_t[idx])) ** 2) if aux is not None else zero
         pol_loss = zero
         if pol is not None:
-            f, t = pfrom_t[idx], pto_t[idx]
+            f, t = to_dev(pfrom_t[idx]), to_dev(pto_t[idx])
             ok = f >= 0
             if ok.any():
                 ce = torch.nn.functional.cross_entropy
                 pol_loss = ce(pol[ok, :64], f[ok]) + ce(pol[ok, 64:], t[ok])
-        teach_loss = torch.mean((torch.sigmoid(teach) - teacher_t[idx]) ** 2) if teach is not None else zero
+        teach_loss = torch.mean((torch.sigmoid(teach) - to_dev(teacher_t[idx])) ** 2) if teach is not None else zero
         return main_loss, aux_loss, pol_loss, teach_loss
 
+    shuffle = torch.Generator().manual_seed(args.seed)  # on the CPU: the same order in either mode
     for epoch in range(1, args.epochs + 1):
         net.train()
-        order = train_t[torch.randperm(len(train_t), device=dev)]
+        order = train_t[torch.randperm(len(train_t), generator=shuffle).to(data_dev)]
         total = 0.0
         for i in range(0, len(order), args.batch):
             idx = order[i:i + args.batch]
