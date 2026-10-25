@@ -10,9 +10,10 @@ for a and c (alpha 0.602, gamma 0.101, A one tenth of the pairs, r_end 0.002). M
 once, and a finished game's slot takes the next game at once; each pair keeps the theta of its start.
 Prints theta every minute and at the end.
 
-A kernel launch plays one ply of every game, so keep games at once no higher than the GPU holds at a
-time (about 1,000 on an RTX 5080): a second wave would double the launch time, and at high node counts
-that nears the Windows GPU watchdog (2 s).
+Keep each kernel launch well under the Windows GPU watchdog (2 s). A launch runs every game's search
+for up to GPU_BUDGET nodes (unlimited by default, so one ply), and an RTX 5080 holds about 1,000 games
+at a time, each searching about 54,000 nodes a second: 800 games at 50,000 nodes take 0.75 s a launch.
+With GPU_BUDGET=20000, 2,000 games at once take about 0.75 s too, at any node count.
 
 Fixed nodes leave speed out, which suits pruning and reduction constants. The games are much shorter
 than a CPU test's, though, so tuned values still need a time-based SPRT.
@@ -126,7 +127,7 @@ def main():
     steps = 0
     while any(g is not None for g in slot_game):
         k["match_step"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net + net
-                        + (pa_gpu, pb_gpu, np.int32(1), dg.accs, dg.tts, tts_b, np.uint64(nodes)))
+                        + (pa_gpu, pb_gpu, np.int32(1), dg.accs, dg.tts, tts_b, np.uint64(nodes), dg.budget))
         k["match_results"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), res))
         r = res.get()  # 0 Black won, 1 draw, 2 White won
         steps += 1

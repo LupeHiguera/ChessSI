@@ -75,7 +75,7 @@ def main():
     t0, steps = time.perf_counter(), 0
     while True:
         k["match_step"](warps, (128,), (dg.games, np.int32(n)) + a + b + (dg.params, dg.params, np.int32(0), dg.accs, dg.tts, tts_b,
-                                                                          np.uint64(nodes)))
+                                                                          np.uint64(nodes), dg.budget))
         steps += 1
         if steps % 8 == 0:
             k["match_results"](threads, (128,), (dg.games, np.int32(n), res))

@@ -114,6 +114,11 @@ struct Game {
     u64 nodes, nodeLimit;
     int stopped, rootPv;
     u16 rootBest, pad16;
+    // A move's search between kernel launches (think_run): the running call and the loops of
+    // Search::think and search_root, with the side to move at the root and its static eval
+    Frame cur;
+    int sp, thinkState, thinkDepth, thinkScore, aspAlpha, aspBeta, aspDelta, rootStm, rootEval;
+    u16 thinkBest, pad17;
     u16 killers[MAX_PLY + 1][2];
     u16 moveStack[MAX_PLY + 1];
     int history[2][64][64];
@@ -684,11 +689,22 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
         break;     \
     }
 
-// search(alpha, beta, depth, 0) and everything below it, in the same order as the recursive code.
-__device__ int search(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, int alpha, int beta, int depth) {
-    Frame f = new_call(S_ENTRY, alpha, beta, depth, 0);
-    int sp = 0, ret = 0;
+// Runs search(alpha, beta, depth, 0) and everything below it, in the same order as the recursive
+// code, from the root call think_run put in g->cur. Returns true when the root call returns, with its
+// score in *score, or false once the node count reaches stopAt: the running call goes back to g->cur,
+// and the next call carries on from it.
+__device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, u64 stopAt, int* score) {
+    __syncwarp();
+    Frame f = g->cur;
+    int sp = g->sp, ret = 0;
     while (true) {
+        if (g->nodes >= stopAt) {
+            __syncwarp();
+            g->cur = f;
+            g->sp = sp;
+            __syncwarp();
+            return false;
+        }
         switch (f.state) {
         case S_ENTRY: {
             PB(8) f.inCheck = in_check(g); PE(8)
@@ -897,7 +913,10 @@ __device__ int search(Game* g, const Net& net, const Params& p, short* acc, TTEn
         }
         }
         // The running call returned ret: resume its caller, or leave if it was the root.
-        if (sp == 0) return ret;
+        if (sp == 0) {
+            *score = ret;
+            return true;
+        }
         __syncwarp();
         f = g->frames[--sp];
         f.childScore = ret;
@@ -906,46 +925,92 @@ __device__ int search(Game* g, const Net& net, const Params& p, short* acc, TTEn
 #undef CALL
 #undef RETURN
 
-__device__ int search_root(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, int depth, int prevScore) {
-    int delta = p.aspDelta, alpha = -VALUE_INF, beta = VALUE_INF;
-    if (depth >= p.aspDepth) {
-        alpha = max(prevScore - delta, -VALUE_INF);
-        beta = min(prevScore + delta, VALUE_INF);
-    }
-    while (true) {
-        int score = search(g, net, p, acc, tt, alpha, beta, depth);
-        if (g->stopped) return score;
-        if (score <= alpha) alpha = max(score - delta, -VALUE_INF);
-        else if (score >= beta) beta = min(score + delta, VALUE_INF);
-        else return score;
-        delta *= 2;
-    }
-}
+// Search::think with a node limit and one thread, over as many kernel launches as it takes.
+// think_start sets up a fresh Searcher (history, killers and the move stack zeroed; the TT is kept),
+// and each think_run searches up to `budget` more nodes. Once it returns true the search is over:
+// the best move is in g->thinkBest and its score in g->thinkScore.
+enum { T_IDLE, T_DEPTH, T_SEARCH, T_SEARCHING };
 
-// Search::think with a node limit and one thread: a fresh Searcher (history, killers and the
-// move stack zeroed); the TT is kept. Returns the best move; the score goes to *score.
-__device__ u16 think(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, u64 nodeLimit, int* score) {
+__device__ void think_start(Game* g, u64 nodeLimit) {
     int lane = lane_id();
     for (int i = lane; i < 2 * 64 * 64; i += 32) (&g->history[0][0][0])[i] = 0;
     for (int i = lane; i < (MAX_PLY + 1) * 2; i += 32) (&g->killers[0][0])[i] = 0;
     for (int i = lane; i < MAX_PLY + 1; i += 32) g->moveStack[i] = 0;
+    int stm = g->stm;
+    __syncwarp();
     g->nodes = 0;
     g->nodeLimit = nodeLimit;
     g->stopped = 0;
     g->rootPv = 0;
     g->rootBest = MOVE_NONE;
+    g->rootStm = stm;
+    g->thinkBest = MOVE_NONE;
+    g->thinkScore = 0;
+    g->thinkDepth = 1;
+    g->thinkState = T_DEPTH;
     __syncwarp();
-    u16 best = MOVE_NONE;
-    int bestScore = 0;
-    for (int depth = 1; depth <= MAX_PLY - 1; ++depth) {
-        int s = search_root(g, net, p, acc, tt, depth, bestScore);
+}
+
+__device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, u64 budget) {
+    __syncwarp();
+    u64 stopAt = g->nodes + budget;
+    int state = g->thinkState, depth = g->thinkDepth, bestScore = g->thinkScore;
+    int alpha = g->aspAlpha, beta = g->aspBeta, delta = g->aspDelta;
+    u16 best = g->thinkBest;
+    while (true) {
+        if (state == T_DEPTH) { // for (depth = 1; depth <= MAX_PLY - 1; ++depth): search_root(depth, bestScore)
+            if (depth > MAX_PLY - 1) break;
+            delta = p.aspDelta;
+            alpha = -VALUE_INF;
+            beta = VALUE_INF;
+            if (depth >= p.aspDepth) {
+                alpha = max(bestScore - delta, -VALUE_INF);
+                beta = min(bestScore + delta, VALUE_INF);
+            }
+            state = T_SEARCH;
+        }
+        if (state == T_SEARCH) { // search(alpha, beta, depth, 0)
+            Frame root = new_call(S_ENTRY, alpha, beta, depth, 0);
+            __syncwarp();
+            g->cur = root;
+            g->sp = 0;
+            __syncwarp();
+            state = T_SEARCHING;
+        }
+        int score;
+        if (!search_run(g, net, p, acc, tt, stopAt, &score)) {
+            __syncwarp();
+            g->thinkState = state;
+            g->thinkDepth = depth;
+            g->thinkScore = bestScore;
+            g->aspAlpha = alpha;
+            g->aspBeta = beta;
+            g->aspDelta = delta;
+            g->thinkBest = best;
+            __syncwarp();
+            return false;
+        }
         if (g->stopped) break;
+        // search_root: widen a failed aspiration window and search again
+        if (score <= alpha || score >= beta) {
+            if (score <= alpha) alpha = max(score - delta, -VALUE_INF);
+            else beta = min(score + delta, VALUE_INF);
+            delta *= 2;
+            state = T_SEARCH;
+            continue;
+        }
         if (g->rootPv) best = g->rootBest;
-        bestScore = s;
+        bestScore = score;
+        ++depth;
+        state = T_DEPTH;
     }
     if (best == MOVE_NONE) best = first_legal_move(g, net, acc, 0);
-    *score = bestScore;
-    return best;
+    __syncwarp();
+    g->thinkBest = best;
+    g->thinkScore = bestScore;
+    g->thinkState = T_IDLE;
+    __syncwarp();
+    return true;
 }
 
 // ---- Game loop (src/datagen.cpp, play_game after the random opening) ----
@@ -973,7 +1038,8 @@ extern "C" __global__ void datagen_setup(Game* games, int n, const short* ftw, c
 
 // Plays one ply of every unfinished game.
 extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
-                                         const Params* params, short* accs, TTEntry* tts, unsigned long long nodes) {
+                                         const Params* params, short* accs, TTEntry* tts, unsigned long long nodes,
+                                         unsigned long long budget) {
     Net net = {ftw, ftb, outw, outb};
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= n) return;
@@ -982,17 +1048,25 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     PB(10)
     short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
     TTEntry* tt = tts + ((size_t)w << TT_BITS);
-    if (g->ply >= MAX_PLIES) { g->result = 0.5f; g->done = 1; return; }
-    if (first_legal_move(g, net, acc, 0) == MOVE_NONE) {
-        g->result = in_check(g) ? (g->stm == 0 ? 0.0f : 1.0f) : 0.5f;
-        g->done = 1;
+    if (g->thinkState == T_IDLE) { // a new ply
+        if (g->ply >= MAX_PLIES) { g->result = 0.5f; g->done = 1; return; }
+        if (first_legal_move(g, net, acc, 0) == MOVE_NONE) {
+            g->result = in_check(g) ? (g->stm == 0 ? 0.0f : 1.0f) : 0.5f;
+            g->done = 1;
+            return;
+        }
+        if (is_draw(g)) { g->result = 0.5f; g->done = 1; return; }
+        int ev = evaluate(g, net, acc);
+        __syncwarp();
+        g->rootEval = g->stm == 0 ? ev : -ev;
+        think_start(g, nodes);
+    }
+    if (!think_run(g, net, *params, acc, tt, budget)) {
+        PE(10)
         return;
     }
-    if (is_draw(g)) { g->result = 0.5f; g->done = 1; return; }
-    int ev = evaluate(g, net, acc);
-    int whiteEval = g->stm == 0 ? ev : -ev;
-    int score;
-    u16 best = think(g, net, *params, acc, tt, nodes, &score);
+    int whiteEval = g->rootEval, score = g->thinkScore;
+    u16 best = g->thinkBest;
     int whiteScore = g->stm == 0 ? score : -score;
     int pl0 = g->ply;
     g->lastBest = best; g->lastScore = score; g->lastNodes = (int)g->nodes;
@@ -1068,6 +1142,7 @@ __device__ void init_game(Game* g, const u8* p) {
     st.key = key; st.castling = castling; st.ep = ep; st.rule50 = rule50; st.captured = NO_PIECE; st.pliesFromNull = 0; st.pad = 0;
     g->states[0] = st;
     g->accTop = 0;
+    g->thinkState = T_IDLE;
     g->winStreak = 0; g->ply = 0; g->done = 0; g->nsamples = 0; g->result = 0.5f;
     for (int k = 0; k < P_COUNT; ++k) g->prof[k] = 0;
 }
@@ -1227,31 +1302,37 @@ extern "C" __global__ void match_setup(const int* slots, int k, TTEntry* ttsA, T
 extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, const short* ftbA, const short* outwA, int outbA,
                                       const short* ftwB, const short* ftbB, const short* outwB, int outbB,
                                       const Params* pa, const Params* pb, int perGame,
-                                      short* accs, TTEntry* ttsA, TTEntry* ttsB, unsigned long long nodes) {
+                                      short* accs, TTEntry* ttsA, TTEntry* ttsB, unsigned long long nodes,
+                                      unsigned long long budget) {
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= n) return;
     Game* g = games + w;
     if (g->matchResult >= 0) return;
     short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
-    bool aToMove = g->stm == g->aColor;
+    bool idle = g->thinkState == T_IDLE; // otherwise a search is under way, in some position of its tree
+    bool aToMove = (idle ? g->stm : g->rootStm) == g->aColor;
     Net net = aToMove ? Net{ftwA, ftbA, outwA, outbA} : Net{ftwB, ftbB, outwB, outbB};
     TTEntry* tt = (aToMove ? ttsA : ttsB) + ((size_t)w << TT_BITS);
     int result = -1;
-    if (first_legal_move(g, net, acc, 0) == MOVE_NONE) result = in_check(g) ? (g->stm == 0 ? 0 : 2) : 1;
-    else if (g->states[g->nstates - 1].rule50 >= 100 || insufficient(g) || threefold(g) || g->ply >= 600) result = 1;
-    if (result >= 0) {
+    if (idle) { // a new ply
+        if (first_legal_move(g, net, acc, 0) == MOVE_NONE) result = in_check(g) ? (g->stm == 0 ? 0 : 2) : 1;
+        else if (g->states[g->nstates - 1].rule50 >= 100 || insufficient(g) || threefold(g) || g->ply >= 600) result = 1;
+        if (result >= 0) {
+            __syncwarp();
+            g->matchResult = result;
+            __syncwarp();
+            return;
+        }
         __syncwarp();
-        g->matchResult = result;
+        g->accTop = 0;
         __syncwarp();
-        return;
+        refresh(g, net, acc_slot(acc, 0)); // this side's network
+        __syncwarp();
+        think_start(g, nodes);
     }
-    __syncwarp();
-    g->accTop = 0;
-    __syncwarp();
-    refresh(g, net, acc_slot(acc, 0)); // this side's network
-    __syncwarp();
-    int score;
-    u16 best = think(g, net, (aToMove ? pa : pb)[perGame ? w : 0], acc, tt, nodes, &score);
+    if (!think_run(g, net, (aToMove ? pa : pb)[perGame ? w : 0], acc, tt, budget)) return;
+    int score = g->thinkScore;
+    u16 best = g->thinkBest;
     int whiteScore = g->stm == 0 ? score : -score;
     int rp = g->resignPlies, dp = g->drawPlies, fm = g->fullmove;
     rp = whiteScore >= 400 ? (rp > 0 ? rp + 1 : 1) : whiteScore <= -400 ? (rp < 0 ? rp - 1 : -1) : 0;

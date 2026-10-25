@@ -29,7 +29,9 @@ memory. Same-address reads are broadcast, and every shared update goes snapshot,
 since a warp's lanes are not guaranteed to stay in lockstep. Each lane owns 8 of the network's 256
 hidden units. The search is not recursive: it runs from an explicit stack of frames, one per game,
 because a recursive call saves every lane's registers at each level. A kernel launch plays one ply of
-every game, which keeps kernels well under the Windows GPU watchdog.
+every game, which keeps kernels well under the Windows GPU watchdog. For longer searches, `GPU_BUDGET`
+caps the nodes a search runs per launch: it then pauses, with its state in the game, and carries on
+in the next launch, with the same result.
 
 Throughput with net10 at 5,000 nodes a move:
 

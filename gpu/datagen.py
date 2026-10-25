@@ -167,6 +167,9 @@ class GpuDatagen:
         self.game_bytes, sample_bytes, tt_bytes, params_bytes = (int(x) for x in sizes.get())
         assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16 and params_bytes == PARAMS.itemsize
         self.params = cp.asarray(make_params().view(np.uint8))
+        # Nodes a search may run per kernel launch before it pauses until the next; a search gives the
+        # same result in any number of launches. Unlimited by default: 5,000-node searches are short.
+        self.budget = np.uint64(int(os.environ.get("GPU_BUDGET", 1 << 62)))
         cp.cuda.runtime.deviceSetLimit(0, 1024)  # cudaLimitStackSize, the default: the search needs about 200 bytes
         self.ftw, self.ftb, self.outw = cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw)
         self.capacity = capacity
@@ -187,7 +190,8 @@ class GpuDatagen:
         done = cp.zeros(n, cp.int32)
         steps, t0 = 0, time.perf_counter()
         while True:
-            self.k["datagen_step"](warps, (128,), (self.games, np.int32(n)) + net + (self.params, self.accs, self.tts, np.uint64(nodes)))
+            self.k["datagen_step"](warps, (128,), (self.games, np.int32(n)) + net + (self.params, self.accs, self.tts, np.uint64(nodes),
+                                                                                    self.budget))
             steps += 1
             self.k["datagen_done"](threads, (128,), (self.games, np.int32(n), done))
             if int(done.sum()) == n:
@@ -238,7 +242,8 @@ class GpuDatagen:
         t0 = last = time.perf_counter()
         with open(out_path, "a") as out:
             while active.any():
-                self.k["datagen_step"](((cap + 3) // 4,), (128,), (self.games, np.int32(cap)) + net + (self.params, self.accs, self.tts, np.uint64(nodes)))
+                self.k["datagen_step"](((cap + 3) // 4,), (128,), (self.games, np.int32(cap)) + net
+                                       + (self.params, self.accs, self.tts, np.uint64(nodes), self.budget))
                 self.k["datagen_done"](((cap + 127) // 128,), (128,), (self.games, np.int32(cap), done))
                 fin = np.flatnonzero(done.get().astype(bool) & active).astype(np.int32)
                 if len(fin):
