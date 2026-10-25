@@ -110,9 +110,19 @@ def compact(fen):
         else:
             out[rank * 8 + file] = PIECES.index(ch)
             file += 1
-    out[64] = f[1] == "b"
-    out[65] = sum(v for k, v in (("K", 1), ("Q", 2), ("k", 4), ("q", 8)) if k in f[2])
-    out[66] = 64 if f[3] == "-" else (int(f[3][1]) - 1) * 8 + "abcdefgh".index(f[3][0])
+    stm = int(f[1] == "b")
+    out[64] = stm
+    # As Position::set: castling rights only with king and rook at home, and an en passant square
+    # only if a pawn of the side to move can capture there (otherwise the hash keys would differ).
+    out[65] = sum(v for k, v, king, rook, kp, rp in (("K", 1, 4, 7, 5, 3), ("Q", 2, 4, 0, 5, 3), ("k", 4, 60, 63, 11, 9),
+                                                     ("q", 8, 60, 56, 11, 9))
+                  if k in f[2] and out[king] == kp and out[rook] == rp)
+    out[66] = 64
+    if len(f[3]) == 2 and f[3][0] in "abcdefgh" and f[3][1] in "36":
+        s = (int(f[3][1]) - 1) * 8 + "abcdefgh".index(f[3][0])
+        rank = s // 8 - 1 if stm == 0 else s // 8 + 1  # where the capturing pawns stand
+        if any(0 <= s % 8 + df < 8 and out[rank * 8 + s % 8 + df] == (0 if stm == 0 else 6) for df in (-1, 1)):
+            out[66] = s
     out[67] = int(f[4]) if len(f) > 4 else 0
     full = int(f[5]) if len(f) > 5 else 1
     out[68], out[69] = full & 255, full >> 8
