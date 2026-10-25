@@ -23,8 +23,22 @@ import time
 import cupy as cp
 import numpy as np
 
-# Wait for the GPU without spinning a CPU core (cudaDeviceScheduleBlockingSync), before any CUDA context exists.
-cp.cuda.runtime.setDeviceFlags(4)
+
+
+def blocking_sync():
+    """Wait for the GPU without spinning a CPU core: CU_CTX_SCHED_BLOCKING_SYNC on the primary
+    context, set through the driver API before CuPy creates the context. Best effort."""
+    try:
+        import ctypes
+        cuda = ctypes.CDLL("libcuda.so.1")
+        dev = ctypes.c_int()
+        if cuda.cuInit(0) == 0 and cuda.cuDeviceGet(ctypes.byref(dev), 0) == 0:
+            cuda.cuDevicePrimaryCtxSetFlags_v2(dev, 4)
+    except OSError:
+        pass
+
+
+blocking_sync()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_SAMPLES, MAX_PLIES, MAX_PLY, TT_BITS, START_BYTES = 400, 400, 128, 16, 72
