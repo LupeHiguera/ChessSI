@@ -152,6 +152,11 @@ first network is in, since pruning margins are in eval units and must be recheck
     thread (owner's decision, 2026-10-24; single-thread strength and SPRTs are unchanged) - *Claude
     Code (ready on `claude/lazy-smp`; bench identical at one thread, ThreadSanitizer shows only the
     lockless TT races; 4 threads against 1: +129.0 ± 20.6 in 400 games)*
+25. Tune the search's constants with SPSA (fishtest's method; none has been tuned) - *Claude Code (on
+    the GPU: `gpu/spsa.py` on `claude/gpu-perft` plays the exact search at a fixed node count, about 4
+    game pairs a second on an RTX 5080 at 50,000 nodes. It tunes 17 constants: the pruning margins and
+    depths, the null-move reduction, the LMR table, the history bonus cap, the aspiration windows and
+    the quiescence SEE threshold. Tuned values then go to a CPU SPRT at 10+0.1)*
 
 NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
 
