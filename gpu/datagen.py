@@ -236,11 +236,29 @@ class GpuDatagen:
         active = np.ones(cap, bool)
         done = cp.zeros(cap, cp.int32)
         games = positions = total_nodes = 0
+        collected = None  # the last finished games, written while the GPU plays the next ply
+
+        def write(out, res, ns, nd, smp):
+            nonlocal games, positions, total_nodes
+            lines = []
+            for i in range(len(res)):
+                if res[i] < 0:
+                    continue  # the random opening ended the game
+                text = "1.0" if res[i] == 1.0 else "0.0" if res[i] == 0.0 else "0.5"
+                lines.extend(f"{to_fen(x)} | {x['score']} | {text} | {x['eval']}\n" for x in smp[i, :ns[i]])
+                games += 1
+                positions += int(ns[i])
+                total_nodes += int(nd[i])
+            out.write("".join(lines))
+
         t0 = last = time.perf_counter()
         with open(out_path, "a") as out:
             while active.any():
                 self.k["datagen_step"](((cap + 3) // 4,), (128,), (self.games, np.int32(cap)) + net
                                        + (self.params, self.accs, self.tts, np.uint64(nodes), self.budget))
+                if collected is not None:  # format and write on the CPU while the step runs
+                    write(out, *collected)
+                    collected = None
                 self.k["datagen_done"](((cap + 127) // 128,), (128,), (self.games, np.int32(cap), done))
                 wait()
                 fin = np.flatnonzero(done.get().astype(bool) & active).astype(np.int32)
@@ -249,18 +267,7 @@ class GpuDatagen:
                     res, ns, nd = cp.zeros(k, cp.float32), cp.zeros(k, cp.int32), cp.zeros(k, cp.int32)
                     smp = cp.zeros(k * MAX_SAMPLES * SAMPLE.itemsize, cp.uint8)
                     self.k["datagen_collect_slots"](((k + 127) // 128,), (128,), (self.games, cp.asarray(fin), np.int32(k), res, ns, smp, nd))
-                    res, ns, nd = res.get(), ns.get(), nd.get()
-                    smp = smp.get().view(SAMPLE).reshape(k, MAX_SAMPLES)
-                    lines = []
-                    for i in range(k):
-                        if res[i] < 0:
-                            continue  # the random opening ended the game
-                        text = "1.0" if res[i] == 1.0 else "0.0" if res[i] == 0.0 else "0.5"
-                        lines.extend(f"{to_fen(x)} | {x['score']} | {text} | {x['eval']}\n" for x in smp[i, :ns[i]])
-                        games += 1
-                        positions += int(ns[i])
-                        total_nodes += int(nd[i])
-                    out.write("".join(lines))
+                    collected = (res.get(), ns.get(), nd.get(), smp.get().view(SAMPLE).reshape(k, MAX_SAMPLES))
                     refill = fin[:max(0, min(len(fin), total_games - started))]
                     active[fin[len(refill):]] = False
                     if len(refill):
@@ -268,6 +275,9 @@ class GpuDatagen:
                         started += len(refill)
                 now = time.perf_counter()
                 if now - last >= report_seconds or not active.any():
+                    if collected is not None and not active.any():
+                        write(out, *collected)
+                        collected = None
                     last = now
                     out.flush()
                     print(f"games {games} positions {positions} | {positions / (now - t0):.0f} positions/s, "
