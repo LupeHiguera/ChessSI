@@ -49,7 +49,6 @@ __constant__ u64 Z_PSQ[12][64];
 __constant__ u64 Z_CASTLING[16];
 __constant__ u64 Z_EP[8];
 __constant__ u64 Z_SIDE[1];
-__constant__ int REDUCTIONS[64][64];
 
 // -DPROFILE: clock64() cycles per section, summed by lane 0 into Game::prof. Sections are timed at
 // their call sites in the search, so the step total minus the sections is the search's own control.
@@ -89,6 +88,20 @@ struct Frame {
     u64 key;
     u16 ttMove, bestMove, m;
     bool inCheck, pvNode, root, quiet;
+};
+
+// The search's constants (src/search.cpp has them inline), so that matches can give each side its own.
+// gpu/datagen.py fills in src/search.cpp's values.
+struct Params {
+    int rfpDepth, rfpMargin;       // reverse futility pruning: depth <= 3, staticEval - 150 * depth >= beta
+    int nmpDepth, nmpBase, nmpDiv; // null move: depth >= 3, R = 3 + depth / 6
+    int lmpDepth, lmpBase;         // late move pruning: depth <= 8, quietCount >= 3 + depth * depth
+    int futDepth, futMargin;       // futility pruning: depth <= 6, staticEval + 120 * depth <= alpha
+    int lmrDepth, lmrMoves;        // late move reductions: depth >= 3, legalMoves > 3
+    int histMax;                   // history bonus min(depth * depth, 1200)
+    int aspDepth, aspDelta;        // aspiration windows from depth 5, delta 25
+    int qsSee;                     // quiescence skips captures that fail see_ge(m, 0)
+    u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
 };
 
 struct Game {
@@ -672,7 +685,7 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
     }
 
 // search(alpha, beta, depth, 0) and everything below it, in the same order as the recursive code.
-__device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alpha, int beta, int depth) {
+__device__ int search(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, int alpha, int beta, int depth) {
     Frame f = new_call(S_ENTRY, alpha, beta, depth, 0);
     int sp = 0, ret = 0;
     while (true) {
@@ -707,14 +720,14 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
             }
             PB(5) f.staticEval = f.inCheck ? -VALUE_INF : evaluate(g, net, acc); PE(5)
             int us = g->stm;
-            if (!f.root && !f.pvNode && !f.inCheck && f.depth <= 3 && g->states[g->nstates - 1].rule50 + f.depth < 100
+            if (!f.root && !f.pvNode && !f.inCheck && f.depth <= p.rfpDepth && g->states[g->nstates - 1].rule50 + f.depth < 100
                 && abs(f.beta) < VALUE_MATE_IN_MAX_PLY && (g->byColor[us] & ~(g->byType[PAWN] | g->byType[KING]))) {
-                if (abs(f.staticEval) < VALUE_MATE_IN_MAX_PLY && f.staticEval - 150 * f.depth >= f.beta)
+                if (abs(f.staticEval) < VALUE_MATE_IN_MAX_PLY && f.staticEval - p.rfpMargin * f.depth >= f.beta)
                     RETURN(has_legal_move(g, net, acc, f.ply) ? f.staticEval : 0)
             }
             bool hasPieces = (g->byColor[us] & ~g->byType[PAWN] & ~g->byType[KING]) != 0;
-            if (!f.pvNode && !f.inCheck && !f.root && f.depth >= 3 && hasPieces && g->moveStack[f.ply - 1] != MOVE_NONE && f.staticEval >= f.beta) {
-                int R = 3 + f.depth / 6;
+            if (!f.pvNode && !f.inCheck && !f.root && f.depth >= p.nmpDepth && hasPieces && g->moveStack[f.ply - 1] != MOVE_NONE && f.staticEval >= f.beta) {
+                int R = p.nmpBase + f.depth / p.nmpDiv;
                 g->moveStack[f.ply] = MOVE_NONE;
                 __syncwarp();
                 do_null_move(g);
@@ -752,8 +765,8 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
                 PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
                 ++f.i;
                 bool quiet = is_quiet(g, m);
-                if (!f.pvNode && !f.inCheck && quiet && f.depth <= 8 && f.best > -VALUE_MATE_IN_MAX_PLY && f.quietCount >= 3 + f.depth * f.depth) continue;
-                if (!f.pvNode && !f.inCheck && quiet && f.depth <= 6 && f.best > -VALUE_MATE_IN_MAX_PLY && f.staticEval + 120 * f.depth <= f.alpha) continue;
+                if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.lmpDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.quietCount >= p.lmpBase + f.depth * f.depth) continue;
+                if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.futDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.staticEval + p.futMargin * f.depth <= f.alpha) continue;
                 PB(3) bool legal = do_move(g, m, net, acc); PE(3)
                 if (!legal) {
                     PB(4) undo_move(g, m); PE(4)
@@ -770,9 +783,9 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
             if (found) {
                 if (f.legalMoves == 1) CALL(S_FIRST_DONE, S_ENTRY, -f.beta, -f.alpha, f.depth - 1)
                 f.r = 0;
-                PB(8) bool givesCheck = f.depth >= 3 && f.legalMoves > 3 && f.quiet && !f.inCheck && in_check(g); PE(8)
-                if (f.depth >= 3 && f.legalMoves > 3 && f.quiet && !f.inCheck && !givesCheck) {
-                    int r = REDUCTIONS[min(f.depth, 63)][min(f.legalMoves, 63)];
+                PB(8) bool givesCheck = f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && in_check(g); PE(8)
+                if (f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && !givesCheck) {
+                    int r = p.lmr[min(f.depth, 63)][min(f.legalMoves, 63)];
                     if (f.pvNode) --r;
                     f.r = max(0, min(r, f.depth - 2));
                 }
@@ -815,7 +828,7 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
                                 g->killers[f.ply][0] = m;
                                 __syncwarp();
                             }
-                            int bonus = min(f.depth * f.depth, 1200);
+                            int bonus = min(f.depth * f.depth, p.histMax);
                             update_history(g, m, bonus);
                             u16* quiets = g->quiets[f.ply];
                             for (int j = 0; j < f.quietCount; ++j) update_history(g, quiets[j], -bonus);
@@ -854,7 +867,7 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
             while (f.i < f.n) {
                 PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
                 ++f.i;
-                PB(7) bool seeOk = see_ge(g, m, 0); PE(7)
+                PB(7) bool seeOk = see_ge(g, m, p.qsSee); PE(7)
                 if (!seeOk) continue;
                 PB(3) bool legal = do_move(g, m, net, acc); PE(3)
                 if (!legal) {
@@ -893,14 +906,14 @@ __device__ int search(Game* g, const Net& net, short* acc, TTEntry* tt, int alph
 #undef CALL
 #undef RETURN
 
-__device__ int search_root(Game* g, const Net& net, short* acc, TTEntry* tt, int depth, int prevScore) {
-    int delta = 25, alpha = -VALUE_INF, beta = VALUE_INF;
-    if (depth >= 5) {
+__device__ int search_root(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, int depth, int prevScore) {
+    int delta = p.aspDelta, alpha = -VALUE_INF, beta = VALUE_INF;
+    if (depth >= p.aspDepth) {
         alpha = max(prevScore - delta, -VALUE_INF);
         beta = min(prevScore + delta, VALUE_INF);
     }
     while (true) {
-        int score = search(g, net, acc, tt, alpha, beta, depth);
+        int score = search(g, net, p, acc, tt, alpha, beta, depth);
         if (g->stopped) return score;
         if (score <= alpha) alpha = max(score - delta, -VALUE_INF);
         else if (score >= beta) beta = min(score + delta, VALUE_INF);
@@ -911,7 +924,7 @@ __device__ int search_root(Game* g, const Net& net, short* acc, TTEntry* tt, int
 
 // Search::think with a node limit and one thread: a fresh Searcher (history, killers and the
 // move stack zeroed); the TT is kept. Returns the best move; the score goes to *score.
-__device__ u16 think(Game* g, const Net& net, short* acc, TTEntry* tt, u64 nodeLimit, int* score) {
+__device__ u16 think(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, u64 nodeLimit, int* score) {
     int lane = lane_id();
     for (int i = lane; i < 2 * 64 * 64; i += 32) (&g->history[0][0][0])[i] = 0;
     for (int i = lane; i < (MAX_PLY + 1) * 2; i += 32) (&g->killers[0][0])[i] = 0;
@@ -925,7 +938,7 @@ __device__ u16 think(Game* g, const Net& net, short* acc, TTEntry* tt, u64 nodeL
     u16 best = MOVE_NONE;
     int bestScore = 0;
     for (int depth = 1; depth <= MAX_PLY - 1; ++depth) {
-        int s = search_root(g, net, acc, tt, depth, bestScore);
+        int s = search_root(g, net, p, acc, tt, depth, bestScore);
         if (g->stopped) break;
         if (g->rootPv) best = g->rootBest;
         bestScore = s;
@@ -960,7 +973,7 @@ extern "C" __global__ void datagen_setup(Game* games, int n, const short* ftw, c
 
 // Plays one ply of every unfinished game.
 extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
-                                         short* accs, TTEntry* tts, unsigned long long nodes) {
+                                         const Params* params, short* accs, TTEntry* tts, unsigned long long nodes) {
     Net net = {ftw, ftb, outw, outb};
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= n) return;
@@ -979,7 +992,7 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     int ev = evaluate(g, net, acc);
     int whiteEval = g->stm == 0 ? ev : -ev;
     int score;
-    u16 best = think(g, net, acc, tt, nodes, &score);
+    u16 best = think(g, net, *params, acc, tt, nodes, &score);
     int whiteScore = g->stm == 0 ? score : -score;
     int pl0 = g->ply;
     g->lastBest = best; g->lastScore = score; g->lastNodes = (int)g->nodes;
@@ -1024,6 +1037,7 @@ extern "C" __global__ void datagen_sizes(int* out) {
     out[0] = sizeof(Game);
     out[1] = sizeof(Sample);
     out[2] = sizeof(TTEntry);
+    out[3] = sizeof(Params);
 }
 
 // Position::set from a compact start position: 64 piece codes (0-11 as make_piece, 12 empty, a1 first),
@@ -1186,21 +1200,23 @@ __device__ bool threefold(Game* g) {
     return count >= 2;
 }
 
-extern "C" __global__ void match_init(Game* games, int n, const u8* start, const int* aColor) {
+// Starts a game in each of k slots: from start[i], with network A playing aColor[i].
+extern "C" __global__ void match_init(Game* games, const int* slots, int k, const u8* start, const int* aColor) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    Game* g = games + i;
+    if (i >= k) return;
+    Game* g = games + slots[i];
     init_game(g, start + (size_t)i * START_BYTES);
     g->aColor = aColor[i];
     g->resignPlies = g->drawPlies = 0;
     g->matchResult = -1;
 }
 
-extern "C" __global__ void match_setup(Game* games, int n, TTEntry* ttsA, TTEntry* ttsB) {
+// Clears both sides' TTs in each of k slots (ucinewgame).
+extern "C" __global__ void match_setup(const int* slots, int k, TTEntry* ttsA, TTEntry* ttsB) {
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
-    if (w >= n) return;
-    TTEntry* ta = ttsA + ((size_t)w << TT_BITS);
-    TTEntry* tb = ttsB + ((size_t)w << TT_BITS);
+    if (w >= k) return;
+    TTEntry* ta = ttsA + ((size_t)slots[w] << TT_BITS);
+    TTEntry* tb = ttsB + ((size_t)slots[w] << TT_BITS);
     for (int i = lane; i < (1 << TT_BITS); i += 32) {
         TTEntry z; z.key = 0; z.move = 0; z.score = 0; z.depth = 0; z.bound = 0; z.pad = 0;
         ta[i] = z; tb[i] = z;
@@ -1210,6 +1226,7 @@ extern "C" __global__ void match_setup(Game* games, int n, TTEntry* ttsA, TTEntr
 
 extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, const short* ftbA, const short* outwA, int outbA,
                                       const short* ftwB, const short* ftbB, const short* outwB, int outbB,
+                                      const Params* pa, const Params* pb, int perGame,
                                       short* accs, TTEntry* ttsA, TTEntry* ttsB, unsigned long long nodes) {
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= n) return;
@@ -1234,7 +1251,7 @@ extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, con
     refresh(g, net, acc_slot(acc, 0)); // this side's network
     __syncwarp();
     int score;
-    u16 best = think(g, net, acc, tt, nodes, &score);
+    u16 best = think(g, net, (aToMove ? pa : pb)[perGame ? w : 0], acc, tt, nodes, &score);
     int whiteScore = g->stm == 0 ? score : -score;
     int rp = g->resignPlies, dp = g->drawPlies, fm = g->fullmove;
     rp = whiteScore >= 400 ? (rp > 0 ? rp + 1 : 1) : whiteScore <= -400 ? (rp < 0 ? rp - 1 : -1) : 0;

@@ -68,12 +68,14 @@ def main():
     start = cp.asarray(np.stack([compact(openings[i // 2]) for i in range(n)]))
     a_color = cp.asarray(np.array([i % 2 for i in range(n)], np.int32))  # A has White in even games
     threads, warps = ((n + 127) // 128,), ((n + 3) // 4,)
-    k["match_init"](threads, (128,), (dg.games, np.int32(n), start, a_color))
-    k["match_setup"](warps, (128,), (dg.games, np.int32(n), dg.tts, tts_b))
+    slots = cp.arange(n, dtype=cp.int32)
+    k["match_init"](threads, (128,), (dg.games, slots, np.int32(n), start, a_color))
+    k["match_setup"](warps, (128,), (slots, np.int32(n), dg.tts, tts_b))
     res = cp.full(n, -1, cp.int32)
     t0, steps = time.perf_counter(), 0
     while True:
-        k["match_step"](warps, (128,), (dg.games, np.int32(n)) + a + b + (dg.accs, dg.tts, tts_b, np.uint64(nodes)))
+        k["match_step"](warps, (128,), (dg.games, np.int32(n)) + a + b + (dg.params, dg.params, np.int32(0), dg.accs, dg.tts, tts_b,
+                                                                          np.uint64(nodes)))
         steps += 1
         if steps % 8 == 0:
             k["match_results"](threads, (128,), (dg.games, np.int32(n), res))

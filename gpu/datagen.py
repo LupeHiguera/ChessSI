@@ -64,12 +64,31 @@ def zobrist():
     return np.array(psq, np.uint64), np.array(castling, np.uint64), np.array(ep, np.uint64), np.array([side], np.uint64)
 
 
-def reductions():
-    r = np.zeros((64, 64), np.int32)
+def reductions(base=0.75, div=2.25):
+    """src/search.cpp's reduction table: int(base + log(depth) * log(moves) / div)."""
+    r = np.zeros((64, 64), np.uint8)
     for d in range(1, 64):
         for n in range(1, 64):
-            r[d, n] = int(0.75 + math.log(d) * math.log(n) / 2.25)
+            r[d, n] = max(0, int(base + math.log(d) * math.log(n) / div))
     return r
+
+
+# The Params struct of datagen.cu, and src/search.cpp's values.
+PARAMS = np.dtype([(name, "<i4") for name in ("rfpDepth", "rfpMargin", "nmpDepth", "nmpBase", "nmpDiv", "lmpDepth", "lmpBase",
+                                                "futDepth", "futMargin", "lmrDepth", "lmrMoves", "histMax", "aspDepth",
+                                                "aspDelta", "qsSee")] + [("lmr", "u1", (64, 64))])
+DEFAULTS = dict(rfpDepth=3, rfpMargin=150, nmpDepth=3, nmpBase=3, nmpDiv=6, lmpDepth=8, lmpBase=3, futDepth=6, futMargin=120,
+                lmrDepth=3, lmrMoves=3, histMax=1200, aspDepth=5, aspDelta=25, qsSee=0, lmrBase=0.75, lmrDiv=2.25)
+
+
+def make_params(values=None):
+    """One Params record: DEFAULTS updated with values (lmrBase and lmrDiv build the reduction table)."""
+    v = dict(DEFAULTS, **(values or {}))
+    p = np.zeros(1, PARAMS)
+    for name in PARAMS.names[:-1]:
+        p[name] = math.floor(v[name] + 0.5)
+    p["lmr"] = reductions(v["lmrBase"], v["lmrDiv"])
+    return p
 
 
 def load_net(path):
@@ -143,12 +162,11 @@ class GpuDatagen:
         self.mod = cp.RawModule(code=src, options=options)
         for name, arr in zip(("Z_PSQ", "Z_CASTLING", "Z_EP", "Z_SIDE"), zobrist()):
             cp.ndarray(arr.shape, arr.dtype, self.mod.get_global(name))[...] = cp.asarray(arr)
-        r = reductions()
-        cp.ndarray(r.shape, r.dtype, self.mod.get_global("REDUCTIONS"))[...] = cp.asarray(r)
-        sizes = cp.zeros(3, cp.int32)
+        sizes = cp.zeros(4, cp.int32)
         self.mod.get_function("datagen_sizes")((1,), (1,), (sizes,))
-        self.game_bytes, sample_bytes, tt_bytes = (int(x) for x in sizes.get())
-        assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16
+        self.game_bytes, sample_bytes, tt_bytes, params_bytes = (int(x) for x in sizes.get())
+        assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16 and params_bytes == PARAMS.itemsize
+        self.params = cp.asarray(make_params().view(np.uint8))
         cp.cuda.runtime.deviceSetLimit(0, 1024)  # cudaLimitStackSize, the default: the search needs about 200 bytes
         self.ftw, self.ftb, self.outw = cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw)
         self.capacity = capacity
@@ -169,7 +187,7 @@ class GpuDatagen:
         done = cp.zeros(n, cp.int32)
         steps, t0 = 0, time.perf_counter()
         while True:
-            self.k["datagen_step"](warps, (128,), (self.games, np.int32(n)) + net + (self.accs, self.tts, np.uint64(nodes)))
+            self.k["datagen_step"](warps, (128,), (self.games, np.int32(n)) + net + (self.params, self.accs, self.tts, np.uint64(nodes)))
             steps += 1
             self.k["datagen_done"](threads, (128,), (self.games, np.int32(n), done))
             if int(done.sum()) == n:
@@ -220,7 +238,7 @@ class GpuDatagen:
         t0 = last = time.perf_counter()
         with open(out_path, "a") as out:
             while active.any():
-                self.k["datagen_step"](((cap + 3) // 4,), (128,), (self.games, np.int32(cap)) + net + (self.accs, self.tts, np.uint64(nodes)))
+                self.k["datagen_step"](((cap + 3) // 4,), (128,), (self.games, np.int32(cap)) + net + (self.params, self.accs, self.tts, np.uint64(nodes)))
                 self.k["datagen_done"](((cap + 127) // 128,), (128,), (self.games, np.int32(cap), done))
                 fin = np.flatnonzero(done.get().astype(bool) & active).astype(np.int32)
                 if len(fin):
