@@ -883,11 +883,7 @@ extern "C" __global__ void datagen_sizes(int* out) {
 // then side to move, castling rights, en passant square (64 none), rule50, fullmove (2 bytes).
 // The key is Position::compute_key. One thread per game.
 #define START_BYTES 72
-extern "C" __global__ void datagen_init(Game* games, int n, const u8* start) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    Game* g = games + i;
-    const u8* p = start + (size_t)i * START_BYTES;
+__device__ void init_game(Game* g, const u8* p) {
     for (int t = 0; t < 6; ++t) g->byType[t] = 0;
     g->byColor[0] = g->byColor[1] = 0;
     u64 key = 0;
@@ -913,6 +909,10 @@ extern "C" __global__ void datagen_init(Game* games, int n, const u8* start) {
     g->accTop = 0;
     g->winStreak = 0; g->ply = 0; g->done = 0; g->nsamples = 0; g->result = 0.5f;
 }
+extern "C" __global__ void datagen_init(Game* games, int n, const u8* start) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) init_game(games + i, start + (size_t)i * START_BYTES);
+}
 
 // Copies each game's state and samples out to flat arrays.
 extern "C" __global__ void datagen_collect(const Game* games, int n, int* done, float* result, int* nsamples, int* plies,
@@ -931,4 +931,81 @@ extern "C" __global__ void datagen_collect(const Game* games, int n, int* done, 
 extern "C" __global__ void datagen_done(const Game* games, int n, int* done) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) done[i] = games[i].done;
+}
+
+// ---- Continuous generation: reset finished slots with fresh random openings ----
+__device__ __forceinline__ u64 splitmix64(u64& x) {
+    u64 z = (x += 0x9E3779B97F4A7C15ULL);
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return z ^ (z >> 31);
+}
+
+// For each listed slot: the start position, then randomPlies random legal moves (as src/datagen.cpp,
+// with its own RNG seeded by the game's id), a fresh accumulator and a cleared TT. A game whose
+// opening runs out of legal moves is marked done with result -1 and gets no samples.
+extern "C" __global__ void datagen_opening(Game* games, const int* slots, int k, const u8* start, const u64* ids, u64 seed,
+                                           int randomPlies, const short* ftw, const short* ftb, const short* outw, int outb,
+                                           short* accs, TTEntry* tts) {
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
+    if (w >= k) return;
+    Net net = {ftw, ftb, outw, outb};
+    int slot = slots[w];
+    Game* g = games + slot;
+    short* acc = accs + (size_t)slot * ACC_SLOTS * 2 * H;
+    TTEntry* tt = tts + ((size_t)slot << TT_BITS);
+    if (lane == 0) init_game(g, start);
+    __syncwarp();
+    u64 rng = seed ^ (ids[w] * 0xD1B54A32D192ED03ULL);
+    bool dead = false;
+    for (int i = 0; i < randomPlies && !dead; ++i) {
+        u16* list = g->moves[0];
+        u16* legal = g->quiets[0];
+        int n = generate(g, list, false), nl = 0;
+        __syncwarp();
+        for (int j = 0; j < n; ++j) {
+            u16 m = list[j];
+            bool ok = do_move(g, m, net, acc);
+            undo_move(g, m);
+            if (ok) {
+                legal[nl++] = m;
+                __syncwarp();
+            }
+        }
+        if (nl == 0) {
+            dead = true;
+            break;
+        }
+        u16 m = legal[splitmix64(rng) % (u64)nl];
+        do_move(g, m, net, acc);
+        __syncwarp();
+    }
+    for (int i = lane; i < (1 << TT_BITS); i += 32) {
+        TTEntry z; z.key = 0; z.move = 0; z.score = 0; z.depth = 0; z.bound = 0; z.pad = 0;
+        tt[i] = z;
+    }
+    __syncwarp();
+    g->accTop = 0;
+    __syncwarp();
+    refresh(g, net, acc_slot(acc, 0));
+    __syncwarp();
+    if (dead) {
+        g->done = 1;
+        g->result = -1.0f;
+    }
+    __syncwarp();
+}
+
+// Copies the listed (finished) slots' results and samples out.
+extern "C" __global__ void datagen_collect_slots(const Game* games, const int* slots, int k, float* result, int* nsamples,
+                                                 Sample* samples, int* nodes) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= k) return;
+    const Game* g = games + slots[i];
+    result[i] = g->result;
+    nsamples[i] = g->nsamples;
+    int total = 0;
+    for (int p = 0; p < g->ply && p < MAX_PLIES; ++p) total += g->plyNodes[p];
+    nodes[i] = total;
+    for (int j = 0; j < g->nsamples; ++j) samples[(size_t)i * MAX_SAMPLES + j] = g->samples[j];
 }

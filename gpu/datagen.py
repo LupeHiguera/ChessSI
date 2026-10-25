@@ -1,6 +1,13 @@
 """Self-play data generation on the GPU (issue #31, stage 2), with gpu/datagen.cu.
 
+    python gpu/datagen.py run <net.nnue> <out.txt> <games> [nodes=5000] [capacity=1024] [seed=1] [random plies=8]
     python gpu/datagen.py <net.nnue> <file of start FENs> <nodes> [-v]
+
+run: like `chesssi datagen`. Each game opens with random legal plies from the start position, then
+plays at a fixed node count; lines are appended to out.txt as each game ends, and finished games are
+replaced at once so the GPU stays full.
+
+The second form plays one game from each given start position, for checking against gpu/ref.cpp:
 
 Plays one game from each start position, the way src/datagen.cpp plays after its random opening,
 and prints the same lines as gpu/ref.cpp ("<fen> | <score> | <result> | <eval>", then "# game <i>
@@ -15,6 +22,9 @@ import time
 
 import cupy as cp
 import numpy as np
+
+# Wait for the GPU without spinning a CPU core (cudaDeviceScheduleBlockingSync), before any CUDA context exists.
+cp.cuda.runtime.setDeviceFlags(4)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_SAMPLES, MAX_PLIES, MAX_PLY, TT_BITS, START_BYTES = 400, 400, 128, 16, 72
@@ -128,7 +138,8 @@ class GpuDatagen:
         self.games = cp.zeros(capacity * self.game_bytes, cp.uint8)
         self.accs = cp.zeros(capacity * (MAX_PLY + 2) * 2 * self.h, cp.int16)
         self.tts = cp.zeros(capacity * (1 << TT_BITS) * 16, cp.uint8)
-        self.k = {n: self.mod.get_function(n) for n in ("datagen_init", "datagen_setup", "datagen_step", "datagen_collect", "datagen_done")}
+        self.k = {n: self.mod.get_function(n) for n in ("datagen_init", "datagen_setup", "datagen_step", "datagen_collect",
+                                                         "datagen_done", "datagen_opening", "datagen_collect_slots")}
 
     def play(self, fens, nodes, verbose=False, out=sys.stdout):
         n = len(fens)
@@ -169,7 +180,70 @@ class GpuDatagen:
                 "positions": int(nsamples.sum()), "plies": int(plies.sum())}
 
 
+    def run(self, out_path, total_games, nodes, seed=1, random_plies=8, report_seconds=60):
+        """Plays total_games games (openings that end in mate or stalemate are replaced) into out_path."""
+        cap = self.capacity
+        net = (self.ftw, self.ftb, self.outw, np.int32(self.outb))
+        start = cp.asarray(compact("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"))
+        next_id, started = 0, 0
+
+        def reset(slots):
+            nonlocal next_id
+            k = len(slots)
+            ids = cp.arange(next_id, next_id + k, dtype=cp.uint64)
+            next_id += k
+            self.k["datagen_opening"](((k + 3) // 4,), (128,), (self.games, cp.asarray(slots, cp.int32), np.int32(k), start, ids,
+                                      np.uint64(seed), np.int32(random_plies)) + net + (self.accs, self.tts))
+
+        reset(np.arange(cap, dtype=np.int32))
+        started = cap
+        active = np.ones(cap, bool)
+        done = cp.zeros(cap, cp.int32)
+        games = positions = total_nodes = 0
+        t0 = last = time.perf_counter()
+        with open(out_path, "a") as out:
+            while active.any():
+                self.k["datagen_step"](((cap + 3) // 4,), (128,), (self.games, np.int32(cap)) + net + (self.accs, self.tts, np.uint64(nodes)))
+                self.k["datagen_done"](((cap + 127) // 128,), (128,), (self.games, np.int32(cap), done))
+                fin = np.flatnonzero(done.get().astype(bool) & active).astype(np.int32)
+                if len(fin):
+                    k = len(fin)
+                    res, ns, nd = cp.zeros(k, cp.float32), cp.zeros(k, cp.int32), cp.zeros(k, cp.int32)
+                    smp = cp.zeros(k * MAX_SAMPLES * SAMPLE.itemsize, cp.uint8)
+                    self.k["datagen_collect_slots"](((k + 127) // 128,), (128,), (self.games, cp.asarray(fin), np.int32(k), res, ns, smp, nd))
+                    res, ns, nd = res.get(), ns.get(), nd.get()
+                    smp = smp.get().view(SAMPLE).reshape(k, MAX_SAMPLES)
+                    lines = []
+                    for i in range(k):
+                        if res[i] < 0:
+                            continue  # the random opening ended the game
+                        text = "1.0" if res[i] == 1.0 else "0.0" if res[i] == 0.0 else "0.5"
+                        lines.extend(f"{to_fen(x)} | {x['score']} | {text} | {x['eval']}\n" for x in smp[i, :ns[i]])
+                        games += 1
+                        positions += int(ns[i])
+                        total_nodes += int(nd[i])
+                    out.write("".join(lines))
+                    refill = fin[:max(0, min(len(fin), total_games - started))]
+                    active[fin[len(refill):]] = False
+                    if len(refill):
+                        reset(refill)
+                        started += len(refill)
+                now = time.perf_counter()
+                if now - last >= report_seconds or not active.any():
+                    last = now
+                    out.flush()
+                    print(f"games {games} positions {positions} | {positions / (now - t0):.0f} positions/s, "
+                          f"{total_nodes / (now - t0) / 1e6:.1f} M nodes/s", file=sys.stderr, flush=True)
+        return games, positions
+
+
 def main():
+    if sys.argv[1] == "run":
+        net, out, games = sys.argv[2], sys.argv[3], int(sys.argv[4])
+        rest = [int(x) for x in sys.argv[5:9]]
+        nodes, capacity, seed, plies = (rest + [5000, 1024, 1, 8][len(rest):])[:4]
+        GpuDatagen(net, capacity).run(out, games, nodes, seed, plies)
+        return
     net, fen_file, nodes = sys.argv[1], sys.argv[2], int(sys.argv[3])
     verbose = "-v" in sys.argv[4:]
     fens = [l.strip() for l in open(fen_file) if l.strip()]
