@@ -25,20 +25,14 @@ import numpy as np
 
 
 
-def blocking_sync():
-    """Wait for the GPU without spinning a CPU core: CU_CTX_SCHED_BLOCKING_SYNC on the primary
-    context, set through the driver API before CuPy creates the context. Best effort."""
-    try:
-        import ctypes
-        cuda = ctypes.CDLL("libcuda.so.1")
-        dev = ctypes.c_int()
-        if cuda.cuInit(0) == 0 and cuda.cuDeviceGet(ctypes.byref(dev), 0) == 0:
-            cuda.cuDevicePrimaryCtxSetFlags_v2(dev, 4)
-    except OSError:
-        pass
-
-
-blocking_sync()
+def wait():
+    """Waits for the GPU work queued so far. CUDA's own waits keep a CPU core busy under WSL, even with
+    blocking sync set on the context (a 0.5 s kernel cost 0.5 s of CPU), so this polls an event and
+    sleeps in between (0.01 s of CPU)."""
+    done = cp.cuda.Event(disable_timing=True)
+    done.record()
+    while not done.done:
+        time.sleep(0.001)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_SAMPLES, MAX_PLIES, MAX_PLY, TT_BITS, START_BYTES = 400, 400, 128, 16, 72
@@ -194,6 +188,7 @@ class GpuDatagen:
                                                                                     self.budget))
             steps += 1
             self.k["datagen_done"](threads, (128,), (self.games, np.int32(n), done))
+            wait()
             if int(done.sum()) == n:
                 break
         cp.cuda.Device().synchronize()
@@ -245,6 +240,7 @@ class GpuDatagen:
                 self.k["datagen_step"](((cap + 3) // 4,), (128,), (self.games, np.int32(cap)) + net
                                        + (self.params, self.accs, self.tts, np.uint64(nodes), self.budget))
                 self.k["datagen_done"](((cap + 127) // 128,), (128,), (self.games, np.int32(cap), done))
+                wait()
                 fin = np.flatnonzero(done.get().astype(bool) & active).astype(np.int32)
                 if len(fin):
                     k = len(fin)

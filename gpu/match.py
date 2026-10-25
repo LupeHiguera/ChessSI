@@ -20,7 +20,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from datagen import GpuDatagen, compact, load_net  # noqa: E402
+from datagen import GpuDatagen, compact, load_net, wait  # noqa: E402
 
 TT_BITS = 16
 
@@ -79,6 +79,7 @@ def main():
         steps += 1
         if steps % 8 == 0:
             k["match_results"](threads, (128,), (dg.games, np.int32(n), res))
+            wait()
             if int((res >= 0).sum()) == n:
                 break
     secs = time.perf_counter() - t0

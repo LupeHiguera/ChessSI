@@ -29,7 +29,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from datagen import DEFAULTS, PARAMS, GpuDatagen, compact, make_params  # noqa: E402
+from datagen import DEFAULTS, PARAMS, GpuDatagen, compact, make_params, wait  # noqa: E402
 
 TT_BITS = 16
 # Each constant's lowest and highest value, and its step at the end of the run (c_end).
@@ -129,6 +129,7 @@ def main():
         k["match_step"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net + net
                         + (pa_gpu, pb_gpu, np.int32(1), dg.accs, dg.tts, tts_b, np.uint64(nodes), dg.budget))
         k["match_results"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), res))
+        wait()
         r = res.get()  # 0 Black won, 1 draw, 2 White won
         steps += 1
         free = [s for s in range(n) if slot_game[s] is not None and r[s] >= 0]
