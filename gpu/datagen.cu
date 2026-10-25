@@ -100,6 +100,8 @@ struct Game {
     Sample samples[MAX_SAMPLES];
     int plyBest[MAX_PLIES], plyScore[MAX_PLIES], plyNodes[MAX_PLIES];
     long long prof[P_COUNT];
+    // Match play (match_step): which color network A has, and the adjudication counters
+    int aColor, resignPlies, drawPlies, matchResult; // matchResult: -1 playing, 0 Black won, 1 draw, 2 White won
 };
 struct Net {
     const short *ftw, *ftb, *outw;
@@ -1047,4 +1049,104 @@ extern "C" __global__ void datagen_profile(const Game* games, int n, long long* 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
         for (int k = 0; k < P_COUNT; ++k) out[(size_t)i * P_COUNT + k] = games[i].prof[k];
+}
+
+// ---- Matches: network A against network B at a fixed node count (issue #31, testing) ----
+// Each side keeps its own TT, as two engines would; the side to move refreshes its accumulator with
+// its own network at every ply. Games end as in our fastchess SPRTs: checkmate, stalemate, threefold
+// repetition, the fifty-move rule, insufficient material, or adjudication (resign when the scores
+// from White's view stay at 400 or more, or -400 or less, for 6 plies running, i.e. 3 moves of each
+// engine; a draw from move 40 when |score| <= 10 for 16 plies running); 600 plies is a draw.
+__device__ bool insufficient(const Game* g) {
+    u64 heavy = g->byType[PAWN] | g->byType[ROOK] | g->byType[QUEEN];
+    return !heavy && __popcll(g->byType[KNIGHT] | g->byType[BISHOP]) <= 1;
+}
+__device__ bool threefold(Game* g) {
+    __syncwarp();
+    int n = g->nstates;
+    const StateInfo& st = g->states[n - 1];
+    u64 key = st.key;
+    int lookback = min(st.rule50, n - 1), count = 0;
+    for (int i = 4 + 2 * lane_id(); i <= lookback; i += 64)
+        if (g->states[n - 1 - i].key == key) ++count;
+    for (int off = 16; off; off >>= 1) count += __shfl_xor_sync(0xffffffffu, count, off);
+    return count >= 2;
+}
+
+extern "C" __global__ void match_init(Game* games, int n, const u8* start, const int* aColor) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    Game* g = games + i;
+    init_game(g, start + (size_t)i * START_BYTES);
+    g->aColor = aColor[i];
+    g->resignPlies = g->drawPlies = 0;
+    g->matchResult = -1;
+}
+
+extern "C" __global__ void match_setup(Game* games, int n, TTEntry* ttsA, TTEntry* ttsB) {
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
+    if (w >= n) return;
+    TTEntry* ta = ttsA + ((size_t)w << TT_BITS);
+    TTEntry* tb = ttsB + ((size_t)w << TT_BITS);
+    for (int i = lane; i < (1 << TT_BITS); i += 32) {
+        TTEntry z; z.key = 0; z.move = 0; z.score = 0; z.depth = 0; z.bound = 0; z.pad = 0;
+        ta[i] = z; tb[i] = z;
+    }
+    __syncwarp();
+}
+
+extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, const short* ftbA, const short* outwA, int outbA,
+                                      const short* ftwB, const short* ftbB, const short* outwB, int outbB,
+                                      short* accs, TTEntry* ttsA, TTEntry* ttsB, unsigned long long nodes) {
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    if (w >= n) return;
+    Game* g = games + w;
+    if (g->matchResult >= 0) return;
+    short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
+    bool aToMove = g->stm == g->aColor;
+    Net net = aToMove ? Net{ftwA, ftbA, outwA, outbA} : Net{ftwB, ftbB, outwB, outbB};
+    TTEntry* tt = (aToMove ? ttsA : ttsB) + ((size_t)w << TT_BITS);
+    int result = -1;
+    if (first_legal_move(g, net, acc, 0) == MOVE_NONE) result = in_check(g) ? (g->stm == 0 ? 0 : 2) : 1;
+    else if (g->states[g->nstates - 1].rule50 >= 100 || insufficient(g) || threefold(g) || g->ply >= 600) result = 1;
+    if (result >= 0) {
+        __syncwarp();
+        g->matchResult = result;
+        __syncwarp();
+        return;
+    }
+    __syncwarp();
+    g->accTop = 0;
+    __syncwarp();
+    refresh(g, net, acc_slot(acc, 0)); // this side's network
+    __syncwarp();
+    int score;
+    u16 best = think(g, net, acc, tt, nodes, &score);
+    int whiteScore = g->stm == 0 ? score : -score;
+    int rp = g->resignPlies, dp = g->drawPlies, fm = g->fullmove;
+    rp = whiteScore >= 400 ? (rp > 0 ? rp + 1 : 1) : whiteScore <= -400 ? (rp < 0 ? rp - 1 : -1) : 0;
+    dp = (fm >= 40 && abs(whiteScore) <= 10) ? dp + 1 : 0;
+    if (rp >= 6) result = 2;
+    else if (rp <= -6) result = 0;
+    else if (dp >= 16) result = 1;
+    __syncwarp();
+    g->resignPlies = rp;
+    g->drawPlies = dp;
+    __syncwarp();
+    if (result >= 0) {
+        g->matchResult = result;
+        __syncwarp();
+        return;
+    }
+    do_move(g, best, net, acc);
+    int pl = g->ply;
+    __syncwarp();
+    g->accTop = 0;
+    g->ply = pl + 1;
+    __syncwarp();
+}
+
+extern "C" __global__ void match_results(const Game* games, int n, int* out) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) out[i] = games[i].matchResult;
 }
