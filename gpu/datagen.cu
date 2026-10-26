@@ -124,7 +124,7 @@ struct Game {
     int history[2][64][64];
     Frame frames[MAX_PLY + 1];
     u16 moves[MAX_PLY + 1][256];
-    int scores[MAX_PLY + 1][256];
+    short scores[MAX_PLY + 1][256]; // move order (see score_moves)
     u16 quiets[MAX_PLY + 1][256];
     // Game loop (src/datagen.cpp)
     int winStreak, ply, done, nsamples;
@@ -603,20 +603,25 @@ __device__ __forceinline__ bool is_quiet(const Game* g, u16 m) {
     int t = m & (3 << 14);
     return g->board[(m >> 6) & 63] == NO_PIECE && t != M_EN_PASSANT && t != M_PROMOTION;
 }
-__device__ void score_moves(Game* g, const u16* list, int n, int* scores, u16 ttMove, int ply) {
+// Move order as in src/search.cpp, in 16 bits: the same order with the categories moved down, since
+// only the order matters. History stays within +-16384 (its gravity), and above it come the second and
+// first killer (17,000 and 18,000 there, 70,000 and 80,000 in the engine), a queen promotion (19,000;
+// 90,000), captures (20,000 + 10 * victim value - attacker type; 100,000 + ...) and the TT move
+// (32,000; 1,000,000).
+__device__ void score_moves(Game* g, const u16* list, int n, short* scores, u16 ttMove, int ply) {
     __syncwarp();
     for (int i = lane_id(); i < n; i += 32) { // every lane scores every 32nd move
         u16 m = list[i];
         int from = m & 63, to = (m >> 6) & 63, t = m & (3 << 14), s;
-        if (m == ttMove) s = 1000000;
-        else if (t == M_EN_PASSANT) s = 100000 + PIECE_VALUE[PAWN] * 10 - PAWN;
-        else if (g->board[to] != NO_PIECE) s = 100000 + PIECE_VALUE[type_of(g->board[to])] * 10 - type_of(g->board[from]);
-        else if (t == M_PROMOTION && ((m >> 12) & 3) + KNIGHT == QUEEN) s = 90000;
-        else if (ply >= 0 && m == g->killers[ply][0]) s = 80000;
-        else if (ply >= 0 && m == g->killers[ply][1]) s = 70000;
+        if (m == ttMove) s = 32000;
+        else if (t == M_EN_PASSANT) s = 20000 + PIECE_VALUE[PAWN] * 10 - PAWN;
+        else if (g->board[to] != NO_PIECE) s = 20000 + PIECE_VALUE[type_of(g->board[to])] * 10 - type_of(g->board[from]);
+        else if (t == M_PROMOTION && ((m >> 12) & 3) + KNIGHT == QUEEN) s = 19000;
+        else if (ply >= 0 && m == g->killers[ply][0]) s = 18000;
+        else if (ply >= 0 && m == g->killers[ply][1]) s = 17000;
         else if (ply >= 0) s = g->history[g->stm][from][to];
         else s = 0;
-        scores[i] = s;
+        scores[i] = (short)s;
     }
     __syncwarp();
 }
@@ -628,7 +633,7 @@ __device__ void update_history(Game* g, u16 m, int bonus) {
     h = v;
     __syncwarp();
 }
-__device__ u16 pick_move(u16* list, int* scores, int n, int i) {
+__device__ u16 pick_move(u16* list, short* scores, int n, int i) {
     __syncwarp();
     int bestS = -2147483647 - 1, bestJ = n;
     for (int j = i + lane_id(); j < n; j += 32) {
@@ -643,7 +648,7 @@ __device__ u16 pick_move(u16* list, int* scores, int n, int i) {
     int si = scores[i];
     __syncwarp();
     list[i] = mb; list[bestJ] = mi;
-    scores[i] = bestS; scores[bestJ] = si;
+    scores[i] = (short)bestS; scores[bestJ] = (short)si;
     __syncwarp();
     return mb;
 }
@@ -829,7 +834,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             // Make the next legal move that is not pruned, then search it below: CALL can't leave this
             // loop, since its continue would continue the loop.
             u16* list = g->moves[f.ply];
-            int* scores = g->scores[f.ply];
+            short* scores = g->scores[f.ply];
             bool found = false;
             while (f.i < f.n) {
                 PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
@@ -932,7 +937,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         // fall through
         case Q_LOOP: {
             u16* list = g->moves[f.ply];
-            int* scores = g->scores[f.ply];
+            short* scores = g->scores[f.ply];
             bool found = false;
             while (f.i < f.n) {
                 PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
