@@ -6,7 +6,7 @@ Prepared by GPT-6 (Codex), with GPT-6 Astra ultra evaluation and GPU/data review
 
 ## Recommended order
 
-Keep [repeated-position label aggregation](../repeated-labels-2026-10-24/PROTOCOL.md) as Astra's active experiment; [PR #29](https://github.com/LupeHiguera/ChessSI/pull/29) contains its pending control clarifications. The following are a ranked backlog, not simultaneous claims or jobs. Confirm Claude's ownership and write the selected claim in IDEAS.md before implementing one.
+Follow-up on 2026-10-26: the repeated-label pilot is complete and inconclusive for coverage ([result](../repeated-labels-2026-10-25/RESULT.md)); its archived protocol contains PR #29's controls. The rejected-update frequency gate is complete ([result](../rejected-nnue-2026-10-25/RESULT.md)), with no CPU implementation or speed gain yet. Full GPU search/datagen and the first accepted GPU-tuned CPU search now exist, so the two-ply teacher below is lower priority. This report preserves its original source attribution and research-only status. Use the [new sprint priorities](../research-sprint-2026-10-26/REPORT.md) and current accepted main for future trials. Confirm Claude's ownership and claim one idea before implementation.
 
 | Priority | Candidate | Classification | First decision |
 | --- | --- | --- | --- |
