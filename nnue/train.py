@@ -155,23 +155,39 @@ def parse_lines(lines):
     return out, bad
 
 
-def load_file(path, cache_dir, frozen=False):
-    """Raw arrays for one file. With cache_dir, each parsed byte range is kept as an .npz and only
-    lines appended since the last run are parsed (datagen files grow while it runs). frozen: use
-    only what is cached, so runs compared with each other see the same data."""
+def forget_pages(path):
+    """Asks the OS to drop a file's pages from its cache once read. Under WSL the page cache is RAM
+    that Windows does not get back, and a training run reads its data cache, hundreds of GB, once."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+        finally:
+            os.close(fd)
+    except (AttributeError, OSError):
+        pass
+
+
+def load_file(path, cache_dir, frozen=False, fields=FIELDS):
+    """Raw arrays for one file, only `fields` of them. With cache_dir, each parsed byte range is kept
+    as an .npz and only lines appended since the last run are parsed (datagen files grow while it
+    runs). frozen: use only what is cached, so runs compared with each other see the same data."""
     chunks, start = [], 0
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
         stem = os.path.join(cache_dir, f"{os.path.basename(path)}.v{CACHE_VERSION}")
         while os.path.exists(f"{stem}.{start}.npz"):
-            z = np.load(f"{stem}.{start}.npz")
-            chunks.append({k: z[k] for k in FIELDS})
-            start = int(z["end"])
+            with np.load(f"{stem}.{start}.npz") as z:
+                chunks.append({k: z[k] for k in fields})
+                end = int(z["end"])
+            forget_pages(f"{stem}.{start}.npz")
+            start = end
     if frozen:  # files with nothing cached yet are left out
-        return {k: np.concatenate([c[k] for c in chunks]) for k in FIELDS} if chunks else None
+        return {k: np.concatenate([c[k] for c in chunks]) for k in fields} if chunks else None
     with open(path, "rb") as f:
         f.seek(start)
         data = f.read()
+    forget_pages(path)
     end = start + data.rfind(b"\n") + 1  # only complete lines
     if end > start:
         chunk, bad = parse_lines(data[:end - start].decode().splitlines())
@@ -179,8 +195,8 @@ def load_file(path, cache_dir, frozen=False):
             print(f"{path}: skipped {bad} malformed lines")
         if cache_dir:
             np.savez(f"{stem}.{start}.npz", end=end, **chunk)
-        chunks.append(chunk)
-    return {k: np.concatenate([c[k] for c in chunks]) for k in FIELDS} if chunks else None
+        chunks.append({k: chunk[k] for k in fields})
+    return {k: np.concatenate([c[k] for c in chunks]) for k in fields} if chunks else None
 
 
 def count_games(game):
@@ -242,7 +258,7 @@ def load(paths, cache_dir=None, future_plies=8, frozen=False, moves=False):
         return load_at_once(paths, cache_dir, future_plies, frozen, moves)
     small, used, game_base = [], [], 0
     for path in paths:
-        d = load_file(path, cache_dir, frozen)
+        d = load_file(path, cache_dir, frozen, fields=("keys", "white", "scores", "results", "ply"))
         if d is None:
             continue
         game, future, gkey = per_file(d, game_base, future_plies)
@@ -252,7 +268,7 @@ def load(paths, cache_dir=None, future_plies=8, frozen=False, moves=False):
         used.append((path, len(game)))
         del d, game, gkey  # the features are read again below, file by file
     d = {k: np.concatenate([p.pop(k) for p in small]) for k in ("keys", "white", "scores", "results", "game", "future", "is_val")}
-    first = first_occurrences(d.pop("keys"))
+    first = first_occurrences(d.pop("keys")).astype(np.int32)  # 32 bits hold up to 2^31 positions
     out = {k: d.pop(k)[first] for k in ("white", "scores", "results", "future", "is_val")}
     out["ngames"] = count_games(d.pop("game")[first])
 
@@ -261,11 +277,14 @@ def load(paths, cache_dir=None, future_plies=8, frozen=False, moves=False):
     occ, pcs = np.empty(len(first), dtype=np.uint64), np.empty((len(first), 16), dtype=np.uint8)
     offset = filled = 0
     for path, n in used:
-        f = load_file(path, cache_dir, frozen=True)["feats"]
+        f = load_file(path, cache_dir, frozen=True, fields=("feats",))["feats"]
         if len(f) != n:
             raise RuntimeError(f"{path} changed while loading ({n} then {len(f)} positions)")
         lo, hi = np.searchsorted(first, (offset, offset + n))
-        occ[filled:filled + hi - lo], pcs[filled:filled + hi - lo] = encode(f[first[lo:hi] - offset])
+        for s in range(lo, hi, 1 << 22):  # the kept rows' features, 4M at a time
+            e = min(s + (1 << 22), hi)
+            occ[filled + s - lo:filled + e - lo], pcs[filled + s - lo:filled + e - lo] = encode(f[first[s:e] - offset])
+        del f
         filled, offset = filled + hi - lo, offset + n
     out["occ"], out["pcs"] = occ, pcs
     return out
@@ -283,7 +302,7 @@ def load_at_once(paths, cache_dir=None, future_plies=8, frozen=False, moves=Fals
         parts.append(d)
     d = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
 
-    first = first_occurrences(d["keys"])
+    first = first_occurrences(d["keys"]).astype(np.int32)
     out = {"feats": d["feats"][first], "white": d["white"][first], "scores": d["scores"][first],
            "results": d["results"][first], "future": d["future"][first], "is_val": d["gkey"][first] % 50 == 0,
            "ngames": count_games(d["game"][first])}
@@ -436,7 +455,7 @@ def main():
     # one, so they did train on some of these games. --seed now sets only initialisation and order.
     games = d.pop("ngames")
     is_val = d.pop("is_val")
-    val, train = np.flatnonzero(is_val), np.flatnonzero(~is_val)
+    val, train = np.flatnonzero(is_val).astype(np.int32), np.flatnonzero(~is_val).astype(np.int32)
     moves_text = f"; {np.mean(d['pfrom'] >= 0):.0%} have the played move" if policy else ""
     print(f"{n} unique positions from {games} games ({len(train)} train, {len(val)} validation), "
           f"loaded in {time.time() - t0:.0f}s{moves_text}", flush=True)
@@ -510,7 +529,7 @@ def main():
     shuffle = torch.Generator().manual_seed(args.seed)  # on the CPU: the same order in either mode
     for epoch in range(1, args.epochs + 1):
         net.train()
-        order = train_t[torch.randperm(len(train_t), generator=shuffle).to(data_dev)]
+        order = train_t[torch.randperm(len(train_t), generator=shuffle, dtype=torch.int32).to(data_dev)]
         total = 0.0
         for i in range(0, len(order), args.batch):
             idx = order[i:i + args.batch]
