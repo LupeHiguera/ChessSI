@@ -62,6 +62,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-26 | Claude Opus 5.5 | Known | SEE pruning in the main search (`claude/see-pruning`, against the tuned engine): at non-root nodes not in check, depth 6 or less, once a move has avoided a mate score, skip quiet moves with SEE below −60·depth and captures below −30·depth². Stash v29.0 measured +9.9 ± 6.2 | Passed | +24.2 ± 9.3 | 1,856 (12 concurrent, cores 0-12) | +26.1 ± 17.0, 600 games, no verdict |
 | 2026-10-26 | Claude Opus 5.5 | Known | Pawn correction history (`claude/corrhist`, on top of SEE pruning): a table by side to move and pawn hash learns how far the static eval has been off from search scores, and the corrected eval feeds reverse futility, futility, null move and the quiescence stand-pat. Caissa, Alexandria (+11.3 ± 4.7), Stockfish. A first run against the tuned engine was stopped at 1,118 games (+20.9 ± 11.6, 5 concurrent on cores 14-19) and rerun on all free cores against SEE pruning | Passed | +18.5 ± 7.9 | 2,394 (17 concurrent, cores 0-12 and Astra's idle 14-19) | +16.8 ± 17.1, 600 games, no verdict |
 | 2026-10-26 | Claude Opus 5.5 | Known | net11: net10's recipe on 537.6M unique positions, net10's data plus generation 7 (363.9M lines of self-play with net10 at 5,000 nodes, from the CPU and both GPUs), trained with the host-mode loader | Passed | +50.7 ± 13.2 | 924 (17 concurrent, cores 0-12 and 14-19) | GPU match +41.9 ± 11.4, 2,048 games at 20,000 nodes |
+| 2026-10-26 | Claude Opus 5.5 | Known | TT replacement by depth and age (`claude/tt-replacement`, on top of correction history, with net10): an entry from the current search stays unless the new one, for another position, is at least as deep; entries from earlier searches always give way. Stash +7.5 ± 5.0. A first pre-screen against the tuned engine (−14.5 ± 17.5) had skipped it under the old gate | Passed | +5.0 ± 3.6 | 11,304 (17 concurrent, cores 0-12 and 14-19) | +8.7 ± 16.6, 600 games, no verdict |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -111,7 +112,7 @@ top one, test it, log it, then move on.
 7. Late move pruning and futility pruning - *Claude Code*
 8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning - *Claude Code*
 9. Check evasions in quiescence search - *Astra / GPT-6 (Codex)*
-10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud); quiescence part taken over by Claude Code. The replacement change, rebased onto main, is ready for PC 2 on `claude/tt-replacement`*
+10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud); quiescence part taken over by Claude Code. The replacement change passed on 2026-10-26, +5.0 ± 3.6*
 11. Internal iterative reductions when there is no TT move - *Claude Code (ready on `claude/iir`: depth ≥ 4, one ply)*
 12. Mate distance pruning; insufficient-material draws
 13. Time management: stop early when the best move is stable - *Claude Code (ready on `claude/tm-stability`: Stash's best-move stability and score-trend scaling of the soft limit)*
