@@ -20,7 +20,7 @@ void check(const char* name, const std::string& fen, int depth, int alpha, int b
     const uint64_t originalKey = pos.key();
     const bool originalDraw = pos.is_draw();
     const int staticEval = evaluate(pos);
-    TT.clear();
+    Search::clear(); // all search state, so each probe starts fresh
     Search::stop = expected == Stop;
     SearchLimits limits;
     limits.nodes = 200000;
@@ -70,7 +70,7 @@ void check_context(const char* name, bool throughNull) {
     const uint64_t contextKey = pos.key();
     const bool contextDraw = pos.is_draw();
     const int staticEval = evaluate(pos);
-    TT.clear();
+    Search::clear(); // all search state, so each probe starts fresh
     Search::stop = false;
     SearchLimits limits;
     limits.nodes = 200000;
