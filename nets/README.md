@@ -7,6 +7,23 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net11-h256.nnue
+
+- **SHA-256:** `23d10429e403d2ff6ea15bbb19345e5982d6c617f2ff8ad6d1e161edae82f938`
+- **Data:** 537,588,875 unique positions from 6,483,745 games, all self-play (no games against other
+  engines): net10's data plus 303.9M more unique positions from generation 7, 363.9M lines made with
+  net10 at 5,000 nodes a move on 2026-10-25: `chesssi datagen` at `35cb09b` on the CPU, and
+  `gpu/datagen.py` (8 random plies, a 1 MB table per game) at `c7975f1`, `3b61866` and `d1185ee` on
+  an RTX 5080 and an RTX 5060 Ti.
+- **Training:** net10's recipe: `train.py <data files> net11-h256.nnue --hidden 256 --epochs 20 --seed 1
+  --cache-dir <dir> --frozen --aux-weight 1.0 --future-plies 4 --gpu-data-gb 0` at `1aaf377`, the
+  host-mode loader (every per-position array and the shuffle in host RAM; peak 35.4 GB). Validation
+  loss is 0.00711, not comparable with net10's 0.00696 because the validation games now include
+  generation 7. It took 3 h 26 min on an RTX 5060 Ti, after 17 min of loading.
+- **Result:** replaced net10, +50.7 ± 13.2 Elo, SPRT [0, 5] at 10+0.1, H1 after 924 games (both
+  networks loaded in the same binary, 17 concurrent). A GPU match at 20,000 nodes a move gave
+  +41.9 ± 11.4 (2,048 games).
+
 ## net10-h256.nnue
 
 - **SHA-256:** `4b2b65ce654fae027029cc15aafdf7de8aaf22263cae559078b05a3e8bebc9ee`
