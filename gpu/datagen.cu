@@ -414,9 +414,13 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc) {
     g->stm = them;
     g->fullmove = fm + (us == 1);
     g->accTop = top + 1;
-    apply_delta(net, acc_slot(acc, top), acc_slot(acc, top + 1), d);
     __syncwarp();
-    return !attacked(g, king_sq(g, us), them);
+    // Legal first: the caller undoes an illegal move at once, and nothing ever reads its
+    // accumulator, so it is only computed for legal ones (about a quarter of updates are not).
+    bool legal = !attacked(g, king_sq(g, us), them);
+    if (legal) apply_delta(net, acc_slot(acc, top), acc_slot(acc, top + 1), d);
+    __syncwarp();
+    return legal;
 }
 
 __device__ void undo_move(Game* g, u16 m) {
