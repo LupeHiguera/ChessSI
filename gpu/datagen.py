@@ -72,8 +72,10 @@ def reductions(base=0.75, div=2.25):
 PARAMS = np.dtype([(name, "<i4") for name in ("rfpDepth", "rfpMargin", "nmpDepth", "nmpBase", "nmpDiv", "lmpDepth", "lmpBase",
                                                 "futDepth", "futMargin", "lmrDepth", "lmrMoves", "histMax", "aspDepth",
                                                 "aspDelta", "qsSee")] + [("lmr", "u1", (64, 64))])
-DEFAULTS = dict(rfpDepth=3, rfpMargin=150, nmpDepth=3, nmpBase=3, nmpDiv=6, lmpDepth=8, lmpBase=3, futDepth=6, futMargin=120,
-                lmrDepth=3, lmrMoves=3, histMax=1200, aspDepth=5, aspDelta=25, qsSee=0, lmrBase=0.75, lmrDiv=2.25)
+# src/search.cpp's values since PR #40 (SPSA): keep them equal, or the GPU search stops matching the engine
+# (the parity check in gpu/README.md catches it).
+DEFAULTS = dict(rfpDepth=5, rfpMargin=77, nmpDepth=3, nmpBase=3, nmpDiv=4, lmpDepth=7, lmpBase=6, futDepth=6, futMargin=127,
+                lmrDepth=3, lmrMoves=4, histMax=1239, aspDepth=4, aspDelta=22, qsSee=0, lmrBase=0.82, lmrDiv=1.72)
 
 
 def make_params(values=None):
