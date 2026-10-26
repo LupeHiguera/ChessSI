@@ -43,8 +43,9 @@ struct Network {
     int hidden = 0;
     std::vector<int16_t> ftWeights; // [Inputs][hidden]
     std::vector<int16_t> ftBias;    // [hidden]
-    std::vector<int16_t> outWeights; // [2 * hidden]: side to move first, then the opponent
-    int32_t outBias = 0;
+    int buckets = 1;                 // output buckets by piece count
+    std::vector<int16_t> outWeights; // [buckets][2 * hidden]: side to move first, then the opponent
+    std::vector<int32_t> outBias;    // [buckets]
 };
 
 Network net;
@@ -67,19 +68,28 @@ bool read(const char* data, size_t size, size_t& pos, T* out, size_t count) {
     return true;
 }
 
+// "CSNN" has one output; "CSNB" adds a bucket count after the hidden size, and the output weights and
+// bias repeat once per bucket.
 bool parse(const char* data, size_t size) {
     size_t pos = 0;
     char magic[4];
     Network n;
-    if (!read(data, size, pos, magic, 4) || std::memcmp(magic, "CSNN", 4) != 0 || !read(data, size, pos, &n.hidden, 1)
+    if (!read(data, size, pos, magic, 4))
+        return false;
+    bool bucketed = std::memcmp(magic, "CSNB", 4) == 0;
+    if ((!bucketed && std::memcmp(magic, "CSNN", 4) != 0) || !read(data, size, pos, &n.hidden, 1)
         || n.hidden <= 0 || n.hidden > 4096 || n.hidden % 32 != 0)
+        return false;
+    if (bucketed && (!read(data, size, pos, &n.buckets, 1) || n.buckets < 1 || n.buckets > 32))
         return false;
     n.ftWeights.resize(size_t(Inputs) * n.hidden);
     n.ftBias.resize(n.hidden);
-    n.outWeights.resize(2 * size_t(n.hidden));
+    n.outWeights.resize(size_t(n.buckets) * 2 * n.hidden);
+    n.outBias.resize(n.buckets);
     if (!read(data, size, pos, n.ftWeights.data(), n.ftWeights.size())
         || !read(data, size, pos, n.ftBias.data(), n.ftBias.size())
-        || !read(data, size, pos, n.outWeights.data(), n.outWeights.size()) || !read(data, size, pos, &n.outBias, 1))
+        || !read(data, size, pos, n.outWeights.data(), n.outWeights.size())
+        || !read(data, size, pos, n.outBias.data(), n.outBias.size()))
         return false;
     // evaluate() needs QA * w to fit int16.
     for (int16_t w : n.outWeights)
@@ -210,6 +220,9 @@ int NNUE::evaluate(const Position& pos) {
         acc = fresh.data();
     }
     const int16_t* halves[2] = {acc + (pos.side_to_move() == WHITE ? 0 : h), acc + (pos.side_to_move() == WHITE ? h : 0)};
+    // Output bucket by piece count, kings included, as in nnue/train.py.
+    const int bucket = std::min((popcount(pos.pieces()) - 2) / ((32 + net.buckets - 1) / net.buckets), net.buckets - 1);
+    const int16_t* outWeights = &net.outWeights[size_t(bucket) * 2 * h];
 
     // SCReLU: clamp to [0, QA] and square, so the sum carries QA * QA * QB; dividing by QA once
     // leaves QA * QB, the scale of the output bias. x * w fits int16 (255 * 128 at most, checked on
@@ -223,7 +236,7 @@ int NNUE::evaluate(const Position& pos) {
     const __m256i lo = _mm256_setzero_si256(), hi = _mm256_set1_epi16(QA);
     for (int half = 0; half < 2; ++half) {
         const int16_t* x = halves[half];
-        const int16_t* w = &net.outWeights[size_t(half) * h];
+        const int16_t* w = outWeights + size_t(half) * h;
         for (int b = 0; b < h; b += 256) {
             __m256i lanes = _mm256_setzero_si256();
             for (int i = b, end = std::min(h, b + 256); i < end; i += 16) {
@@ -245,7 +258,7 @@ int NNUE::evaluate(const Position& pos) {
 #else
     for (int half = 0; half < 2; ++half) {
         const int16_t* x = halves[half];
-        const int16_t* w = &net.outWeights[size_t(half) * h];
+        const int16_t* w = outWeights + size_t(half) * h;
         for (int c = 0; c < h; c += 32) {
             int32_t chunk = 0;
             for (int i = c; i < c + 32; ++i) {
@@ -256,6 +269,6 @@ int NNUE::evaluate(const Position& pos) {
         }
     }
 #endif
-    sum = sum / QA + net.outBias;
+    sum = sum / QA + net.outBias[bucket];
     return int(sum * Scale / (QA * QB));
 }
