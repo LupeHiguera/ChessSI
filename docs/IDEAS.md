@@ -60,6 +60,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-24 | Claude Opus 5.5 | Known | net10's recipe at 512 hidden units on net10's data (validation 0.00679 against 0.00696), vs net10 at 256 | Inconclusive (stopped at 8,116 games: any gain is small, and h512 searches about 40% slower) | +3.4 ± 4.8 | 8,116 (12 concurrent, cores 0-12) | Not run |
 | 2026-10-25 | Claude Opus 5.5 | Novel (method) | Search constants tuned by SPSA on the GPU (`gpu/spsa.py`: 30,000 game pairs at 50,000 nodes with net10, 800 games at once on an RTX 5080, 90 minutes): RFP to depth 5 with margin 77 (was 3, 150), null-move R = 3 + d/4 (d/6), LMP to depth 7 with 6 + d² (8, 3 + d²), futility 127 (120), LMR after 4 moves with 0.82 + ln d ln n / 1.72 (3, 0.75, 2.25), history cap 1239 (1200), aspiration from depth 4 with 22 (5, 25). CPU/GPU parity byte-identical; GPU match at 50,000 nodes +47.5 ± 14.8 (1,024 games) | Passed | +40.4 ± 11.7 | 1,046 (12 concurrent, cores 0-12) | Passed, 460 games, +52.5 ± 20.7 |
 | 2026-10-26 | Claude Opus 5.5 | Known | SEE pruning in the main search (`claude/see-pruning`, against the tuned engine): at non-root nodes not in check, depth 6 or less, once a move has avoided a mate score, skip quiet moves with SEE below −60·depth and captures below −30·depth². Stash v29.0 measured +9.9 ± 6.2 | Passed | +24.2 ± 9.3 | 1,856 (12 concurrent, cores 0-12) | +26.1 ± 17.0, 600 games, no verdict |
+| 2026-10-26 | Claude Opus 5.5 | Known | Pawn correction history (`claude/corrhist`, on top of SEE pruning): a table by side to move and pawn hash learns how far the static eval has been off from search scores, and the corrected eval feeds reverse futility, futility, null move and the quiescence stand-pat. Caissa, Alexandria (+11.3 ± 4.7), Stockfish. A first run against the tuned engine was stopped at 1,118 games (+20.9 ± 11.6, 5 concurrent on cores 14-19) and rerun on all free cores against SEE pruning | Passed | +18.5 ± 7.9 | 2,394 (17 concurrent, cores 0-12 and Astra's idle 14-19) | +16.8 ± 17.1, 600 games, no verdict |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -153,7 +154,7 @@ first network is in, since pruning margins are in eval units and must be recheck
     searched until stopped and lost on time. Increment games, and so every SPRT, never hit it.
 23. Correction history: pawn key first (Caissa 2023; Alexandria +11.29 ± 4.66 at 8+0.08), then
     non-pawn and continuation keys, then abs(correction) in pruning margins - *Claude Code (pawn
-    version ready on `claude/corrhist`)*
+    version passed on 2026-10-26, +18.5 ± 7.9)*
 24. Lazy SMP: helper threads on copies of the position sharing the TT, for games on more than one
     thread (owner's decision, 2026-10-24; single-thread strength and SPRTs are unchanged) - *Claude
     Code (ready on `claude/lazy-smp`; bench identical at one thread, ThreadSanitizer shows only the
