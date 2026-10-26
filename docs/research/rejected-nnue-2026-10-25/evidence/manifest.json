@@ -1,0 +1,38 @@
+{
+  "source_commit": "35cb09b31fc1efae63e13c1da17a9285623e1cb5",
+  "source_hashes": {
+    "Makefile": "94fcd6589d118283df28bbd0849ebd5de3096d4b39a25004629467928847f4fb",
+    "src/bitboard.cpp": "c1013ad95f87aa3907f0ef00872f38b4ceb957ac3501af75103399d4dad79ee8",
+    "src/bitboard.h": "23990775a97c365d1834c7757460dfaa597138e46bf30999a75f7aeea4445569",
+    "src/datagen.cpp": "329e0961fd20c9385502dc1197995618f3d5d4e613591b32bcc32100979627e7",
+    "src/datagen.h": "d01aa5b52f539c3632ca122affbdc2d10a92de216407325135e301f0a9778baf",
+    "src/eval.cpp": "993be82bee9fe782406d90e3f1f5848f86496675e9691c0c3122cc74a1973d7a",
+    "src/eval.h": "67f2130d25fbea28987c9ade5de3c1dea40d4374943ee9bc53789ee2e0601ce6",
+    "src/main.cpp": "8e6df9102853c147b74351e0500bea0014f5e18c879d7b00dcdc8681e50a6759",
+    "src/movegen.cpp": "7640271920c14cc1eac291b167b4a25c9f46c830f35045da06320e9b36473839",
+    "src/movegen.h": "e2b2d99078992bb72f261eba21fe46d3e0320223b5f88a401879e859a258fcb9",
+    "src/nnue.cpp": "782176a949e4e6eaf14e0a22a533379d7f418f65828ce85574289753455af4cf",
+    "src/nnue.h": "fbfab9f203460deab63c17fb74e843966a6b6d0c7e4773f5d0b8231d308b872c",
+    "src/perft.cpp": "5f05b85fc5be21b5b009c893fa6eda01550a3ca7805d4a29ddddd08d405de5d9",
+    "src/perft.h": "22a094ac38f3db22c937ed2e8b22c165a7d2573d86eab0bbebde34f340e30a37",
+    "src/position.cpp": "7f5d0e8aa133b4ca9294fed029472e1efe63b82293f0499f32fcd910a7a2be56",
+    "src/position.h": "401ea32d103a5c26e86c51ef93aa3a214fc61b7bae08b192768c4e8d5c0b4963",
+    "src/search.cpp": "ec233e533995fffdd9b8721744182f8a3fcf7b2f6b8e2fcc886f164aaeda2857",
+    "src/search.h": "a96ca39e463298d32c5e1b91d23d5fff169e8b518d68a110fbfe79b3266e5ea9",
+    "src/tt.cpp": "99820a51ed5df3d899c6db152fa28c4527ec633de5fb3070bb66badf39675f39",
+    "src/tt.h": "3a03a7dce471a85bedadc09b1046b53d8c8e520750cdeadbf7136dcc0b3ee209",
+    "src/types.h": "551f3f08ac30b50e9b7caa77a65805582d291a0af79cf1eec82bb60f544976ae",
+    "src/uci.cpp": "2eee1ebbc5118b37b56a036cfcfebecc8d0542ac5d45cda5b36eaa8cf063f5b2",
+    "src/uci.h": "dfb040fd651692e5cd5b30aabbf60b9271faeaafbba637074bdfc21c5e002619"
+  },
+  "script_sha256": "208d978e6842451e5bb7aeb6de27ce0381e45aee59ec46fdc422d524831c155c",
+  "protocol_sha256": "44d5a9cc4ce93775391c685ca438e6a9003c9fe700e0b8d00a7ded21903c2d50",
+  "network_sha256": "4b2b65ce654fae027029cc15aafdf7de8aaf22263cae559078b05a3e8bebc9ee",
+  "affinity": [
+    19
+  ],
+  "build_cpus": "14-19",
+  "runtime_cpu": 19,
+  "compiler": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "source_changes": "Instrumentation in ignored copy only; no NNUE work skipped"
+}

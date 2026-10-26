@@ -1,0 +1,305 @@
+{
+  "bench": [
+    {
+      "depth": 7,
+      "nodes": 158506,
+      "rows": [
+        {
+          "parent_in_check": 0,
+          "move_type": "normal",
+          "legal": 0,
+          "moves": 2052,
+          "updates": 2052,
+          "lane_ops": 2375168
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "normal",
+          "legal": 1,
+          "moves": 139643,
+          "updates": 139643,
+          "lane_ops": 183115776
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "promotion",
+          "legal": 0,
+          "moves": 2,
+          "updates": 2,
+          "lane_ops": 3072
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "promotion",
+          "legal": 1,
+          "moves": 2082,
+          "updates": 2082,
+          "lane_ops": 2810880
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "en_passant",
+          "legal": 0,
+          "moves": 4,
+          "updates": 4,
+          "lane_ops": 6144
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "en_passant",
+          "legal": 1,
+          "moves": 70,
+          "updates": 70,
+          "lane_ops": 107520
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "castling",
+          "legal": 0,
+          "moves": 40,
+          "updates": 40,
+          "lane_ops": 81920
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "castling",
+          "legal": 1,
+          "moves": 2089,
+          "updates": 2089,
+          "lane_ops": 4278272
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "normal",
+          "legal": 0,
+          "moves": 41080,
+          "updates": 41080,
+          "lane_ops": 45209600
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "normal",
+          "legal": 1,
+          "moves": 9853,
+          "updates": 9853,
+          "lane_ops": 13528576
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "promotion",
+          "legal": 0,
+          "moves": 97,
+          "updates": 97,
+          "lane_ops": 128512
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "promotion",
+          "legal": 1,
+          "moves": 0,
+          "updates": 0,
+          "lane_ops": 0
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "en_passant",
+          "legal": 0,
+          "moves": 0,
+          "updates": 0,
+          "lane_ops": 0
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "en_passant",
+          "legal": 1,
+          "moves": 0,
+          "updates": 0,
+          "lane_ops": 0
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "castling",
+          "legal": 0,
+          "moves": 0,
+          "updates": 0,
+          "lane_ops": 0
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "castling",
+          "legal": 1,
+          "moves": 0,
+          "updates": 0,
+          "lane_ops": 0
+        }
+      ],
+      "attempted_updates": 197012,
+      "rejected_updates": 43275,
+      "rejected_fraction": 0.21965667065965525,
+      "lane_ops": 251645440,
+      "rejected_lane_ops": 47804416,
+      "rejected_lane_ops_fraction": 0.18996734453046318
+    },
+    {
+      "depth": 11,
+      "nodes": 1738402,
+      "rows": [
+        {
+          "parent_in_check": 0,
+          "move_type": "normal",
+          "legal": 0,
+          "moves": 17190,
+          "updates": 17190,
+          "lane_ops": 20626944
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "normal",
+          "legal": 1,
+          "moves": 1507949,
+          "updates": 1507949,
+          "lane_ops": 2006633472
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "promotion",
+          "legal": 0,
+          "moves": 85,
+          "updates": 85,
+          "lane_ops": 130560
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "promotion",
+          "legal": 1,
+          "moves": 19829,
+          "updates": 19829,
+          "lane_ops": 26043392
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "en_passant",
+          "legal": 0,
+          "moves": 13,
+          "updates": 13,
+          "lane_ops": 19968
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "en_passant",
+          "legal": 1,
+          "moves": 481,
+          "updates": 481,
+          "lane_ops": 738816
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "castling",
+          "legal": 0,
+          "moves": 456,
+          "updates": 456,
+          "lane_ops": 933888
+        },
+        {
+          "parent_in_check": 0,
+          "move_type": "castling",
+          "legal": 1,
+          "moves": 24679,
+          "updates": 24679,
+          "lane_ops": 50542592
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "normal",
+          "legal": 0,
+          "moves": 481459,
+          "updates": 481459,
+          "lane_ops": 526883328
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "normal",
+          "legal": 1,
+          "moves": 111227,
+          "updates": 111227,
+          "lane_ops": 152229376
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "promotion",
+          "legal": 0,
+          "moves": 2399,
+          "updates": 2399,
+          "lane_ops": 3138048
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "promotion",
+          "legal": 1,
+          "moves": 0,
+          "updates": 0,
+          "lane_ops": 0
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "en_passant",
+          "legal": 0,
+          "moves": 14,
+          "updates": 14,
+          "lane_ops": 21504
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "en_passant",
+          "legal": 1,
+          "moves": 17,
+          "updates": 17,
+          "lane_ops": 26112
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "castling",
+          "legal": 0,
+          "moves": 0,
+          "updates": 0,
+          "lane_ops": 0
+        },
+        {
+          "parent_in_check": 1,
+          "move_type": "castling",
+          "legal": 1,
+          "moves": 0,
+          "updates": 0,
+          "lane_ops": 0
+        }
+      ],
+      "attempted_updates": 2165798,
+      "rejected_updates": 501616,
+      "rejected_fraction": 0.23160793388857132,
+      "lane_ops": 2787968000,
+      "rejected_lane_ops": 551754240,
+      "rejected_lane_ops_fraction": 0.1979055139800744
+    }
+  ],
+  "datagen": {
+    "rows": 1734,
+    "attempted_updates": 14135926,
+    "rejected_updates": 3304421,
+    "rejected_fraction": 0.23376049082316927,
+    "lane_ops": 16339379200,
+    "rejected_lane_ops": 3563758592,
+    "rejected_lane_ops_fraction": 0.21810856755194225,
+    "games": 16,
+    "seed": 20261025,
+    "requested_nodes": 5000,
+    "random_plies": 8,
+    "sha256": "3428d6f36a9b3f423013ee0652c5b016713e0f8944e4018f11ad7208ae750c39",
+    "byte_identical": true
+  },
+  "interpretation": "Justifies later implementation/timing trial",
+  "source_unchanged": true,
+  "binaries": {
+    "base": "339dc459460a14e54be81a2fb3b273550417feaebedae15e513f7e89d29acaaf",
+    "instrumented": "f403bab899453680e54c78e7ab5c32ae58cb3ea1c0c9aff013d86bf57c71e15f"
+  }
+}

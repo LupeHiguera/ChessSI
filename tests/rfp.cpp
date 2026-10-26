@@ -113,7 +113,7 @@ int main() {
           1, -2001, -2000, SearchTree);
     check("pawn-only ending searches", "4k3/P7/2K5/8/8/8/8/8 w - - 0 1",
           1, -2001, -2000, SearchTree);
-    check("depth four searches", rook, 4, -2001, -2000, SearchTree);
+    check("depth six searches", rook, 6, -2001, -2000, SearchTree);
     check("mate-band window searches", rook, 1, -VALUE_MATE_IN_MAX_PLY - 1,
           -VALUE_MATE_IN_MAX_PLY, SearchTree);
     check("insufficient static margin searches", rook, 1, 999, 1000, SearchTree);
