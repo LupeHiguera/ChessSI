@@ -1,0 +1,605 @@
+{
+  "adjudication": {
+    "max_searched_plies": 400,
+    "win_plies": 6,
+    "win_score_cp": 2500
+  },
+  "bin_rule": "int.from_bytes(SHA256(UTF8('20261024|writer_id|group_start_offset')), 'big') % 5",
+  "binary_sha256": "339dc459460a14e54be81a2fb3b273550417feaebedae15e513f7e89d29acaaf",
+  "branch": "astra/repeated-label-pilot-20261025",
+  "cpu_affinity": [
+    19
+  ],
+  "earlier_cohort": null,
+  "earlier_omission_reason": "Historical dg6 node/random-opening launch provenance was not established; use latest-only allocation permitted by protocol.",
+  "latest_cohort": "dg7-net10-5000-8",
+  "launch_path": "/mnt/c/Users/Lupe/claude-work/gen7-run.sh",
+  "launch_sha256": "6474c038b5d3983f64f164d5aa45b4968dd42107b347c75a26a001b4d6e092f5",
+  "launch_text": "#!/usr/bin/env bash\n# Generation-7 datagen on cores 0-12 from origin/main (net10, the speed series, the static-eval field),\n# inside a systemd user unit:  systemd-run --user --unit=gen7 bash <this>   (stop: systemctl --user stop gen7)\nset -u\nexport PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin\nout=~/nnue/data/dg7 src=~/nnue/data/bin/dg7-src bin=~/nnue/data/bin/dg7-chesssi\nmkdir -p $out ~/nnue/data/bin\ngit -C ~/runner fetch -q origin\nref=$(git -C ~/runner rev-parse --short origin/main)\nrm -rf $src && mkdir -p $src && git -C ~/runner archive origin/main | tar -x -C $src\ntaskset -c 0-12 make -s -C $src EXE=$bin\necho \"built from $ref, $(grep '^EVALFILE' $src/Makefile), bench $($bin bench | tail -1 | cut -d' ' -f1), started $(date '+%Y-%m-%d %H:%M')\" >> $out/SOURCE\nbase=$(( $(date +%s) % 100000000 * 100 ))\nfor c in 0 1 2 3 4 5 6 7 8 9 10 11 12; do\n    seed=$((base + c))\n    taskset -c $c $bin datagen $out/dg7-$seed.txt 1000000 $seed 5000 8 > $out/dg7-$seed.log 2>&1 &\ndone\nwait\n",
+  "memory_cap_bytes": 2147483648,
+  "network": "nets/net10-h256.nnue",
+  "network_sha256": "4b2b65ce654fae027029cc15aafdf7de8aaf22263cae559078b05a3e8bebc9ee",
+  "nodes": 5000,
+  "phase": "pre-label-examination",
+  "protocol_commit": "4a5091ff06de55a9c7d98c920db7ff57f38f99c6",
+  "random_plies": 8,
+  "raw_row_cap": 2000000,
+  "schema": 1,
+  "source_commit": "35cb09b31fc1efae63e13c1da17a9285623e1cb5",
+  "source_record": "built from 35cb09b, EVALFILE ?= nets/net10-h256.nnue, bench 158506, started 2026-10-25 01:15\n",
+  "source_sha256": {
+    "Makefile": {
+      "archive_sha256": "94fcd6589d118283df28bbd0849ebd5de3096d4b39a25004629467928847f4fb",
+      "normalized_sha256": "94fcd6589d118283df28bbd0849ebd5de3096d4b39a25004629467928847f4fb",
+      "worktree_sha256": "94fcd6589d118283df28bbd0849ebd5de3096d4b39a25004629467928847f4fb"
+    },
+    "src/bitboard.cpp": {
+      "archive_sha256": "c1013ad95f87aa3907f0ef00872f38b4ceb957ac3501af75103399d4dad79ee8",
+      "normalized_sha256": "c1013ad95f87aa3907f0ef00872f38b4ceb957ac3501af75103399d4dad79ee8",
+      "worktree_sha256": "c1013ad95f87aa3907f0ef00872f38b4ceb957ac3501af75103399d4dad79ee8"
+    },
+    "src/bitboard.h": {
+      "archive_sha256": "23990775a97c365d1834c7757460dfaa597138e46bf30999a75f7aeea4445569",
+      "normalized_sha256": "23990775a97c365d1834c7757460dfaa597138e46bf30999a75f7aeea4445569",
+      "worktree_sha256": "23990775a97c365d1834c7757460dfaa597138e46bf30999a75f7aeea4445569"
+    },
+    "src/datagen.cpp": {
+      "archive_sha256": "329e0961fd20c9385502dc1197995618f3d5d4e613591b32bcc32100979627e7",
+      "normalized_sha256": "329e0961fd20c9385502dc1197995618f3d5d4e613591b32bcc32100979627e7",
+      "worktree_sha256": "329e0961fd20c9385502dc1197995618f3d5d4e613591b32bcc32100979627e7"
+    },
+    "src/datagen.h": {
+      "archive_sha256": "d01aa5b52f539c3632ca122affbdc2d10a92de216407325135e301f0a9778baf",
+      "normalized_sha256": "d01aa5b52f539c3632ca122affbdc2d10a92de216407325135e301f0a9778baf",
+      "worktree_sha256": "d01aa5b52f539c3632ca122affbdc2d10a92de216407325135e301f0a9778baf"
+    },
+    "src/eval.cpp": {
+      "archive_sha256": "993be82bee9fe782406d90e3f1f5848f86496675e9691c0c3122cc74a1973d7a",
+      "normalized_sha256": "993be82bee9fe782406d90e3f1f5848f86496675e9691c0c3122cc74a1973d7a",
+      "worktree_sha256": "993be82bee9fe782406d90e3f1f5848f86496675e9691c0c3122cc74a1973d7a"
+    },
+    "src/eval.h": {
+      "archive_sha256": "67f2130d25fbea28987c9ade5de3c1dea40d4374943ee9bc53789ee2e0601ce6",
+      "normalized_sha256": "67f2130d25fbea28987c9ade5de3c1dea40d4374943ee9bc53789ee2e0601ce6",
+      "worktree_sha256": "67f2130d25fbea28987c9ade5de3c1dea40d4374943ee9bc53789ee2e0601ce6"
+    },
+    "src/main.cpp": {
+      "archive_sha256": "8e6df9102853c147b74351e0500bea0014f5e18c879d7b00dcdc8681e50a6759",
+      "normalized_sha256": "8e6df9102853c147b74351e0500bea0014f5e18c879d7b00dcdc8681e50a6759",
+      "worktree_sha256": "8e6df9102853c147b74351e0500bea0014f5e18c879d7b00dcdc8681e50a6759"
+    },
+    "src/movegen.cpp": {
+      "archive_sha256": "7640271920c14cc1eac291b167b4a25c9f46c830f35045da06320e9b36473839",
+      "normalized_sha256": "7640271920c14cc1eac291b167b4a25c9f46c830f35045da06320e9b36473839",
+      "worktree_sha256": "7640271920c14cc1eac291b167b4a25c9f46c830f35045da06320e9b36473839"
+    },
+    "src/movegen.h": {
+      "archive_sha256": "e2b2d99078992bb72f261eba21fe46d3e0320223b5f88a401879e859a258fcb9",
+      "normalized_sha256": "e2b2d99078992bb72f261eba21fe46d3e0320223b5f88a401879e859a258fcb9",
+      "worktree_sha256": "e2b2d99078992bb72f261eba21fe46d3e0320223b5f88a401879e859a258fcb9"
+    },
+    "src/nnue.cpp": {
+      "archive_sha256": "782176a949e4e6eaf14e0a22a533379d7f418f65828ce85574289753455af4cf",
+      "normalized_sha256": "782176a949e4e6eaf14e0a22a533379d7f418f65828ce85574289753455af4cf",
+      "worktree_sha256": "782176a949e4e6eaf14e0a22a533379d7f418f65828ce85574289753455af4cf"
+    },
+    "src/nnue.h": {
+      "archive_sha256": "fbfab9f203460deab63c17fb74e843966a6b6d0c7e4773f5d0b8231d308b872c",
+      "normalized_sha256": "fbfab9f203460deab63c17fb74e843966a6b6d0c7e4773f5d0b8231d308b872c",
+      "worktree_sha256": "fbfab9f203460deab63c17fb74e843966a6b6d0c7e4773f5d0b8231d308b872c"
+    },
+    "src/perft.cpp": {
+      "archive_sha256": "5f05b85fc5be21b5b009c893fa6eda01550a3ca7805d4a29ddddd08d405de5d9",
+      "normalized_sha256": "5f05b85fc5be21b5b009c893fa6eda01550a3ca7805d4a29ddddd08d405de5d9",
+      "worktree_sha256": "5f05b85fc5be21b5b009c893fa6eda01550a3ca7805d4a29ddddd08d405de5d9"
+    },
+    "src/perft.h": {
+      "archive_sha256": "22a094ac38f3db22c937ed2e8b22c165a7d2573d86eab0bbebde34f340e30a37",
+      "normalized_sha256": "22a094ac38f3db22c937ed2e8b22c165a7d2573d86eab0bbebde34f340e30a37",
+      "worktree_sha256": "22a094ac38f3db22c937ed2e8b22c165a7d2573d86eab0bbebde34f340e30a37"
+    },
+    "src/position.cpp": {
+      "archive_sha256": "7f5d0e8aa133b4ca9294fed029472e1efe63b82293f0499f32fcd910a7a2be56",
+      "normalized_sha256": "7f5d0e8aa133b4ca9294fed029472e1efe63b82293f0499f32fcd910a7a2be56",
+      "worktree_sha256": "7f5d0e8aa133b4ca9294fed029472e1efe63b82293f0499f32fcd910a7a2be56"
+    },
+    "src/position.h": {
+      "archive_sha256": "401ea32d103a5c26e86c51ef93aa3a214fc61b7bae08b192768c4e8d5c0b4963",
+      "normalized_sha256": "401ea32d103a5c26e86c51ef93aa3a214fc61b7bae08b192768c4e8d5c0b4963",
+      "worktree_sha256": "401ea32d103a5c26e86c51ef93aa3a214fc61b7bae08b192768c4e8d5c0b4963"
+    },
+    "src/search.cpp": {
+      "archive_sha256": "ec233e533995fffdd9b8721744182f8a3fcf7b2f6b8e2fcc886f164aaeda2857",
+      "normalized_sha256": "ec233e533995fffdd9b8721744182f8a3fcf7b2f6b8e2fcc886f164aaeda2857",
+      "worktree_sha256": "ec233e533995fffdd9b8721744182f8a3fcf7b2f6b8e2fcc886f164aaeda2857"
+    },
+    "src/search.h": {
+      "archive_sha256": "a96ca39e463298d32c5e1b91d23d5fff169e8b518d68a110fbfe79b3266e5ea9",
+      "normalized_sha256": "a96ca39e463298d32c5e1b91d23d5fff169e8b518d68a110fbfe79b3266e5ea9",
+      "worktree_sha256": "a96ca39e463298d32c5e1b91d23d5fff169e8b518d68a110fbfe79b3266e5ea9"
+    },
+    "src/tt.cpp": {
+      "archive_sha256": "99820a51ed5df3d899c6db152fa28c4527ec633de5fb3070bb66badf39675f39",
+      "normalized_sha256": "99820a51ed5df3d899c6db152fa28c4527ec633de5fb3070bb66badf39675f39",
+      "worktree_sha256": "99820a51ed5df3d899c6db152fa28c4527ec633de5fb3070bb66badf39675f39"
+    },
+    "src/tt.h": {
+      "archive_sha256": "3a03a7dce471a85bedadc09b1046b53d8c8e520750cdeadbf7136dcc0b3ee209",
+      "normalized_sha256": "3a03a7dce471a85bedadc09b1046b53d8c8e520750cdeadbf7136dcc0b3ee209",
+      "worktree_sha256": "3a03a7dce471a85bedadc09b1046b53d8c8e520750cdeadbf7136dcc0b3ee209"
+    },
+    "src/types.h": {
+      "archive_sha256": "551f3f08ac30b50e9b7caa77a65805582d291a0af79cf1eec82bb60f544976ae",
+      "normalized_sha256": "551f3f08ac30b50e9b7caa77a65805582d291a0af79cf1eec82bb60f544976ae",
+      "worktree_sha256": "551f3f08ac30b50e9b7caa77a65805582d291a0af79cf1eec82bb60f544976ae"
+    },
+    "src/uci.cpp": {
+      "archive_sha256": "2eee1ebbc5118b37b56a036cfcfebecc8d0542ac5d45cda5b36eaa8cf063f5b2",
+      "normalized_sha256": "2eee1ebbc5118b37b56a036cfcfebecc8d0542ac5d45cda5b36eaa8cf063f5b2",
+      "worktree_sha256": "2eee1ebbc5118b37b56a036cfcfebecc8d0542ac5d45cda5b36eaa8cf063f5b2"
+    },
+    "src/uci.h": {
+      "archive_sha256": "dfb040fd651692e5cd5b30aabbf60b9271faeaafbba637074bdfc21c5e002619",
+      "normalized_sha256": "dfb040fd651692e5cd5b30aabbf60b9271faeaafbba637074bdfc21c5e002619",
+      "worktree_sha256": "dfb040fd651692e5cd5b30aabbf60b9271faeaafbba637074bdfc21c5e002619"
+    }
+  },
+  "streams": [
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t0",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611100.txt",
+          "1000000",
+          "9291611100",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20536682\nflags:\t0102001\nmnt_id:\t80\nino:\t93530\n"
+          }
+        ],
+        "pid": 2459530,
+        "proc_stat": "2459530 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5218 0 0 0 44678 18 0 0 20 0 1 0 8027351 26460160 5788 18446744073709551615 109226854871040 109226854998001 140733519518192 0 0 0 0 4102 0 0 0 0 17 0 0 0 0 0 0 109226855413576 109226855415876 109227049811968 140733519518879 140733519518994 140733519518994 140733519519699 0\n"
+      },
+      "row_allowance": 153847,
+      "seed": 9291611100,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611100.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559614754674,
+        "device": 2096,
+        "inode": 93530,
+        "mtime_ns": 1792916559614754674,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611100.txt",
+        "size": 20536682
+      },
+      "writer_id": "dg7-9291611100"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t1",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611101.txt",
+          "1000000",
+          "9291611101",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20598173\nflags:\t0102001\nmnt_id:\t80\nino:\t93539\n"
+          }
+        ],
+        "pid": 2459531,
+        "proc_stat": "2459531 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 7010 0 0 0 44697 9 0 0 20 0 1 0 8027351 26501120 5798 18446744073709551615 95764362481664 95764362608625 140734463653168 0 0 0 0 4102 0 0 0 0 17 1 0 0 0 0 0 95764363024200 95764363026500 95764585009152 140734463655071 140734463655186 140734463655186 140734463655891 0\n"
+      },
+      "row_allowance": 153847,
+      "seed": 9291611101,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611101.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559488754676,
+        "device": 2096,
+        "inode": 93539,
+        "mtime_ns": 1792916559488754676,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611101.txt",
+        "size": 20598173
+      },
+      "writer_id": "dg7-9291611101"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t2",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611102.txt",
+          "1000000",
+          "9291611102",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20609623\nflags:\t0102001\nmnt_id:\t80\nino:\t93537\n"
+          }
+        ],
+        "pid": 2459532,
+        "proc_stat": "2459532 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5436 0 0 0 44695 12 0 0 20 0 1 0 8027351 26480640 5792 18446744073709551615 111089808453632 111089808580593 140729680264896 0 0 0 0 4102 0 0 0 0 17 2 0 0 0 0 0 111089808996168 111089808998468 111090107596800 140729680268447 140729680268562 140729680268562 140729680269267 0\n"
+      },
+      "row_allowance": 153846,
+      "seed": 9291611102,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611102.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559643554670,
+        "device": 2096,
+        "inode": 93537,
+        "mtime_ns": 1792916559643554670,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611102.txt",
+        "size": 20609623
+      },
+      "writer_id": "dg7-9291611102"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t3",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611103.txt",
+          "1000000",
+          "9291611103",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20598789\nflags:\t0102001\nmnt_id:\t80\nino:\t93536\n"
+          }
+        ],
+        "pid": 2459533,
+        "proc_stat": "2459533 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5221 0 0 0 44693 14 0 0 20 0 1 0 8027351 26497024 5796 18446744073709551615 96206695624704 96206695751665 140722400499232 0 0 0 0 4102 0 0 0 0 17 3 0 0 0 0 0 96206696167240 96206696169540 96207231184896 140722400504991 140722400505106 140722400505106 140722400505811 0\n"
+      },
+      "row_allowance": 153846,
+      "seed": 9291611103,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611103.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559492354676,
+        "device": 2096,
+        "inode": 93536,
+        "mtime_ns": 1792916559492354676,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611103.txt",
+        "size": 20598789
+      },
+      "writer_id": "dg7-9291611103"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t4",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611104.txt",
+          "1000000",
+          "9291611104",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20563587\nflags:\t0102001\nmnt_id:\t80\nino:\t93533\n"
+          }
+        ],
+        "pid": 2459534,
+        "proc_stat": "2459534 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5272 0 0 0 44694 13 0 0 20 0 1 0 8027351 26710016 5773 18446744073709551615 105273393303552 105273393430513 140726366726768 0 0 0 0 4102 0 0 0 0 17 4 0 0 0 0 0 105273393846088 105273393848388 105274243936256 140726366731423 140726366731538 140726366731538 140726366732243 0\n"
+      },
+      "row_allowance": 153846,
+      "seed": 9291611104,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611104.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559593154672,
+        "device": 2096,
+        "inode": 93533,
+        "mtime_ns": 1792916559593154672,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611104.txt",
+        "size": 20563587
+      },
+      "writer_id": "dg7-9291611104"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t5",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611105.txt",
+          "1000000",
+          "9291611105",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20386792\nflags:\t0102001\nmnt_id:\t80\nino:\t93532\n"
+          }
+        ],
+        "pid": 2459535,
+        "proc_stat": "2459535 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5270 0 0 0 44692 16 0 0 20 0 1 0 8027351 26714112 5815 18446744073709551615 103013718716416 103013718843377 140730717932336 0 0 0 0 4102 0 0 0 0 17 5 0 0 0 0 0 103013719258952 103013719261252 103014753509376 140730717936799 140730717936914 140730717936914 140730717937619 0\n"
+      },
+      "row_allowance": 153846,
+      "seed": 9291611105,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611105.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559593154672,
+        "device": 2096,
+        "inode": 93532,
+        "mtime_ns": 1792916559593154672,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611105.txt",
+        "size": 20386792
+      },
+      "writer_id": "dg7-9291611105"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t6",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611106.txt",
+          "1000000",
+          "9291611106",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20554295\nflags:\t0102001\nmnt_id:\t80\nino:\t93534\n"
+          }
+        ],
+        "pid": 2459536,
+        "proc_stat": "2459536 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5271 0 0 0 44695 11 0 0 20 0 1 0 8027351 26714112 5819 18446744073709551615 111332072046592 111332072173553 140733654122272 0 0 0 0 4102 0 0 0 0 17 6 0 0 0 0 0 111332072589128 111332072591428 111332713230336 140733654125727 140733654125842 140733654125842 140733654126547 0\n"
+      },
+      "row_allowance": 153846,
+      "seed": 9291611106,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611106.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559715554668,
+        "device": 2096,
+        "inode": 93534,
+        "mtime_ns": 1792916559715554668,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611106.txt",
+        "size": 20554295
+      },
+      "writer_id": "dg7-9291611106"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t7",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611107.txt",
+          "1000000",
+          "9291611107",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20466412\nflags:\t0102001\nmnt_id:\t80\nino:\t93540\n"
+          }
+        ],
+        "pid": 2459537,
+        "proc_stat": "2459537 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5278 0 0 0 44695 12 0 0 20 0 1 0 8027351 26726400 5857 18446744073709551615 94264870916096 94264871043057 140723561258992 0 0 0 0 4102 0 0 0 0 17 7 0 0 0 0 0 94264871458632 94264871460932 94265638346752 140723561262239 140723561262354 140723561262354 140723561263059 0\n"
+      },
+      "row_allowance": 153846,
+      "seed": 9291611107,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611107.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559686754668,
+        "device": 2096,
+        "inode": 93540,
+        "mtime_ns": 1792916559686754668,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611107.txt",
+        "size": 20466412
+      },
+      "writer_id": "dg7-9291611107"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t8",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611108.txt",
+          "1000000",
+          "9291611108",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20777240\nflags:\t0102001\nmnt_id:\t80\nino:\t93538\n"
+          }
+        ],
+        "pid": 2459538,
+        "proc_stat": "2459538 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5277 0 0 0 44696 12 0 0 20 0 1 0 8027351 26714112 5816 18446744073709551615 110977096470528 110977096597489 140728460540224 0 0 0 0 4102 0 0 0 0 17 8 0 0 0 0 0 110977097013064 110977097015364 110978007724032 140728460545183 140728460545298 140728460545298 140728460546003 0\n"
+      },
+      "row_allowance": 153846,
+      "seed": 9291611108,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611108.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559639954670,
+        "device": 2096,
+        "inode": 93538,
+        "mtime_ns": 1792916559639954670,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611108.txt",
+        "size": 20777240
+      },
+      "writer_id": "dg7-9291611108"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t9",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611109.txt",
+          "1000000",
+          "9291611109",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20334530\nflags:\t0102001\nmnt_id:\t80\nino:\t93528\n"
+          }
+        ],
+        "pid": 2459539,
+        "proc_stat": "2459539 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5220 0 1 0 44697 10 0 0 20 0 1 0 8027351 26464256 5776 18446744073709551615 105198242394112 105198242521073 140724530698528 0 0 0 0 4102 0 0 0 0 17 9 0 0 0 0 0 105198242936648 105198242938948 105198342705152 140724530703519 140724530703634 140724530703634 140724530704339 0\n"
+      },
+      "row_allowance": 153846,
+      "seed": 9291611109,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611109.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559722754667,
+        "device": 2096,
+        "inode": 93528,
+        "mtime_ns": 1792916559722754667,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611109.txt",
+        "size": 20334530
+      },
+      "writer_id": "dg7-9291611109"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t10",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611110.txt",
+          "1000000",
+          "9291611110",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20616591\nflags:\t0102001\nmnt_id:\t80\nino:\t93541\n"
+          }
+        ],
+        "pid": 2459540,
+        "proc_stat": "2459540 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5276 0 0 0 44697 10 0 0 20 0 1 0 8027351 26722304 5814 18446744073709551615 94854529372160 94854529499121 140720758932512 0 0 0 0 4102 0 0 0 0 17 10 0 0 0 0 0 94854529914696 94854529916996 94854595653632 140720758938783 140720758938898 140720758938898 140720758939603 0\n"
+      },
+      "row_allowance": 153846,
+      "seed": 9291611110,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611110.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559733554669,
+        "device": 2096,
+        "inode": 93541,
+        "mtime_ns": 1792916559733554669,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611110.txt",
+        "size": 20616591
+      },
+      "writer_id": "dg7-9291611110"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t11",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611111.txt",
+          "1000000",
+          "9291611111",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20557537\nflags:\t0102001\nmnt_id:\t80\nino:\t93531\n"
+          }
+        ],
+        "pid": 2459541,
+        "proc_stat": "2459541 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5222 0 0 0 44694 14 0 0 20 0 1 0 8027351 26488832 5778 18446744073709551615 99854678315008 99854678441969 140733012000432 0 0 0 0 4102 0 0 0 0 17 11 0 0 0 0 0 99854678857544 99854678859844 99855444742144 140733012008095 140733012008210 140733012008210 140733012008915 0\n"
+      },
+      "row_allowance": 153846,
+      "seed": 9291611111,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611111.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559668754670,
+        "device": 2096,
+        "inode": 93531,
+        "mtime_ns": 1792916559668754670,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611111.txt",
+        "size": 20557537
+      },
+      "writer_id": "dg7-9291611111"
+    },
+    {
+      "process": {
+        "affinity": "Cpus_allowed_list:\t12",
+        "argv": [
+          "/home/lupe/nnue/data/bin/dg7-chesssi",
+          "datagen",
+          "/home/lupe/nnue/data/dg7/dg7-9291611112.txt",
+          "1000000",
+          "9291611112",
+          "5000",
+          "8"
+        ],
+        "output_descriptors": [
+          {
+            "fd": "3",
+            "info": "pos:\t20664965\nflags:\t0102001\nmnt_id:\t80\nino:\t93535\n"
+          }
+        ],
+        "pid": 2459542,
+        "proc_stat": "2459542 (dg7-chesssi) R 2459466 2459466 2459466 0 -1 4194304 5276 0 0 0 44694 13 0 0 20 0 1 0 8027351 26722304 5815 18446744073709551615 93978498052096 93978498179057 140735065810592 0 0 0 0 4102 0 0 0 0 17 12 0 0 0 0 0 93978498594632 93978498596932 93979480006656 140735065816223 140735065816338 140735065816338 140735065817043 0\n"
+      },
+      "row_allowance": 153846,
+      "seed": 9291611112,
+      "source_path": "/home/lupe/nnue/data/dg7/dg7-9291611112.txt",
+      "source_start": 0,
+      "source_stat": {
+        "ctime_ns": 1792916559618354671,
+        "device": 2096,
+        "inode": 93535,
+        "mtime_ns": 1792916559618354671,
+        "path": "/home/lupe/nnue/data/dg7/dg7-9291611112.txt",
+        "size": 20664965
+      },
+      "writer_id": "dg7-9291611112"
+    }
+  ],
+  "timestamp": "2026-10-25T08:22:39.745518+00:00"
+}
