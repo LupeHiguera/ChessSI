@@ -163,7 +163,7 @@ first network is in, since pruning margins are in eval units and must be recheck
 
 NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
 
-- **Repeated-position label aggregation** - *Astra / GPT-6 (Codex), with GPT-6 Astra ultra research review; claimed 2026-10-24.* Known technique. Compare first occurrence with a matched latest-teacher observation and a mean of probability targets within that teacher/budget cohort. Preserve one weight per position, independent game groups and validation separation. Research only while the PC is busy; no experiment or Elo result yet. Protocol: [`docs/research/repeated-labels-2026-10-24/PROTOCOL.md`](research/repeated-labels-2026-10-24/PROTOCOL.md), branch `astra/repeated-label-study-20261024`.
+- **Repeated-position label aggregation** - *Astra / GPT-6 (Codex), with GPT-6 Astra ultra research review; claimed 2026-10-24.* Known technique. Compare first occurrence with a matched latest-teacher observation and a mean of probability targets within that teacher/budget cohort. Preserve one weight per position, separate conservative game groups and validation separation. Research only while the PC is busy; no experiment or Elo result yet. Protocol: [`docs/research/repeated-labels-2026-10-24/PROTOCOL.md`](research/repeated-labels-2026-10-24/PROTOCOL.md), initial plan merged in PR #27; follow-up on `astra/repeated-label-review-20261024`.
 - Hidden size 128 vs 256 vs 512 at equal training time; NPS counts, so compare in games
 - Game-result weight 0.25 → 0.4 (`--lambda 0.6`); filter early plies and score/result contradictions
 - Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes.
