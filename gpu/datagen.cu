@@ -1165,6 +1165,28 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     PE(10)
 }
 
+// Rescoring (gpu/datagen.py rescore, as gpu/ref.cpp's score mode): one search per position from a cold
+// start: datagen_setup has cleared the game's table, think_start gives a fresh Searcher, and the search's
+// score goes to scores[], White-relative. The game is then done.
+extern "C" __global__ void score_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
+                                      const Params* params, short* accs, TTEntry* tts, unsigned long long nodes,
+                                      unsigned long long budget, int* scores) {
+    Net net = {ftw, ftb, outw, outb};
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    if (w >= n) return;
+    Game* g = games + w;
+    if (g->done) return;
+    short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
+    TTEntry* tt = tts + ((size_t)w << TT_BITS);
+    if (g->thinkState == T_IDLE) think_start(g, nodes);
+    if (!think_run(g, net, *params, acc, tt, budget)) return;
+    int score = g->thinkScore, white = g->stm == 0 ? score : -score;
+    __syncwarp();
+    if (lane_id() == 0) scores[w] = white;
+    g->done = 1;
+    __syncwarp();
+}
+
 // ---- Host interface ----
 extern "C" __global__ void datagen_sizes(int* out) {
     out[0] = sizeof(Game);

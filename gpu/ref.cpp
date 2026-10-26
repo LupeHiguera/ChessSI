@@ -7,6 +7,12 @@
 //   g++ -std=c++20 -O2 -march=native -DNDEBUG -DEVALFILE='"<repo>/nets/<net>.nnue"' gpu/ref.cpp \
 //       $(ls src/*.cpp | grep -v main.cpp) -o gpu-ref -pthread
 //   ./gpu-ref <file of FENs> <nodes> [-v]
+//
+// Score mode, for rescoring stored positions (gpu/datagen.py rescore): each line of a datagen file is
+// searched once from a cold start (Search::clear(), so an empty table) and printed back with only the
+// score replaced, White-relative. The table is 1 MB unless a size in MB is given.
+//
+//   ./gpu-ref score <datagen file> <nodes> [hash MB]
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -44,9 +50,30 @@ bool is_noisy(const Position& pos, Move m) {
 
 } // namespace
 
+int score_mode(const char* path, uint64_t nodes) {
+    std::ifstream in(path);
+    std::string line;
+    while (std::getline(in, line)) {
+        size_t bar = line.find(" | ");
+        if (bar == std::string::npos)
+            continue;
+        Position pos;
+        pos.set(line.substr(0, bar));
+        Search::clear();
+        SearchLimits limits;
+        limits.nodes = nodes;
+        SearchResult r = Search::think(pos, limits, false);
+        int whiteScore = pos.side_to_move() == WHITE ? r.score : -r.score;
+        size_t next = line.find(" | ", bar + 3); // the result and eval fields stay as they were
+        std::cout << line.substr(0, bar) << " | " << whiteScore << line.substr(next) << "\n";
+    }
+    std::cout << std::flush;
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "usage: gpu-ref <file of FENs> <nodes> [-v]" << std::endl;
+        std::cerr << "usage: gpu-ref <file of FENs> <nodes> [-v] | gpu-ref score <datagen file> <nodes> [hash MB]" << std::endl;
         return 1;
     }
     Bitboards::init();
@@ -54,6 +81,11 @@ int main(int argc, char* argv[]) {
     Eval::init();
     NNUE::load_embedded();
     TT.resize(1);
+    if (std::strcmp(argv[1], "score") == 0 && argc >= 4) {
+        if (argc > 4)
+            TT.resize(std::atoi(argv[4]));
+        return score_mode(argv[2], std::strtoull(argv[3], nullptr, 10));
+    }
     std::ifstream in(argv[1]);
     uint64_t nodes = std::strtoull(argv[2], nullptr, 10);
     bool verbose = argc > 3 && std::strcmp(argv[3], "-v") == 0;

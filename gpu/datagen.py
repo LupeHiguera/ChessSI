@@ -188,7 +188,7 @@ class GpuDatagen:
         self.accs = cp.zeros(capacity * (MAX_PLY + 2) * 2 * self.h, cp.int16)
         self.tts = cp.zeros(capacity * (1 << TT_BITS) * 16, cp.uint8)
         self.k = {n: self.mod.get_function(n) for n in ("datagen_init", "datagen_setup", "datagen_step", "datagen_collect",
-                                                         "datagen_done", "datagen_opening", "datagen_collect_slots")}
+                                                         "datagen_done", "datagen_opening", "datagen_collect_slots", "score_step")}
 
     def play(self, fens, nodes, verbose=False, out=sys.stdout):
         n = len(fens)
@@ -301,7 +301,47 @@ class GpuDatagen:
         return games, positions
 
 
+def rescore(dg, in_path, out_path, nodes, report_lines=1_000_000):
+    """Each line of a datagen file searched once from a cold start (an empty table, a fresh Searcher), and
+    written back with only the score replaced, in order; as gpu/ref.cpp's score mode."""
+    cap = dg.capacity
+    net = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb))
+    done = cp.zeros(cap, cp.int32)
+    scores = cp.zeros(cap, cp.int32)
+    t0, count = time.perf_counter(), 0
+    with open(in_path) as f, open(out_path, "w") as out:
+        while True:
+            lines = [l.rstrip("\n") for _, l in zip(range(cap), f)]
+            lines = [l for l in lines if " | " in l]
+            if not lines:
+                break
+            n = len(lines)
+            start = cp.asarray(np.stack([compact(l.split(" | ")[0]) for l in lines]))
+            dg.k["datagen_init"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), start))
+            dg.k["datagen_setup"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net + (dg.accs, dg.tts))
+            while True:
+                dg.k["score_step"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net
+                                   + (dg.params, dg.accs, dg.tts, np.uint64(nodes), dg.budget, scores))
+                dg.k["datagen_done"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), done))
+                wait()
+                if int(done[:n].sum()) == n:
+                    break
+            new = scores[:n].get()
+            out.write("".join(f"{l.split(' | ')[0]} | {s} | {' | '.join(l.split(' | ')[2:])}\n" for l, s in zip(lines, new)))
+            count += n
+            if count % report_lines < n:
+                print(f"{count} positions | {count / (time.perf_counter() - t0):.0f} positions/s", file=sys.stderr, flush=True)
+    return count
+
+
 def main():
+    if sys.argv[1] == "rescore":  # rescore <net> <in.txt> <out.txt> [nodes=20000] [capacity=3072]
+        net, src, dst = sys.argv[2], sys.argv[3], sys.argv[4]
+        nodes = int(sys.argv[5]) if len(sys.argv) > 5 else 20000
+        capacity = int(sys.argv[6]) if len(sys.argv) > 6 else 3072
+        n = rescore(GpuDatagen(net, capacity), src, dst, nodes)
+        print(f"# rescored {n} positions at {nodes} nodes", file=sys.stderr)
+        return
     if sys.argv[1] == "run":
         net, out, games = sys.argv[2], sys.argv[3], int(sys.argv[4])
         rest = [int(x) for x in sys.argv[5:9]]
