@@ -162,8 +162,11 @@ class GpuDatagen:
         self.h, ftw, ftb, outw, self.outb = load_net(net_path)
         src = open(os.path.join(HERE, "datagen.cu")).read()
         options = ("--std=c++17", f"-DH={self.h}")
-        if os.environ.get("GPU_MAXRREG"):  # registers per thread: fewer let more warps (games) be resident
-            options += (f"--maxrregcount={os.environ['GPU_MAXRREG']}",)
+        # Registers per thread: the search wants 176, which fits two 4-warp blocks per SM; capped at 168,
+        # three fit, and that measured fastest (GPU_MAXRREG overrides; 0 leaves it to the compiler).
+        maxrreg = int(os.environ.get("GPU_MAXRREG") or 168)
+        if maxrreg:
+            options += (f"--maxrregcount={maxrreg}",)
         self.mod = cp.RawModule(code=src, options=options)
         for name, arr in zip(("Z_PSQ", "Z_CASTLING", "Z_EP", "Z_SIDE"), zobrist()):
             cp.ndarray(arr.shape, arr.dtype, self.mod.get_global(name))[...] = cp.asarray(arr)

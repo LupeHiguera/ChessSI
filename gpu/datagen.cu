@@ -223,33 +223,58 @@ __device__ __forceinline__ short* acc_slot(short* acc, int slot) { return acc + 
 __device__ __forceinline__ int feat(int persp, int p, int s) { // White's view, or Black's (colors swapped, ranks flipped)
     return persp == 0 ? p * 64 + s : ((color_of(p) ^ 1) * 6 + type_of(p)) * 64 + (s ^ 56);
 }
+// A lane's units move in groups of 8 int16 values, one 16-byte load or store each (rows and
+// accumulators are 16-byte aligned). __vadd2 and __vsub2 add two int16 values per 32-bit word with
+// the same wrap-around as (short)(a + b).
+static_assert(UNITS % 8 == 0, "each lane's units must be whole groups of 8");
+__device__ __forceinline__ uint4 load8(const short* p) { return *(const uint4*)p; }
+__device__ __forceinline__ void store8(short* p, uint4 v) { *(uint4*)p = v; }
+__device__ __forceinline__ uint4 add8(uint4 a, uint4 b) {
+    return make_uint4(__vadd2(a.x, b.x), __vadd2(a.y, b.y), __vadd2(a.z, b.z), __vadd2(a.w, b.w));
+}
+__device__ __forceinline__ uint4 sub8(uint4 a, uint4 b) {
+    return make_uint4(__vsub2(a.x, b.x), __vsub2(a.y, b.y), __vsub2(a.z, b.z), __vsub2(a.w, b.w));
+}
+
 __device__ void refresh(const Game* g, const Net& net, short* a) {
     int base = lane_id() * UNITS;
     for (int persp = 0; persp < 2; ++persp) {
-        short v[UNITS];
-        for (int j = 0; j < UNITS; ++j) v[j] = net.ftb[base + j];
-        for (u64 b = occupied(g); b; b &= b - 1) {
-            int s = lsb(b);
-            const short* w = net.ftw + (size_t)feat(persp, g->board[s], s) * H + base;
-            for (int j = 0; j < UNITS; ++j) v[j] = (short)(v[j] + w[j]);
+        for (int c = 0; c < UNITS; c += 8) {
+            uint4 v = load8(net.ftb + base + c);
+            for (u64 b = occupied(g); b; b &= b - 1) {
+                int s = lsb(b);
+                v = add8(v, load8(net.ftw + (size_t)feat(persp, g->board[s], s) * H + base + c));
+            }
+            store8(a + persp * H + base + c, v);
         }
-        for (int j = 0; j < UNITS; ++j) a[persp * H + base + j] = v[j];
     }
 }
+// The feature changes of a move, in fixed slots: 0 off and 1 on for the moving piece (1 is the new
+// piece for a promotion), 2 off for a capture or castling's rook, 3 on for the rook. Fixed slots keep
+// the indices compile-time constants, so the struct stays in registers.
 struct Delta {
     int n;
-    int sign[4], piece[4], sq[4];
+    int piece[4], sq[4];
 };
 __device__ void apply_delta(const Net& net, const short* from, short* to, const Delta& d) {
     int base = lane_id() * UNITS;
-    for (int persp = 0; persp < 2; ++persp) {
-        short v[UNITS];
-        for (int j = 0; j < UNITS; ++j) v[j] = from[persp * H + base + j];
-        for (int k = 0; k < d.n; ++k) {
-            const short* w = net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + base;
-            for (int j = 0; j < UNITS; ++j) v[j] = (short)(d.sign[k] > 0 ? v[j] + w[j] : v[j] - w[j]);
+    for (int c = 0; c < UNITS; c += 8) {
+        // Every load first, both perspectives and all (up to 4) features, so their latencies overlap.
+        uint4 v[2], w[2][4];
+#pragma unroll
+        for (int persp = 0; persp < 2; ++persp) {
+            v[persp] = load8(from + persp * H + base + c);
+#pragma unroll
+            for (int k = 0; k < 4; ++k)
+                if (k < d.n) w[persp][k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + base + c);
         }
-        for (int j = 0; j < UNITS; ++j) to[persp * H + base + j] = v[j];
+#pragma unroll
+        for (int persp = 0; persp < 2; ++persp) {
+#pragma unroll
+            for (int k = 0; k < 4; ++k)
+                if (k < d.n) v[persp] = k % 2 ? add8(v[persp], w[persp][k]) : sub8(v[persp], w[persp][k]);
+            store8(to + persp * H + base + c, v[persp]);
+        }
     }
 }
 // NNUE::evaluate: the side to move's view first, SCReLU, int16 v * w times v, truncating divisions.
@@ -258,10 +283,14 @@ __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
     int base = lane_id() * UNITS, part = 0;
     for (int half = 0; half < 2; ++half) {
         int persp = half == 0 ? g->stm : g->stm ^ 1;
-        for (int j = 0; j < UNITS; ++j) {
-            int v = min(max((int)a[persp * H + base + j], 0), QA);
-            int vw = (short)(v * net.outw[half * H + base + j]);
-            part += vw * v;
+        for (int c = 0; c < UNITS; c += 8) {
+            uint4 av = load8(a + persp * H + base + c), wv = load8(net.outw + half * H + base + c);
+            unsigned aw[4] = {av.x, av.y, av.z, av.w}, ww[4] = {wv.x, wv.y, wv.z, wv.w};
+            for (int j = 0; j < 8; ++j) { // unit j of the group: half j % 2 of word j / 2
+                int v = min(max((int)(short)(aw[j / 2] >> (16 * (j % 2))), 0), QA);
+                int vw = (short)(v * (short)(ww[j / 2] >> (16 * (j % 2))));
+                part += vw * v;
+            }
         }
     }
     long long sum = part;
@@ -272,34 +301,33 @@ __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
 
 // Board edits on local copies of the bitboards. All lanes take the same snapshot after a
 // __syncwarp(), compute the same result, and only then write it, so no lane can see another's
-// half-done update (the lanes of a warp are not guaranteed to run in lockstep).
+// half-done update (the lanes of a warp are not guaranteed to run in lockstep). The copies are only
+// ever indexed by constants (the loops unroll): an index known only at run time would put them in
+// local memory, a copy per lane.
 struct Board {
     u64 bt[6], bc[2];
-    int nw, wsq[6], wpc[6]; // board[] writes to make, in order
 };
-__device__ __forceinline__ void b_put(Board& b, int p, int s) {
-    b.bt[type_of(p)] |= bit(s); b.bc[color_of(p)] |= bit(s);
-    b.wsq[b.nw] = s; b.wpc[b.nw++] = p;
-}
-__device__ __forceinline__ void b_remove(Board& b, int p, int s) {
-    b.bt[type_of(p)] &= ~bit(s); b.bc[color_of(p)] &= ~bit(s);
-    b.wsq[b.nw] = s; b.wpc[b.nw++] = NO_PIECE;
-}
-__device__ __forceinline__ void b_move(Board& b, int p, int from, int to) {
-    b.bt[type_of(p)] = (b.bt[type_of(p)] & ~bit(from)) | bit(to);
-    b.bc[color_of(p)] = (b.bc[color_of(p)] & ~bit(from)) | bit(to);
-    b.wsq[b.nw] = from; b.wpc[b.nw++] = NO_PIECE;
-    b.wsq[b.nw] = to; b.wpc[b.nw++] = p;
+// Toggles piece p on the squares of mask.
+__device__ __forceinline__ void b_xor(Board& b, int p, u64 mask) {
+    int t = type_of(p), c = color_of(p);
+#pragma unroll
+    for (int i = 0; i < 6; ++i)
+        if (i == t) b.bt[i] ^= mask;
+#pragma unroll
+    for (int i = 0; i < 2; ++i)
+        if (i == c) b.bc[i] ^= mask;
 }
 __device__ __forceinline__ void b_load(const Game* g, Board& b) {
+#pragma unroll
     for (int i = 0; i < 6; ++i) b.bt[i] = g->byType[i];
-    b.bc[0] = g->byColor[0]; b.bc[1] = g->byColor[1];
-    b.nw = 0;
+    b.bc[0] = g->byColor[0];
+    b.bc[1] = g->byColor[1];
 }
 __device__ __forceinline__ void b_store(Game* g, const Board& b) {
+#pragma unroll
     for (int i = 0; i < 6; ++i) g->byType[i] = b.bt[i];
-    g->byColor[0] = b.bc[0]; g->byColor[1] = b.bc[1];
-    for (int k = 0; k < b.nw; ++k) g->board[b.wsq[k]] = (u8)b.wpc[k];
+    g->byColor[0] = b.bc[0];
+    g->byColor[1] = b.bc[1];
 }
 
 // Position::do_move: plays a pseudo-legal move and returns whether it was legal.
@@ -315,54 +343,56 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc) {
     ++st.rule50;
     ++st.pliesFromNull;
     Delta d;
-    d.n = 0;
+    d.n = 2;
+    d.piece[0] = pc;
+    d.sq[0] = from;
+    d.sq[1] = to;
     if (st.ep != SQ_NONE) {
         st.key ^= Z_EP[st.ep & 7];
         st.ep = SQ_NONE;
     }
+    int arriving = pc, capSq = to, rookFrom = SQ_NONE, rookTo = SQ_NONE, rook = NO_PIECE;
     if (type == M_CASTLING) {
         bool kingside = to > from;
-        int rookFrom = kingside ? from + 3 : from - 4, rookTo = kingside ? from + 1 : from - 1;
-        int rook = g->board[rookFrom];
-        b_move(b, pc, from, to);
-        b_move(b, rook, rookFrom, rookTo);
-        d.sign[0] = -1; d.piece[0] = pc; d.sq[0] = from;
-        d.sign[1] = 1; d.piece[1] = pc; d.sq[1] = to;
-        d.sign[2] = -1; d.piece[2] = rook; d.sq[2] = rookFrom;
-        d.sign[3] = 1; d.piece[3] = rook; d.sq[3] = rookTo;
+        rookFrom = kingside ? from + 3 : from - 4;
+        rookTo = kingside ? from + 1 : from - 1;
+        rook = g->board[rookFrom];
+        b_xor(b, pc, bit(from) | bit(to));
+        b_xor(b, rook, bit(rookFrom) | bit(rookTo));
+        d.piece[2] = rook; d.sq[2] = rookFrom;
+        d.piece[3] = rook; d.sq[3] = rookTo;
         d.n = 4;
         st.key ^= Z_PSQ[pc][from] ^ Z_PSQ[pc][to] ^ Z_PSQ[rook][rookFrom] ^ Z_PSQ[rook][rookTo];
     } else {
-        int capSq = type == M_EN_PASSANT ? (us == 0 ? to - 8 : to + 8) : to;
+        if (type == M_EN_PASSANT) capSq = us == 0 ? to - 8 : to + 8;
         int captured = g->board[capSq];
         if (captured != NO_PIECE) {
-            b_remove(b, captured, capSq);
-            d.sign[d.n] = -1; d.piece[d.n] = captured; d.sq[d.n] = capSq; ++d.n;
+            b_xor(b, captured, bit(capSq));
+            d.piece[2] = captured; d.sq[2] = capSq;
+            d.n = 3;
             st.key ^= Z_PSQ[captured][capSq];
             st.captured = captured;
             st.rule50 = 0;
         }
-        b_move(b, pc, from, to);
-        d.sign[d.n] = -1; d.piece[d.n] = pc; d.sq[d.n] = from; ++d.n;
-        d.sign[d.n] = 1; d.piece[d.n] = pc; d.sq[d.n] = to; ++d.n;
+        b_xor(b, pc, bit(from) | bit(to));
         st.key ^= Z_PSQ[pc][from] ^ Z_PSQ[pc][to];
         if (type_of(pc) == PAWN) {
             st.rule50 = 0;
             if (type == M_PROMOTION) {
-                int promo = us * 6 + ((m >> 12) & 3) + KNIGHT;
-                b_remove(b, pc, to);
-                b_put(b, promo, to);
-                d.piece[d.n - 1] = promo; // the pawn arrives as the new piece
-                st.key ^= Z_PSQ[pc][to] ^ Z_PSQ[promo][to];
+                arriving = us * 6 + ((m >> 12) & 3) + KNIGHT; // the pawn arrives as the new piece
+                b_xor(b, pc, bit(to));
+                b_xor(b, arriving, bit(to));
+                st.key ^= Z_PSQ[pc][to] ^ Z_PSQ[arriving][to];
             } else if (to - from == 16 || from - to == 16) {
                 int ep = (from + to) / 2;
-                if (pawn_att(ep, us) & b.bc[them] & b.bt[PAWN]) {
+                if (pawn_att(ep, us) & (them ? b.bc[1] : b.bc[0]) & b.bt[PAWN]) {
                     st.ep = ep;
                     st.key ^= Z_EP[ep & 7];
                 }
             }
         }
     }
+    d.piece[1] = arriving;
     int castling = st.castling & castling_mask(from) & castling_mask(to);
     if (castling != st.castling) {
         st.key ^= Z_CASTLING[st.castling] ^ Z_CASTLING[castling];
@@ -371,6 +401,14 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc) {
     st.key ^= Z_SIDE[0];
     __syncwarp();
     b_store(g, b);
+    g->board[from] = NO_PIECE;
+    if (rook != NO_PIECE) {
+        g->board[rookFrom] = NO_PIECE;
+        g->board[rookTo] = rook;
+    } else if (capSq != to) {
+        g->board[capSq] = NO_PIECE; // en passant
+    }
+    g->board[to] = arriving;
     g->states[n] = st;
     g->nstates = n + 1;
     g->stm = them;
@@ -388,24 +426,36 @@ __device__ void undo_move(Game* g, u16 m) {
     int captured = g->states[n - 1].captured;
     Board b;
     b_load(g, b);
+    int moved = g->board[to], back = moved, capSq = to, rookFrom = SQ_NONE, rookTo = SQ_NONE, rook = NO_PIECE;
     if (type == M_CASTLING) {
         bool kingside = to > from;
-        int rookFrom = kingside ? from + 3 : from - 4, rookTo = kingside ? from + 1 : from - 1;
-        int king = g->board[to], rook = g->board[rookTo];
-        b_move(b, king, to, from);
-        b_move(b, rook, rookTo, rookFrom);
+        rookFrom = kingside ? from + 3 : from - 4;
+        rookTo = kingside ? from + 1 : from - 1;
+        rook = g->board[rookTo];
+        b_xor(b, moved, bit(to) | bit(from));
+        b_xor(b, rook, bit(rookTo) | bit(rookFrom));
     } else {
-        int p = g->board[to];
         if (type == M_PROMOTION) {
-            b_remove(b, p, to);
-            p = us * 6 + PAWN;
-            b_put(b, p, to);
+            back = us * 6 + PAWN; // the new piece goes, a pawn returns
+            b_xor(b, moved, bit(to));
+            b_xor(b, back, bit(to));
         }
-        b_move(b, p, to, from);
-        if (captured != NO_PIECE) b_put(b, captured, type == M_EN_PASSANT ? (us == 0 ? to - 8 : to + 8) : to);
+        b_xor(b, back, bit(to) | bit(from));
+        if (captured != NO_PIECE) {
+            if (type == M_EN_PASSANT) capSq = us == 0 ? to - 8 : to + 8;
+            b_xor(b, captured, bit(capSq));
+        }
     }
     __syncwarp();
     b_store(g, b);
+    g->board[to] = NO_PIECE;
+    if (rook != NO_PIECE) {
+        g->board[rookTo] = NO_PIECE;
+        g->board[rookFrom] = rook;
+    } else if (captured != NO_PIECE) {
+        g->board[capSq] = (u8)captured; // capSq is `to` unless en passant
+    }
+    g->board[from] = (u8)back;
     g->stm = us;
     g->fullmove = fm - (us == 1);
     g->accTop = top - 1;
@@ -1097,7 +1147,7 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     short* top = acc_slot(acc, g->accTop);
     int base = lane_id() * UNITS;
     for (int persp = 0; persp < 2; ++persp)
-        for (int j = 0; j < UNITS; ++j) acc[persp * H + base + j] = top[persp * H + base + j];
+        for (int c = 0; c < UNITS; c += 8) store8(acc + persp * H + base + c, load8(top + persp * H + base + c));
     int pl = g->ply;
     __syncwarp();
     g->accTop = 0;
