@@ -34,7 +34,9 @@ typedef unsigned char u8;
 #define QB 64
 #define EVAL_SCALE 400
 #define MAX_STATES 768 // a 600-ply match game, the start, and the deepest search (MAX_PLY), with room to spare
-#define TT_BITS 16     // 65,536 entries of 16 bytes: 1 MB per game, like gpu/ref.cpp
+#ifndef TT_BITS
+#define TT_BITS 16     // 65,536 entries of 16 bytes: 1 MB per game, like gpu/ref.cpp (GPU_TT_BITS sets it)
+#endif
 #define ACC_SLOTS (MAX_PLY + 2)
 #define MAX_SAMPLES 400
 #define MAX_PLIES 400

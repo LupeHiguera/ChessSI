@@ -31,9 +31,8 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from datagen import DEFAULTS, PARAMS, GpuDatagen, compact, make_params, wait  # noqa: E402
+from datagen import DEFAULTS, PARAMS, TT_BITS, GpuDatagen, compact, make_params, wait  # noqa: E402
 
-TT_BITS = 16
 # Each constant's lowest and highest value, and its step at the end of the run (c_end).
 SPACE = {
     "rfpDepth": (1, 10, 1), "rfpMargin": (40, 400, 15),

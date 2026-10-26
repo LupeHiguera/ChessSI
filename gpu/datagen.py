@@ -36,7 +36,9 @@ def wait():
         time.sleep(0.001)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MAX_SAMPLES, MAX_PLIES, MAX_PLY, TT_BITS, START_BYTES = 400, 400, 128, 16, 72
+MAX_SAMPLES, MAX_PLIES, MAX_PLY, START_BYTES = 400, 400, 128, 72
+# Each game's table has 2^TT_BITS entries of 16 bytes: 1 MB at 16, like gpu/ref.cpp's default.
+TT_BITS = int(os.environ.get("GPU_TT_BITS", 16))
 PIECES = "PNBRQKpnbrqk"
 SAMPLE = np.dtype([("board", "u1", 64), ("stm", "u1"), ("castling", "u1"), ("ep", "u1"), ("pad", "u1"),
                    ("rule50", "<i2"), ("fullmove", "<i2"), ("score", "<i2"), ("eval", "<i2"), ("pad2", "<i4")])
@@ -163,7 +165,7 @@ class GpuDatagen:
     def __init__(self, net_path, capacity):
         self.h, ftw, ftb, outw, self.outb = load_net(net_path)
         src = open(os.path.join(HERE, "datagen.cu")).read()
-        options = ("--std=c++17", f"-DH={self.h}")
+        options = ("--std=c++17", f"-DH={self.h}", f"-DTT_BITS={TT_BITS}")
         # Registers per thread: the search wants 176, which fits two 4-warp blocks per SM; capped at 168,
         # three fit, and that measured fastest (GPU_MAXRREG overrides; 0 leaves it to the compiler).
         maxrreg = int(os.environ.get("GPU_MAXRREG") or 168)
