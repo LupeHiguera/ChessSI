@@ -54,6 +54,8 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-24 | Claude Opus 5.5 | Known + Novel | Training-only HL-Gauss histogram head, 51 bins, weight 0.01 (`--hl-weight 0.01`), net9's recipe on its frozen data snapshot, vs net9 | Failed | −49.3 ± 14.9 | 1,014 (12 concurrent, cores 0-12) | Not run |
 | 2026-10-24 | Claude Opus 5.5 | Known | Time management: scale the soft limit by best-move stability (2.50 to 0.75 over 0-4+ iterations) and score trend (2^(drop/100)), after Stash v26, with the zero-time fix below it (`claude/tm-stability`) | Passed | +15.1 ± 7.3 | 3,150 (12 concurrent, cores 0-12) | Inconclusive at 600-game cap, +12.2 ± 17.7 |
 | 2026-10-24 | Claude Opus 5.5 | Novel | Correction history keyed by the on/off signs of 14 accumulator units (the cloud research's proposal), offline gate: out-of-sample R² of net9's eval error (5,000-node search score minus static eval) on 1M generation-6 positions, against random, pawn, material and eval-value keys of the same 16,384 buckets | Failed (offline gate) | Not run | 0 (R² ≤ 0 on positions within 200 cp, where pawns reach +0.016 and material +0.020 within games) | Not run |
+| 2026-10-24 | Claude Opus 5.5 | Known | Lazy SMP: helper threads on copies of the position sharing the TT (owner's decision), measured as 4 threads against 1 in the same binary (`eb10c7b`), 10+0.1, Hash 64 | Passed (fixed 400-game match, not an SPRT) | +129.0 ± 20.6 | 400 (2 concurrent × 5 threads, cores 0-12) | Not run |
+| 2026-10-24 | Claude Opus 5.5 | Known | net10's recipe at 512 hidden units on net10's data (validation 0.00679 against 0.00696), vs net10 at 256 | Inconclusive (stopped at 8,116 games: any gain is small, and h512 searches about 40% slower) | +3.4 ± 4.8 | 8,116 (12 concurrent, cores 0-12) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -483,8 +485,6 @@ each result here with the date, the commit and its bench.
 | 2026-10-23 | `cdfc298` (net7) | 264979 | Stash 19, 20.0.1, 21, 25, 27, 30, 31, 33, 34, 36 (CCRL Blitz 2474-3375) | 959 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 0-3) | **3150 ± 26** |
 | 2026-10-23 | `d2b1e25` (net8, SEE in quiescence) | 137954 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 600 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 6-9) | 3176 ± 29 |
 | 2026-10-24 | `7af0aae` (net10, speed series) | 158506 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 1,200 at 10+0.1, 8moves_v3 book, 12 concurrent (cores 0-12) | **3284 ± 21** |
-| 2026-10-24 | Claude Opus 5.5 | Known | Lazy SMP: helper threads on copies of the position sharing the TT (owner's decision), measured as 4 threads against 1 in the same binary (`eb10c7b`), 10+0.1, Hash 64 | Passed (fixed 400-game match, not an SPRT) | +129.0 ± 20.6 | 400 (2 concurrent × 5 threads, cores 0-12) | Not run |
-| 2026-10-24 | Claude Opus 5.5 | Known | net10's recipe at 512 hidden units on net10's data (validation 0.00679 against 0.00696), vs net10 at 256 | Inconclusive (stopped at 8,116 games: any gain is small, and h512 searches about 40% slower) | +3.4 ± 4.8 | 8,116 (12 concurrent, cores 0-12) | Not run |
 
 The 2026-10-22 gauntlet used a balanced book (`8moves_v3`), not the SPRT book: UHO openings give one
 side an edge, which stretches rating gaps. Run it with `scripts/gauntlet.sh`. The ± is statistical
