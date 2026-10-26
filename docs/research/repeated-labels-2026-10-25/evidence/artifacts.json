@@ -1,0 +1,58 @@
+[
+  {
+    "archived": true,
+    "bytes": 21781,
+    "path": "docs/research/repeated-labels-2026-10-25/evidence/analyzer-v1.py",
+    "sha256": "dde4cc71aa46f57eea8beb80cd4ebc80c4f1be3e5e0e53bf78c5399689145583"
+  },
+  {
+    "archived": true,
+    "bytes": 500,
+    "path": "docs/research/repeated-labels-2026-10-25/evidence/interruption.json",
+    "sha256": "d8fdc02d8734c670001a36cbf0967aab8c65ded843a05872d6ad6541f5abece3"
+  },
+  {
+    "archived": true,
+    "bytes": 34204,
+    "path": "docs/research/repeated-labels-2026-10-25/evidence/manifest.json",
+    "sha256": "7868afb3a2bd2cd49f7fe9153e7ac3660c9b031b3b3de307f9999781bd94b0ca"
+  },
+  {
+    "archived": true,
+    "bytes": 2161,
+    "path": "docs/research/repeated-labels-2026-10-25/evidence/per_identity.jsonl",
+    "sha256": "467a2616f3f213f8c40277ad0f34cbe3bb3d426ff42f145a81c7cac83610db12"
+  },
+  {
+    "archived": true,
+    "bytes": 26507,
+    "path": "docs/research/repeated-labels-2026-10-25/evidence/plan.json",
+    "sha256": "f1cdfbf326ad05f58e936f45fbc7162b309247de44748cee8701696df8f7dc3b"
+  },
+  {
+    "archived": true,
+    "bytes": 9000,
+    "path": "docs/research/repeated-labels-2026-10-25/evidence/summary.json",
+    "sha256": "070bac3299e9fdeb38312282f7cb48dc438632d2e0ccf344341fd1a5083de707"
+  },
+  {
+    "archived": true,
+    "bytes": 857,
+    "path": "docs/research/repeated-labels-2026-10-25/evidence/validation.json",
+    "sha256": "eb0a25e5ddcbe47dd4534b72e1b84c822166d83371b2ca4bc4151fccfb573bf9"
+  },
+  {
+    "archived": false,
+    "bytes": 517931008,
+    "path": "engines/repeated-labels-20261025/analysis-v2/pilot.sqlite",
+    "reason": "large bounded derivative retained locally; immutable input hashes are in manifest",
+    "sha256": "e05f91d24a0abf64aadd53c0562ba3e6ba9c3fb6e82b303d08eba988676d5219"
+  },
+  {
+    "archived": false,
+    "bytes": 260315575,
+    "path": "engines/repeated-labels-20261025/analysis-v2/static_ranges.jsonl",
+    "reason": "large bounded derivative retained locally; immutable input hashes are in manifest",
+    "sha256": "8ef36bed0acfe9575fb6d6bbb479c9b195fd406548bf33c332bc7dff096645a1"
+  }
+]

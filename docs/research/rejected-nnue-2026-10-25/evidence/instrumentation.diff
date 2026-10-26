@@ -1,0 +1,47 @@
+--- src/position.cpp
++++ instrumented/src/position.cpp
+@@ -1,3 +1,19 @@
++
++#include <cstdio>
++namespace {
++struct RejectedMoveAudit {
++    unsigned long long moves[2][4][2]{};
++    unsigned long long updates[2][4][2]{};
++    unsigned long long laneOps[2][4][2]{};
++    ~RejectedMoveAudit() {
++        for (int c = 0; c < 2; ++c)
++            for (int t = 0; t < 4; ++t)
++                for (int l = 0; l < 2; ++l)
++                    std::fprintf(stderr, "REJECT_AUDIT %d %d %d %llu %llu %llu\n",
++                                 c, t, l, moves[c][t][l], updates[c][t][l], laneOps[c][t][l]);
++    }
++} rejectedMoveAudit;
++}
+ #include "position.h"
+ 
+ #include "nnue.h"
+@@ -234,6 +250,7 @@
+ }
+ 
+ bool Position::do_move(Move m) {
++    const bool auditParentCheck = in_check();
+     StateInfo prev = states.back();
+     states.push_back(prev);
+     StateInfo& st = states.back();
+@@ -314,7 +331,15 @@
+     // update runs.
+     TT.prefetch(st.key);
+     push_accumulator(delta);
+-    return !attacked(king_square(us), them);
++    const bool auditLegal = !attacked(king_square(us), them);
++    const int auditType = type >> 14;
++    ++rejectedMoveAudit.moves[auditParentCheck][auditType][auditLegal];
++    if (accGeneration) {
++        ++rejectedMoveAudit.updates[auditParentCheck][auditType][auditLegal];
++        rejectedMoveAudit.laneOps[auditParentCheck][auditType][auditLegal]
++            += 2ULL * accHidden * (delta.adds + delta.subs);
++    }
++    return auditLegal;
+ }
+ 
+ void Position::undo_move(Move m) {

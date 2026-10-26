@@ -1,0 +1,5 @@
+# Preserve hashes and intentional whitespace in verbatim measurement evidence.
+* -text
+*.stdout -whitespace
+*.stderr -whitespace
+*.diff -whitespace

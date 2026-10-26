@@ -183,6 +183,11 @@ def load_file(path, cache_dir, frozen=False):
     return {k: np.concatenate([c[k] for c in chunks]) for k in FIELDS} if chunks else None
 
 
+def count_games(game):
+    """Distinct game numbers in a non-decreasing array (the games with a position kept)."""
+    return int(len(game) > 0) + int(np.count_nonzero(game[1:] != game[:-1]))
+
+
 def per_file(d, game_base, future_plies):
     """Game numbers (from game_base), the win probability future_plies later and each game's stable
     key, for one file's raw arrays. Games never span files, so this is the same per file as over
@@ -203,6 +208,23 @@ def per_file(d, game_base, future_plies):
     starts = np.flatnonzero(np.r_[True, game[1:] != game[:-1]])
     gkey = d["keys"][starts][game - game[0]]
     return game, future, gkey
+
+
+def first_occurrences(keys, parts=8):
+    """np.unique(keys, return_index=True)[1], sorted: the index of each key's first occurrence. Equal
+    keys share their top bits, so the keys are split into `parts` ranges by those bits and each range
+    is deduplicated alone, which needs a fraction of the memory of one np.unique over everything."""
+    shift = np.uint64(64 - int(math.log2(parts)))
+    top = (keys.view(np.uint64) >> shift).astype(np.uint8)
+    firsts = []
+    for part in range(parts):
+        idx = np.flatnonzero(top == part)
+        _, f = np.unique(keys[idx], return_index=True)
+        firsts.append(idx[f])
+    del top
+    first = np.concatenate(firsts)
+    first.sort()
+    return first
 
 
 def load(paths, cache_dir=None, future_plies=8, frozen=False, moves=False):
@@ -226,13 +248,13 @@ def load(paths, cache_dir=None, future_plies=8, frozen=False, moves=False):
         game, future, gkey = per_file(d, game_base, future_plies)
         game_base = int(game[-1]) + 1
         small.append({"keys": d["keys"], "white": d["white"], "scores": d["scores"], "results": d["results"],
-                      "game": game, "future": future, "gkey": gkey})
+                      "game": game.astype(np.int32), "future": future, "is_val": gkey % 50 == 0})
         used.append((path, len(game)))
-        del d  # the features are read again below, file by file
-    d = {k: np.concatenate([p.pop(k) for p in small]) for k in ("keys", "white", "scores", "results", "game", "future", "gkey")}
-    _, first = np.unique(d.pop("keys"), return_index=True)
-    first.sort()
-    out = {k: d.pop(k)[first] for k in ("white", "scores", "results", "game", "future", "gkey")}
+        del d, game, gkey  # the features are read again below, file by file
+    d = {k: np.concatenate([p.pop(k) for p in small]) for k in ("keys", "white", "scores", "results", "game", "future", "is_val")}
+    first = first_occurrences(d.pop("keys"))
+    out = {k: d.pop(k)[first] for k in ("white", "scores", "results", "future", "is_val")}
+    out["ngames"] = count_games(d.pop("game")[first])
 
     # Every file is cached by now, so frozen reads return exactly what was just used. The kept
     # positions are stored compactly (see encode) as each file is read.
@@ -261,11 +283,10 @@ def load_at_once(paths, cache_dir=None, future_plies=8, frozen=False, moves=Fals
         parts.append(d)
     d = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
 
-    _, first = np.unique(d["keys"], return_index=True)
-    first.sort()
+    first = first_occurrences(d["keys"])
     out = {"feats": d["feats"][first], "white": d["white"][first], "scores": d["scores"][first],
-           "results": d["results"][first], "game": d["game"][first], "future": d["future"][first],
-           "gkey": d["gkey"][first]}
+           "results": d["results"][first], "future": d["future"][first], "is_val": d["gkey"][first] % 50 == 0,
+           "ngames": count_games(d["game"][first])}
     if moves:
         pfrom, pto = played_moves(d)
         out["pfrom"], out["pto"] = pfrom[first], pto[first]
@@ -412,11 +433,11 @@ def main():
     # positions on both sides, and the same games stay held out as data grows and from one network
     # generation to the next. Networks trained before this split (net8 and earlier) used a random
     # one, so they did train on some of these games. --seed now sets only initialisation and order.
-    games = np.unique(d["game"])
-    is_val = d["gkey"] % 50 == 0
+    games = d.pop("ngames")
+    is_val = d.pop("is_val")
     val, train = np.flatnonzero(is_val), np.flatnonzero(~is_val)
     moves_text = f"; {np.mean(d['pfrom'] >= 0):.0%} have the played move" if policy else ""
-    print(f"{n} unique positions from {len(games)} games ({len(train)} train, {len(val)} validation), "
+    print(f"{n} unique positions from {games} games ({len(train)} train, {len(val)} validation), "
           f"loaded in {time.time() - t0:.0f}s{moves_text}", flush=True)
 
     dev = torch.device("cuda")
