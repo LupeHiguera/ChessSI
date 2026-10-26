@@ -222,6 +222,17 @@ Proposals:
   out, so it screens networks of one size; changes that affect speed still need a time-based SPRT.
   Its search also generates training data: byte-identical to `chesssi datagen` from the same
   positions, at about the 13 CPU cores' rate on an RTX 5080.
+  **GPU SPSA (2026-10-25, `gpu/spsa.py`, PR #35). Novel as far as we found.** The 17 constants that
+  `src/search.cpp` writes inline are a `Params` struct in the GPU search, with one set per side and game.
+  fishtest's SPSA then runs on the GPU as game pairs, theta + c*delta against theta - c*delta: 800
+  games at once, about 5.8 pairs a second at 50,000 nodes a move on an RTX 5080, so 30,000 pairs take
+  90 minutes. Prior art checked on 2026-10-25: SPSA is standard for engines (Kiiski 2011, fishtest,
+  OpenBench), and GPU chess searches exist (Zeta, Tinsmith, ChessGPU), but we found no tuning games run
+  on a GPU, and no GPU port of an engine's search checked byte for byte against the CPU. Exported values
+  first pass a parity check, `gpu/ref.cpp` built with them against GPU datagen with the same values,
+  line for line: identical for spsa1, 200 games and 12,147 lines. Then they get a CPU SPRT at 10+0.1
+  (see the log). Fixed-node games are much shorter than the CPU's, so the SPRT, not the tuning,
+  decides.
 - **GPU teacher for data (phase 3).** Data generation is CPU-bound. Train a larger network on the GPUs
   from our own games and use it to relabel positions in large batches, so the CPU plays games and the
   GPU supplies the evaluation targets. **Known** (prior art found by the cloud research, PR #16):
