@@ -57,6 +57,11 @@ int pawn_index(const Position& pos) {
 
 int threadCount = 1; // the UCI Threads option
 
+// The main thread's quiet-move history, [side to move][from][to]. It is kept between searches and
+// halved at the start of each one, so what the last search learned still orders moves but fades.
+// Helper threads keep their own, fresh for each search.
+int mainHistory[2][64][64];
+
 struct Searcher {
     Position& pos;
     SearchLimits limits;
@@ -74,7 +79,8 @@ struct Searcher {
     Move pv[MAX_PLY + 1][MAX_PLY + 1];
     int pvLength[MAX_PLY + 1];
     Move killers[MAX_PLY + 1][2] = {};
-    int history[2][64][64] = {}; // [side to move][from][to], quiet moves only
+    int ownHistory[2][64][64] = {};      // [side to move][from][to], quiet moves only
+    int (*history)[64][64] = ownHistory; // the main thread's points to mainHistory
     int ownCorrHist[2][CorrHistSize] = {};
     int (*corrHist)[CorrHistSize] = ownCorrHist; // the main thread's points to mainCorrHist
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
@@ -527,6 +533,7 @@ struct Searcher {
 
 void Search::clear() {
     TT.clear();
+    std::fill(&mainHistory[0][0][0], &mainHistory[0][0][0] + 2 * 64 * 64, 0);
     std::fill(&mainCorrHist[0][0], &mainCorrHist[0][0] + 2 * CorrHistSize, 0);
 }
 
@@ -536,7 +543,12 @@ void Search::set_threads(int n) {
 
 SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbose) {
     TT.new_search();
+    for (auto& side : mainHistory)
+        for (auto& from : side)
+            for (int& h : from)
+                h /= 2;
     Searcher s(pos, limits);
+    s.history = mainHistory;
     s.corrHist = mainCorrHist;
     s.set_time_limits();
     SearchResult result;
