@@ -65,6 +65,8 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-26 | Claude Opus 5.5 | Known | TT replacement by depth and age (`claude/tt-replacement`, on top of correction history, with net10): an entry from the current search stays unless the new one, for another position, is at least as deep; entries from earlier searches always give way. Stash +7.5 ± 5.0. A first pre-screen against the tuned engine (−14.5 ± 17.5) had skipped it under the old gate | Passed | +5.0 ± 3.6 | 11,304 (17 concurrent, cores 0-12 and 14-19) | +8.7 ± 16.6, 600 games, no verdict |
 | 2026-10-26 | Claude Opus 5.5 | Known | Eight material output buckets (by piece count) on net11's data and recipe (537.6M positions), vs net11 in one binary built from PR #49 (`claude/output-buckets2`) | Failed | −0.5 ± 2.8 | 21,824 (17 concurrent, cores 0-12 and 14-19) | Validation loss 0.00709, net11 0.00711 |
 | 2026-10-26 | Claude Opus 5.5 | Known | Losing captures last (`claude/bad-captures-last`): captures that lose material by SEE come after the killers and quiet moves instead of with the winning captures; quiescence keeps its order. Stash +17.9 | Passed | +30.4 ± 10.4 | 1,488 (17 concurrent, cores 0-12 and 14-19) | +24.9 ± 16.7, 600 games, no verdict |
+| 2026-10-27 | Claude Opus 5.5 | Known | History decay (`claude/history-decay`, on top of losing captures last): the main thread keeps its quiet-move history between searches, halved at each new one, instead of clearing it | Inconclusive (stopped at LLR −1.08 so net12's SPRT could run; at most about +3) | +0.7 ± 2.7 | 19,978 (17 concurrent, cores 0-12 and 14-19) | +8.7 ± 17.1, 600 games, no verdict |
+| 2026-10-27 | Claude Opus 5.5 | Known | net12: net11's recipe on generation 8 only, 436.4M unique positions from net11's self-play (81% of net11's volume and none of its data) | Passed | +32.1 ± 10.8 | 1,420 (17 concurrent, cores 0-12 and 14-19) | GPU match +38.3 ± 10.8, 2,048 games at 20,000 nodes |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -140,8 +142,8 @@ first network is in, since pruning margins are in eval units and must be recheck
     retest keeps the table and halves it at each search, like item 19's history: ready on
     `claude/conthist2`, stacked on `claude/history-decay`)*
 19. Keep killers and history between moves (they reset on every `go`) - *Claude Code (history
-    without decay failed its pre-screen, −9.9 ± 18.5; halving it at each new search is ready on
-    `claude/history-decay`)*
+    without decay failed its pre-screen, −9.9 ± 18.5; halving it at each new search was
+    inconclusive, +0.7 ± 2.7 over 19,978 games)*
 20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets - *Claude
     Code (singular extensions with multi-cut ready on `claude/singular`, stacked on TT replacement)*
 21. Hard time limit capped below the remaining clock; node-fraction time management - *Claude Code

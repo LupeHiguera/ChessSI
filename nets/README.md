@@ -7,6 +7,23 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net12-h256.nnue
+
+- **SHA-256:** `d2a7b6cc3a067149d9804ca2daacc217eb5dcfef9bbf1ad7fa67aa159d7bef97`
+- **Data:** 436,375,660 unique positions from 5,018,027 games, all self-play (no games against other
+  engines) and all from generation 8: 505.6M lines of `gpu/datagen.py` with net11 at 5,000 nodes a
+  move (8 random plies, a 1 MB table per game) on 2026-10-26, at `f17c54e` and `226d4b9` (identical
+  datagen). From the RTX 5060 Ti, all 345.6M lines of seeds 401 and 403; from the RTX 5080, the first
+  160M lines of seed 402. None of net11's data: fresher data at 81% of net11's volume.
+- **Training:** net11's recipe: `train.py <data files> net12-h256.nnue --hidden 256 --epochs 20 --seed 1
+  --cache-dir <dir> --aux-weight 1.0 --future-plies 4 --gpu-data-gb 0` at `fa027d2`. The files went in
+  as 20M-line pieces, because parsing a 329M-line file at once ran out of WSL's 46 GB; peak RSS was
+  26.2 GB. Validation loss is 0.00678, not comparable with net11's 0.00711 (other validation games).
+  It took 2 h 34 min on an RTX 5060 Ti, after 65 min of loading.
+- **Result:** replaced net11, +32.1 ± 10.8 Elo, SPRT [0, 5] at 10+0.1, H1 after 1,420 games (both
+  networks loaded in the same binary, 17 concurrent). A GPU match at 20,000 nodes a move gave
+  +38.3 ± 10.8 (2,048 games).
+
 ## net11-h256.nnue
 
 - **SHA-256:** `23d10429e403d2ff6ea15bbb19345e5982d6c617f2ff8ad6d1e161edae82f938`
