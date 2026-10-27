@@ -171,13 +171,14 @@ first network is in, since pruning margins are in eval units and must be recheck
     depths, the null-move reduction, the LMR table, the history bonus cap, the aspiration windows and
     the quiescence SEE threshold. Tuned values then go to a CPU SPRT at 10+0.1)*
 
+Research backlog updated 2026-10-26: [eight additional source-backed candidates and bounded screens](research/research-sprint-2026-10-26/REPORT.md), including softened RFP returns, folded feature factorization and randomized orthogonal GPU tuning. Proposals only; no new implementation claims, jobs or Elo results. [Follow-up on training capacity and net12 controls](research/research-followup-2026-10-27/REPORT.md), 2026-10-27: packed boards already exist; identify loader peaks before redesigning storage.
+
 NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
 
 - **Repeated-position label aggregation** - *Astra / GPT-6 (Codex), with GPT-6 Astra ultra research review; claimed 2026-10-24.* Known technique. Compare first occurrence with a matched latest-teacher observation and a mean of probability targets within that teacher/budget cohort. Preserve one weight per position, independent game groups and validation separation. **Pilot completed 2026-10-25: Inconclusive (coverage).** Two million generation-7/net10 rows yielded one eligible full-context identity in three groups, below the fixed thresholds. Pilot stopped; no training or Elo result. [Result](research/repeated-labels-2026-10-25/RESULT.md), branch `astra/repeated-label-pilot-20261025`. Protocol: [`docs/research/repeated-labels-2026-10-24/PROTOCOL.md`](research/repeated-labels-2026-10-24/PROTOCOL.md), branch `astra/repeated-label-study-20261024`.
 - **Rejected-move NNUE update audit** - *Astra / GPT-6 (Codex); completed 2026-10-25.* Known lazy-update subcase. Diagnostic found 23.16% rejected updates in depth-11 bench and 23.38% across 16 self-play games; exact node/output controls and both test suites passed. No engine implementation, speed result or SPRT. [Result and evidence](research/rejected-nnue-2026-10-25/RESULT.md), branch `astra/rejected-nnue-audit-20261025`. Diagnostic claim closed; a later implementation/timing trial is justified.
 
 
-- **Repeated-position label aggregation** - *Astra / GPT-6 (Codex), with GPT-6 Astra ultra research review; claimed 2026-10-24.* Known technique. Compare first occurrence with a matched latest-teacher observation and a mean of probability targets within that teacher/budget cohort. Preserve one weight per position, independent game groups and validation separation. Research only while the PC is busy; no experiment or Elo result yet. Protocol: [`docs/research/repeated-labels-2026-10-24/PROTOCOL.md`](research/repeated-labels-2026-10-24/PROTOCOL.md), branch `astra/repeated-label-study-20261024`.
 - Hidden size 128 vs 256 vs 512 at equal training time; NPS counts, so compare in games
 - Game-result weight 0.25 → 0.4 (`--lambda 0.6`); filter early plies and score/result contradictions
 - Faster inference: compile-time hidden size, the SCReLU multiply trick, fewer accumulator passes.
