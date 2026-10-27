@@ -6,8 +6,8 @@ what each AI model can actually do in research.
 
 ## Status
 
-Phase 3 of 5 (neural evaluation), with phase 4's tuning and data work under way. Measured rating, on
-the CCRL Blitz scale:
+Phase 4 of 5 (refinement: tuning, more data and bigger networks), less than a week after the project
+started on 2026-10-22. Measured rating, on the CCRL Blitz scale:
 
 | Date | Engine | Rating | Games |
 | --- | --- | --- | --- |
@@ -26,6 +26,19 @@ replacement by depth and age (+5.0). Past gauntlets kept 55-81% of self-play gai
 engines, so the engine is estimated at **about 3430 (3400-3460)**, not yet measured: the next gauntlet
 needs opponents above 3400.
 
+Against the [original plan](docs/PLAN.md), which expected this level after six months to a year:
+
+| Phase | Planned | Reached |
+| --- | --- | --- |
+| 1 · Working engine, ~2000 | Weeks 1-2 | 2026-10-22: 2440, measured |
+| 2 · Classical engine, 2800-3000 | Months 1-2 | Its search work was done on 2026-10-22; the network replaced PeSTO on 2026-10-23, so this band was passed with NNUE |
+| 3 · Neural evaluation, 3200-3400 | Months 2-5 | 2026-10-23: 3150, measured; 2026-10-24: 3284, measured |
+| 4 · Refinement, 3400-3500+ | Months 6-12+ | 2026-10-27: about 3430, estimated |
+| 5 · The final gap, Stockfish level | A year or more | Not started |
+
+The plan expected compute to set the pace from phase 3 on. The GPU tools below changed how much there
+is: the GPUs now generate the training data and play the tuning games.
+
 The engine:
 
 - **Moves:** magic-bitboard move generation, verified against known perft counts.
@@ -38,23 +51,30 @@ The engine:
 - **Move ordering:** killer moves, a history heuristic, and losing captures after the quiet moves.
 - **Evaluation:** NNUE, (768 → 256) × 2 → SCReLU → 1, compiled into the binary, plus pawn correction
   history, which learns during a game how far the network is off for each pawn structure.
-  - The network is trained only on ChessSI's own games. The default, net12, saw 436.4M positions, all from net11's self-play; the
-    history is in [nets/README.md](nets/README.md).
+  - The network is trained only on ChessSI's own games. The default, net12, saw 436.4M positions,
+    all from net11's self-play on the GPUs; the history is in [nets/README.md](nets/README.md).
   - The output layer is vectorized by hand (AVX2 and AVX-VNNI).
   - PeSTO tables are the fallback.
-- **GPU tools:** a CUDA port of the search (`gpu/`) plays thousands of self-play games at once for
-  training data, about 15,000 positions a second on an RTX 5080, and tunes search constants by SPSA.
+- **GPU tools:** a CUDA port of the search (`gpu/`), byte-identical to the CPU's, plays thousands of
+  games at once. It generates training data at about 13,000 positions a second on an RTX 5080, 1.6×
+  the 13 CPU cores ([gpu/README.md](gpu/README.md)); it made all of net12's data. It also plays
+  fixed-node matches between networks and tunes search constants by SPSA.
 - **Bench:** `69980` nodes.
 
 Research so far:
 
-- **A novel idea passed.** A training-only auxiliary head, dropped when the network is exported,
-  gained **+53.2 ± 15.6** Elo and **+34.6 ± 12.2** on a second data snapshot. Ablations show it works
-  as an extra low-noise target for the network (the search score), not as lookahead.
-- **Search tuning on the GPU.** SPSA on the CUDA search port tuned 17 search constants in 90 minutes
-  of games at 50,000 nodes a move, worth **+40.4 ± 11.7** Elo in CPU games at 10+0.1.
-- **Fresher data beat more data.** net12 trained only on net11's games, on 19% fewer positions than
-  net11, and still gained **+32.1 ± 10.8** Elo over it.
+- **A novel method passed: search tuning on the GPU.** SPSA on the CUDA search port tuned 17 search
+  constants in 90 minutes of games at 50,000 nodes a move, worth **+40.4 ± 11.7** Elo in CPU games
+  at 10+0.1. Logged as Novel: the prior-art check found no tuning games run on a GPU, and no GPU port
+  of an engine's search checked byte for byte against the CPU.
+- **An idea from Go transferred.** A training-only auxiliary head, dropped when the network is
+  exported, gained **+53.2 ± 15.6** Elo and **+34.6 ± 12.2** on a second data snapshot. Ablations
+  show it works as an extra low-noise target for the network (the search score), not as lookahead.
+  First logged as Novel, it was relabelled Partially known on 2026-10-25: KataGo has trained
+  auxiliary value heads since 2020, though no strong chess engine was found using one.
+- **Newer data beat more data.** net12 trained only on net11's games, on 19% fewer positions than
+  net11, and still gained **+32.1 ± 10.8** Elo over it. It changed both the data's age and its
+  teacher, so it does not isolate recency.
 - **Every idea is logged, pass or fail,** with the AI model that proposed it. Claude Code and Astra
   (GPT-6) have tested ideas side by side on the same PC, and Grok 4.7 (via Cursor) reviews plans
   on the coordination issue.
