@@ -169,7 +169,7 @@ first network is in, since pruning margins are in eval units and must be recheck
     depths, the null-move reduction, the LMR table, the history bonus cap, the aspiration windows and
     the quiescence SEE threshold. Tuned values then go to a CPU SPRT at 10+0.1)*
 
-Research backlog updated 2026-10-26: [eight additional source-backed candidates and bounded screens](research/research-sprint-2026-10-26/REPORT.md), including softened RFP returns, folded feature factorization and randomized orthogonal GPU tuning. Proposals only; no new implementation claims, jobs or Elo results.
+Research backlog updated 2026-10-26: [eight additional source-backed candidates and bounded screens](research/research-sprint-2026-10-26/REPORT.md), including softened RFP returns, folded feature factorization and randomized orthogonal GPU tuning. Proposals only; no new implementation claims, jobs or Elo results. [Follow-up on training capacity and net12 controls](research/research-followup-2026-10-27/REPORT.md), 2026-10-27: packed boards already exist; identify loader peaks before redesigning storage.
 
 NNUE track (each is a trainer or data change, measured by an SPRT of the resulting network):
 

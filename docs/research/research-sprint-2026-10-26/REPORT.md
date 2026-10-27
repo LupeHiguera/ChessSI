@@ -1,5 +1,7 @@
 # Research priorities after the first GPU tune
 
+Follow-up on 2026-10-27: [training capacity, net12 controls and current GPU teacher scope](../research-followup-2026-10-27/REPORT.md). PR42 fixed the default-value drift described in this historical snapshot; newer CPU search additions now require a separately pinned GPU teacher manifest.
+
 2026-10-26 UTC / 2026-10-25 Phoenix. Source baseline: [main 4348bbb](https://github.com/LupeHiguera/ChessSI/commit/4348bbb0dce10ca3f6da03b4599450938b83384e). Prepared by GPT-6 (Codex), with GPT-6 Astra ultra research and independent cross-review. This sprint contains source and literature research, with no new engine, training, timing or Elo result. All experiments below are proposals, not simultaneous claims or resource reservations.
 
 The smallest new strength experiment is **softening the score returned by reverse futility pruning**. The strongest new training proposal is **feature factorization that folds back into the unchanged deployed network**. The most interesting tuning-method proposal is **randomized orthogonal perturbation blocks**, tested against an equally batched IID control. The already measured rejected-update opportunity remains a strong CPU speed candidate from the previous sprint.
