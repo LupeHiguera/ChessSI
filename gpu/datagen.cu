@@ -34,7 +34,9 @@ typedef unsigned char u8;
 #define QB 64
 #define EVAL_SCALE 400
 #define MAX_STATES 768 // a 600-ply match game, the start, and the deepest search (MAX_PLY), with room to spare
-#define TT_BITS 16     // 65,536 entries of 16 bytes: 1 MB per game, like gpu/ref.cpp
+#ifndef TT_BITS
+#define TT_BITS 16     // 65,536 entries of 16 bytes: 1 MB per game, like gpu/ref.cpp (GPU_TT_BITS sets it)
+#endif
 #define ACC_SLOTS (MAX_PLY + 2)
 #define MAX_SAMPLES 400
 #define MAX_PLIES 400
@@ -1163,6 +1165,28 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     g->ply = pl + 1;
     __syncwarp();
     PE(10)
+}
+
+// Rescoring (gpu/datagen.py rescore, as gpu/ref.cpp's score mode): one search per position from a cold
+// start: datagen_setup has cleared the game's table, think_start gives a fresh Searcher, and the search's
+// score goes to scores[], White-relative. The game is then done.
+extern "C" __global__ void score_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
+                                      const Params* params, short* accs, TTEntry* tts, unsigned long long nodes,
+                                      unsigned long long budget, int* scores) {
+    Net net = {ftw, ftb, outw, outb};
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    if (w >= n) return;
+    Game* g = games + w;
+    if (g->done) return;
+    short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
+    TTEntry* tt = tts + ((size_t)w << TT_BITS);
+    if (g->thinkState == T_IDLE) think_start(g, nodes);
+    if (!think_run(g, net, *params, acc, tt, budget)) return;
+    int score = g->thinkScore, white = g->stm == 0 ? score : -score;
+    __syncwarp();
+    if (lane_id() == 0) scores[w] = white;
+    g->done = 1;
+    __syncwarp();
 }
 
 // ---- Host interface ----

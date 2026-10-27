@@ -37,14 +37,24 @@ Throughput with net10 at 5,000 nodes a move:
 
 | GPU | Games in flight | Positions per second | Nodes per second |
 | --- | --- | --- | --- |
-| RTX 5080 | 3,072 | about 7,700 | 55M |
-| RTX 5060 Ti (recursive search, not yet re-measured) | 1,536 | about 3,400 | 24M |
+| RTX 5080 | 3,072 | about 13,000 | 91M |
+| RTX 5060 Ti (first, recursive search; not re-measured) | 1,536 | about 3,400 | 24M |
 | ChessSI on 13 CPU cores, for comparison | | about 8,300 | 39M |
 
-The frame stack made the search 32% faster than the first, recursive version (7,743 positions per
-second against 5,868 and 5,897 on the 5080, 200-second runs). A GPU node still costs far more
-instructions than a CPU node. With the recursive search, `-DPROFILE` timers put `do_move` at 32% of the
-time and search control at 20%, and capping registers to raise occupancy changed little.
+How the 5080 got from about 5,900 to about 13,000 positions per second, each step byte-identical:
+
+| Change | Positions per second | Measured as |
+| --- | --- | --- |
+| First version: a recursive search | 5,868 and 5,897 | 200 s runs |
+| An explicit stack of frames instead of recursion | 7,743 | 200 s run |
+| `do_move`'s board copy and NNUE delta in registers, 16-byte NNUE rows, 168 registers | 8,800 | 150 s run |
+| Finished games written while the next ply runs | about 12,500 | an hour of datagen, part of it beside a match |
+| Legality before the NNUE update, 16-bit move-ordering scores | 13,038 | half an hour of datagen; +4.5% in paired 150 s runs |
+
+Short runs read lower than long ones, since all their games start together. A GPU node still costs
+far more instructions than a CPU node: before the last row's changes, `-DPROFILE` timers put `do_move`
+at about 40% of the time (the NNUE update 22%, the board 14%), `undo_move` at 12% and search control
+at 20%.
 
 ## Matches
 

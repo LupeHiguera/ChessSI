@@ -33,8 +33,8 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-23 | Claude Opus 5.5 | Known | TT probe in quiescence only (cutoffs and TT-move ordering, no stores), on the NNUE engine | Failed (pre-screen) | −19.7 ± 19.3 (pre-screen) | 600 (7 concurrent, cores 6-13) | Failed, 600 games; full SPRT skipped by the gate |
 | 2026-10-23 | Claude Opus 5.5 | Known | TT probe and store in quiescence (stores never evict a deeper entry for another position) | Stopped (flawed: same-key stores overwrote deeper entries, and the probe without prefetch cost 26% NPS) | −18.3 ± 26.1 (pre-screen) | 380 (7 concurrent, cores 6-13) | Stopped at 380 games |
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net6 replaces net4: 2.2× the data (38.5M positions, partly from net4 self-play) and the training-only auxiliary head; the aux head alone is tested separately | Passed | +138.6 ± 24.7 | 496 (7 concurrent, cores 6-13) | Not run |
-| 2026-10-23 | Claude Opus 5.5 | Novel | Training-only auxiliary head predicting the win probability 8 plies later (weight 1.0), dropped at export: net6 vs a control trained on the same 38.5M positions with the same seed and epochs, no head | Passed | +53.2 ± 15.6 | 1,066 (4 concurrent, cores 6-9) | Not run |
-| 2026-10-23 | Claude Opus 5.5 | Novel | Auxiliary head, replication on a second data snapshot (47.4M positions; head at 8 plies, weight 1.0) against a no-head control with the same data, seed and epochs | Passed | +34.6 ± 12.2 | 1,502 (4 concurrent, cores 6-9) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Partially known | Training-only auxiliary head predicting the win probability 8 plies later (weight 1.0), dropped at export: net6 vs a control trained on the same 38.5M positions with the same seed and epochs, no head (relabelled 2026-10-25: KataGo has trained auxiliary value heads since 2020, per the Cursor assessment on issue #21; untried in a strong chess engine as far as found) | Passed | +53.2 ± 15.6 | 1,066 (4 concurrent, cores 6-9) | Not run |
+| 2026-10-23 | Claude Opus 5.5 | Partially known | Auxiliary head, replication on a second data snapshot (47.4M positions; head at 8 plies, weight 1.0) against a no-head control with the same data, seed and epochs (relabelled 2026-10-25: KataGo has trained auxiliary value heads since 2020, per the Cursor assessment on issue #21; untried in a strong chess engine as far as found) | Passed | +34.6 ± 12.2 | 1,502 (4 concurrent, cores 6-9) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known + Novel | net7 replaces net6: 1.7× the data (64.6M positions, adding about 18.6M from net6 self-play) and the auxiliary head at 4 plies instead of 8 | Passed | +103.7 ± 21.8 | 628 (4 concurrent, cores 0-3) | Not run |
 | 2026-10-23 | Claude Opus 5.5 | Known | SEE pruning in quiescence (skip captures with SEE < 0), retest on the NNUE engine (net6, against d243d1c) | Passed | +22.2 ± 9.1 | 2,212 (4 concurrent, cores 10-13) | Inconclusive at 600-game cap, +29.0 ± 19.5 |
 | 2026-10-23 | Claude Opus 5.5 | Known | net7's recipe with `--lambda 1.0` (search score only, no game result in the target), same data and seed, vs net7 | Failed | −80.4 ± 18.7 | 642 (4 concurrent, cores 0-3) | Not run |
@@ -59,6 +59,12 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-24 | Claude Opus 5.5 | Known | Lazy SMP: helper threads on copies of the position sharing the TT (owner's decision), measured as 4 threads against 1 in the same binary (`eb10c7b`), 10+0.1, Hash 64 | Passed (fixed 400-game match, not an SPRT) | +129.0 ± 20.6 | 400 (2 concurrent × 5 threads, cores 0-12) | Not run |
 | 2026-10-24 | Claude Opus 5.5 | Known | net10's recipe at 512 hidden units on net10's data (validation 0.00679 against 0.00696), vs net10 at 256 | Inconclusive (stopped at 8,116 games: any gain is small, and h512 searches about 40% slower) | +3.4 ± 4.8 | 8,116 (12 concurrent, cores 0-12) | Not run |
 | 2026-10-25 | Claude Opus 5.5 | Novel (method) | Search constants tuned by SPSA on the GPU (`gpu/spsa.py`: 30,000 game pairs at 50,000 nodes with net10, 800 games at once on an RTX 5080, 90 minutes): RFP to depth 5 with margin 77 (was 3, 150), null-move R = 3 + d/4 (d/6), LMP to depth 7 with 6 + d² (8, 3 + d²), futility 127 (120), LMR after 4 moves with 0.82 + ln d ln n / 1.72 (3, 0.75, 2.25), history cap 1239 (1200), aspiration from depth 4 with 22 (5, 25). CPU/GPU parity byte-identical; GPU match at 50,000 nodes +47.5 ± 14.8 (1,024 games) | Passed | +40.4 ± 11.7 | 1,046 (12 concurrent, cores 0-12) | Passed, 460 games, +52.5 ± 20.7 |
+| 2026-10-26 | Claude Opus 5.5 | Known | SEE pruning in the main search (`claude/see-pruning`, against the tuned engine): at non-root nodes not in check, depth 6 or less, once a move has avoided a mate score, skip quiet moves with SEE below −60·depth and captures below −30·depth². Stash v29.0 measured +9.9 ± 6.2 | Passed | +24.2 ± 9.3 | 1,856 (12 concurrent, cores 0-12) | +26.1 ± 17.0, 600 games, no verdict |
+| 2026-10-26 | Claude Opus 5.5 | Known | Pawn correction history (`claude/corrhist`, on top of SEE pruning): a table by side to move and pawn hash learns how far the static eval has been off from search scores, and the corrected eval feeds reverse futility, futility, null move and the quiescence stand-pat. Caissa, Alexandria (+11.3 ± 4.7), Stockfish. A first run against the tuned engine was stopped at 1,118 games (+20.9 ± 11.6, 5 concurrent on cores 14-19) and rerun on all free cores against SEE pruning | Passed | +18.5 ± 7.9 | 2,394 (17 concurrent, cores 0-12 and Astra's idle 14-19) | +16.8 ± 17.1, 600 games, no verdict |
+| 2026-10-26 | Claude Opus 5.5 | Known | net11: net10's recipe on 537.6M unique positions, net10's data plus generation 7 (363.9M lines of self-play with net10 at 5,000 nodes, from the CPU and both GPUs), trained with the host-mode loader | Passed | +50.7 ± 13.2 | 924 (17 concurrent, cores 0-12 and 14-19) | GPU match +41.9 ± 11.4, 2,048 games at 20,000 nodes |
+| 2026-10-26 | Claude Opus 5.5 | Known | TT replacement by depth and age (`claude/tt-replacement`, on top of correction history, with net10): an entry from the current search stays unless the new one, for another position, is at least as deep; entries from earlier searches always give way. Stash +7.5 ± 5.0. A first pre-screen against the tuned engine (−14.5 ± 17.5) had skipped it under the old gate | Passed | +5.0 ± 3.6 | 11,304 (17 concurrent, cores 0-12 and 14-19) | +8.7 ± 16.6, 600 games, no verdict |
+| 2026-10-26 | Claude Opus 5.5 | Known | Eight material output buckets (by piece count) on net11's data and recipe (537.6M positions), vs net11 in one binary built from PR #49 (`claude/output-buckets2`) | Failed | −0.5 ± 2.8 | 21,824 (17 concurrent, cores 0-12 and 14-19) | Validation loss 0.00709, net11 0.00711 |
+| 2026-10-26 | Claude Opus 5.5 | Known | Losing captures last (`claude/bad-captures-last`): captures that lose material by SEE come after the killers and quiet moves instead of with the winning captures; quiescence keeps its order. Stash +17.9 | Passed | +30.4 ± 10.4 | 1,488 (17 concurrent, cores 0-12 and 14-19) | +24.9 ± 16.7, 600 games, no verdict |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -108,7 +114,7 @@ top one, test it, log it, then move on.
 7. Late move pruning and futility pruning - *Claude Code*
 8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning - *Claude Code*
 9. Check evasions in quiescence search - *Astra / GPT-6 (Codex)*
-10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud); quiescence part taken over by Claude Code. The replacement change, rebased onto main, is ready for PC 2 on `claude/tt-replacement`*
+10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud); quiescence part taken over by Claude Code. The replacement change passed on 2026-10-26, +5.0 ± 3.6*
 11. Internal iterative reductions when there is no TT move - *Claude Code (ready on `claude/iir`: depth ≥ 4, one ply)*
 12. Mate distance pruning; insufficient-material draws
 13. Time management: stop early when the best move is stable - *Claude Code (ready on `claude/tm-stability`: Stash's best-move stability and score-trend scaling of the soft limit)*
@@ -123,9 +129,9 @@ first network is in, since pruning margins are in eval units and must be recheck
     table, which also keeps a much deeper same-key bound, is ready on `claude/qs-tt`, stacked on
     `claude/tt-replacement`: 15% fewer nodes to depth 11)*
 16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main
-    search - *Claude Code (the ordering is ready on `claude/bad-captures-last`, which reached
-    +14.5 ± 11.6 in 1,340 games on an older engine before a memory kill stopped it; SEE pruning in
-    the main search is ready on `claude/see-pruning`)*
+    search - *Claude Code (the ordering passed on 2026-10-26, +30.4 ± 10.4; an older run had
+    reached +14.5 ± 11.6 in 1,340 games before a memory kill stopped it; SEE pruning in
+    the main search passed on 2026-10-26, +24.2 ± 9.3)*
 17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
     (LMR alone was inconclusive, +6.7 ± 13.9; RFP untried; the LMP part, half the moves when not
     improving as in Stockfish, is ready on `claude/lmp-improving`)*
@@ -152,7 +158,7 @@ first network is in, since pruning margins are in eval units and must be recheck
     searched until stopped and lost on time. Increment games, and so every SPRT, never hit it.
 23. Correction history: pawn key first (Caissa 2023; Alexandria +11.29 ± 4.66 at 8+0.08), then
     non-pawn and continuation keys, then abs(correction) in pruning margins - *Claude Code (pawn
-    version ready on `claude/corrhist`)*
+    version passed on 2026-10-26, +18.5 ± 7.9)*
 24. Lazy SMP: helper threads on copies of the position sharing the TT, for games on more than one
     thread (owner's decision, 2026-10-24; single-thread strength and SPRTs are unchanged) - *Claude
     Code (ready on `claude/lazy-smp`; bench identical at one thread, ThreadSanitizer shows only the
@@ -188,8 +194,8 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
   same games with the same seed, and the trainer reads old and new files alike. Several queued ideas
   need it, so PC 2's first generation should use it.
 - Validation split by game, not by position (same-game positions make validation loss optimistic)
-- Material output buckets (*Claude Code*: level with net7 at 64.6M positions, −0.7 ± 14.7; code on
-  branch `claude/output-buckets`, worth retrying with more data); horizontal mirroring; king buckets
+- Material output buckets (*Claude Code*: level with net7 at 64.6M positions, −0.7 ± 14.7, and with
+  net11 at 537.6M, −0.5 ± 2.8 over 21,824 games: retired); horizontal mirroring; king buckets
   only past ~1B positions
 - **Labelled experiment: games against other engines as data** (*Claude Code*; the owner keeps it to
   one experiment, off the main line). ChessSI at 5,000 nodes plays Stash 25-36 at 12,500 nodes,

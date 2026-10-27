@@ -24,9 +24,8 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from datagen import GpuDatagen, compact, load_net, make_params, wait  # noqa: E402
+from datagen import TT_BITS, GpuDatagen, compact, load_net, make_params, wait  # noqa: E402
 
-TT_BITS = 16
 
 
 def elo_from_score(s):
