@@ -64,6 +64,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-26 | Claude Opus 5.5 | Known | net11: net10's recipe on 537.6M unique positions, net10's data plus generation 7 (363.9M lines of self-play with net10 at 5,000 nodes, from the CPU and both GPUs), trained with the host-mode loader | Passed | +50.7 ± 13.2 | 924 (17 concurrent, cores 0-12 and 14-19) | GPU match +41.9 ± 11.4, 2,048 games at 20,000 nodes |
 | 2026-10-26 | Claude Opus 5.5 | Known | TT replacement by depth and age (`claude/tt-replacement`, on top of correction history, with net10): an entry from the current search stays unless the new one, for another position, is at least as deep; entries from earlier searches always give way. Stash +7.5 ± 5.0. A first pre-screen against the tuned engine (−14.5 ± 17.5) had skipped it under the old gate | Passed | +5.0 ± 3.6 | 11,304 (17 concurrent, cores 0-12 and 14-19) | +8.7 ± 16.6, 600 games, no verdict |
 | 2026-10-26 | Claude Opus 5.5 | Known | Eight material output buckets (by piece count) on net11's data and recipe (537.6M positions), vs net11 in one binary built from PR #49 (`claude/output-buckets2`) | Failed | −0.5 ± 2.8 | 21,824 (17 concurrent, cores 0-12 and 14-19) | Validation loss 0.00709, net11 0.00711 |
+| 2026-10-26 | Claude Opus 5.5 | Known | Losing captures last (`claude/bad-captures-last`): captures that lose material by SEE come after the killers and quiet moves instead of with the winning captures; quiescence keeps its order. Stash +17.9 | Passed | +30.4 ± 10.4 | 1,488 (17 concurrent, cores 0-12 and 14-19) | +24.9 ± 16.7, 600 games, no verdict |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -128,8 +129,8 @@ first network is in, since pruning margins are in eval units and must be recheck
     table, which also keeps a much deeper same-key bound, is ready on `claude/qs-tt`, stacked on
     `claude/tt-replacement`: 15% fewer nodes to depth 11)*
 16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main
-    search - *Claude Code (the ordering is ready on `claude/bad-captures-last`, which reached
-    +14.5 ± 11.6 in 1,340 games on an older engine before a memory kill stopped it; SEE pruning in
+    search - *Claude Code (the ordering passed on 2026-10-26, +30.4 ± 10.4; an older run had
+    reached +14.5 ± 11.6 in 1,340 games before a memory kill stopped it; SEE pruning in
     the main search passed on 2026-10-26, +24.2 ± 9.3)*
 17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
     (LMR alone was inconclusive, +6.7 ± 13.9; RFP untried; the LMP part, half the moves when not
