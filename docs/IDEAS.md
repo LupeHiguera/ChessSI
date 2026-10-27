@@ -63,6 +63,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-26 | Claude Opus 5.5 | Known | Pawn correction history (`claude/corrhist`, on top of SEE pruning): a table by side to move and pawn hash learns how far the static eval has been off from search scores, and the corrected eval feeds reverse futility, futility, null move and the quiescence stand-pat. Caissa, Alexandria (+11.3 ± 4.7), Stockfish. A first run against the tuned engine was stopped at 1,118 games (+20.9 ± 11.6, 5 concurrent on cores 14-19) and rerun on all free cores against SEE pruning | Passed | +18.5 ± 7.9 | 2,394 (17 concurrent, cores 0-12 and Astra's idle 14-19) | +16.8 ± 17.1, 600 games, no verdict |
 | 2026-10-26 | Claude Opus 5.5 | Known | net11: net10's recipe on 537.6M unique positions, net10's data plus generation 7 (363.9M lines of self-play with net10 at 5,000 nodes, from the CPU and both GPUs), trained with the host-mode loader | Passed | +50.7 ± 13.2 | 924 (17 concurrent, cores 0-12 and 14-19) | GPU match +41.9 ± 11.4, 2,048 games at 20,000 nodes |
 | 2026-10-26 | Claude Opus 5.5 | Known | TT replacement by depth and age (`claude/tt-replacement`, on top of correction history, with net10): an entry from the current search stays unless the new one, for another position, is at least as deep; entries from earlier searches always give way. Stash +7.5 ± 5.0. A first pre-screen against the tuned engine (−14.5 ± 17.5) had skipped it under the old gate | Passed | +5.0 ± 3.6 | 11,304 (17 concurrent, cores 0-12 and 14-19) | +8.7 ± 16.6, 600 games, no verdict |
+| 2026-10-26 | Claude Opus 5.5 | Known | Eight material output buckets (by piece count) on net11's data and recipe (537.6M positions), vs net11 in one binary built from PR #49 (`claude/output-buckets2`) | Failed | −0.5 ± 2.8 | 21,824 (17 concurrent, cores 0-12 and 14-19) | Validation loss 0.00709, net11 0.00711 |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -191,8 +192,8 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
   same games with the same seed, and the trainer reads old and new files alike. Several queued ideas
   need it, so PC 2's first generation should use it.
 - Validation split by game, not by position (same-game positions make validation loss optimistic)
-- Material output buckets (*Claude Code*: level with net7 at 64.6M positions, −0.7 ± 14.7; code on
-  branch `claude/output-buckets`, worth retrying with more data); horizontal mirroring; king buckets
+- Material output buckets (*Claude Code*: level with net7 at 64.6M positions, −0.7 ± 14.7, and with
+  net11 at 537.6M, −0.5 ± 2.8 over 21,824 games: retired); horizontal mirroring; king buckets
   only past ~1B positions
 - **Labelled experiment: games against other engines as data** (*Claude Code*; the owner keeps it to
   one experiment, off the main line). ChessSI at 5,000 nodes plays Stash 25-36 at 12,500 nodes,
