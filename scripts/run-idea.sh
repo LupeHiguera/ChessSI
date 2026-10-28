@@ -6,7 +6,9 @@
 # The pre-screen gates the SPRT: if it rejects the idea, or runs out of games with its whole 95%
 # interval below 0, the full SPRT is skipped (a negative estimate alone is not enough: at 600 games a
 # true +5 idea scores below 0 about a third of the time). FULL=1 runs it anyway. CPUS, CONCURRENCY and the other sprt.sh
-# settings apply to both runs. To test several ideas at once, give each its own worktree.
+# settings apply to both runs. SPRT_ROUNDS caps the full SPRT at that many game pairs, after which it
+# stops undecided (ROUNDS would also resize the pre-screen). To test several ideas at once, give each
+# its own worktree.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 name=${1:?usage: scripts/run-idea.sh <name> [base-ref]}
@@ -26,6 +28,6 @@ read -r pre_elo pre_err <<< "$(grep 'Elo:' "engines/$name-pre.log" | tail -1 | a
 if [ "${FULL:-0}" != 1 ] && { grep -q "H0 was accepted" "engines/$name-pre.log" || awk -v e="$pre_elo" -v d="$pre_err" 'BEGIN{exit !(e + d < 0)}'; }; then
     echo "GATED: pre-screen rejected it ($pre_elo +/- $pre_err), full SPRT skipped"; exit 0
 fi
-scripts/sprt.sh "$base" > "engines/$name-sprt.log" 2>&1
+ROUNDS="${SPRT_ROUNDS:-${ROUNDS:-100000}}" scripts/sprt.sh "$base" > "engines/$name-sprt.log" 2>&1
 echo "sprt:"; grep -E 'Elo:|Games:|LLR:|H0 was|H1 was' "engines/$name-sprt.log" | tail -4
 echo "problems: $(cat "engines/$name-pre.log" "engines/$name-sprt.log" | grep -ciE 'loses on time|illegal|crash|disconnect')"
