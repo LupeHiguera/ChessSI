@@ -17,7 +17,10 @@ struct TTEntry {
 };
 
 // Single-entry buckets. An entry from the current search is only replaced by
-// one for another position if the new one is at least as deep.
+// one for another position if the new one is at least as deep. For the same
+// position, a non-exact store also leaves an entry more than two plies deeper
+// in place (so a depth-0 quiescence write does not evict a main-search result);
+// an exact store still replaces it. Entries from an earlier search always give way.
 class TranspositionTable {
 public:
     void resize(size_t megabytes);
