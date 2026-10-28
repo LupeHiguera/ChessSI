@@ -207,6 +207,8 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
   data, otherwise identical, by SPRT. Networks that include it are marked in `nets/README.md`.
 - Second generation: data from the NNUE engine itself
 
+Search research, 2026-10-28: [recover a reduced move after a repeated sibling refutation fails](research/search-refutation-2026-10-28/REPORT.md). GPT-6 (Codex), with GPT-6 Astra ultra review. Partially known selective verification; exact reply-identity selector potentially novel. First proposed action is a bounded passive coverage audit, followed only if justified by isolated, matched-cost controls. No implementation claim, experiment, resource reservation or Elo result.
+
 ## Novel ideas
 
 The goal is to find out whether AI can improve on the state of the art, not just reproduce it. Known
