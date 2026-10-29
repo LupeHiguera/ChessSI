@@ -37,7 +37,8 @@ def wait():
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_SAMPLES, MAX_PLIES, MAX_PLY, START_BYTES = 400, 400, 128, 72
-# Each game's table has 2^TT_BITS entries of 16 bytes: 1 MB at 16, like gpu/ref.cpp's default.
+# Each game's table has 2^TT_BITS entries of 16 bytes: 1 MB at 16, like gpu/ref.cpp's default. Its
+# correction history (64 KB) sits beside it (Tables in datagen.cu).
 TT_BITS = int(os.environ.get("GPU_TT_BITS", 16))
 PIECES = "PNBRQKpnbrqk"
 SAMPLE = np.dtype([("board", "u1", 64), ("stm", "u1"), ("castling", "u1"), ("ep", "u1"), ("pad", "u1"),
@@ -73,11 +74,13 @@ def reductions(base=0.75, div=2.25):
 # The Params struct of datagen.cu, and src/search.cpp's values.
 PARAMS = np.dtype([(name, "<i4") for name in ("rfpDepth", "rfpMargin", "nmpDepth", "nmpBase", "nmpDiv", "lmpDepth", "lmpBase",
                                                 "futDepth", "futMargin", "lmrDepth", "lmrMoves", "histMax", "aspDepth",
-                                                "aspDelta", "qsSee")] + [("lmr", "u1", (64, 64))])
-# src/search.cpp's values since PR #40 (SPSA): keep them equal, or the GPU search stops matching the engine
-# (the parity check in gpu/README.md catches it).
+                                                "aspDelta", "qsSee", "seeDepth", "seeQuiet", "seeCapture")]
+                  + [("lmr", "u1", (64, 64))])
+# src/search.cpp's values since PR #40 (SPSA), and SEE pruning's since PR #45: keep them equal, or the GPU
+# search stops matching the engine (the parity check in gpu/README.md catches it).
 DEFAULTS = dict(rfpDepth=5, rfpMargin=77, nmpDepth=3, nmpBase=3, nmpDiv=4, lmpDepth=7, lmpBase=6, futDepth=6, futMargin=127,
-                lmrDepth=3, lmrMoves=4, histMax=1239, aspDepth=4, aspDelta=22, qsSee=0, lmrBase=0.82, lmrDiv=1.72)
+                lmrDepth=3, lmrMoves=4, histMax=1239, aspDepth=4, aspDelta=22, qsSee=0, seeDepth=6, seeQuiet=60, seeCapture=30,
+                lmrBase=0.82, lmrDiv=1.72)
 
 
 def make_params(values=None):
@@ -174,9 +177,9 @@ class GpuDatagen:
         self.mod = cp.RawModule(code=src, options=options)
         for name, arr in zip(("Z_PSQ", "Z_CASTLING", "Z_EP", "Z_SIDE"), zobrist()):
             cp.ndarray(arr.shape, arr.dtype, self.mod.get_global(name))[...] = cp.asarray(arr)
-        sizes = cp.zeros(4, cp.int32)
+        sizes = cp.zeros(5, cp.int32)
         self.mod.get_function("datagen_sizes")((1,), (1,), (sizes,))
-        self.game_bytes, sample_bytes, tt_bytes, params_bytes = (int(x) for x in sizes.get())
+        self.game_bytes, sample_bytes, tt_bytes, params_bytes, self.tables_bytes = (int(x) for x in sizes.get())
         assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16 and params_bytes == PARAMS.itemsize
         # The search's constants: src/search.cpp's, or GPU_PARAMS (JSON, as gpu/spsa.py prints them).
         self.params = cp.asarray(make_params(json.loads(os.environ.get("GPU_PARAMS", "{}"))).view(np.uint8))
@@ -188,7 +191,7 @@ class GpuDatagen:
         self.capacity = capacity
         self.games = cp.zeros(capacity * self.game_bytes, cp.uint8)
         self.accs = cp.zeros(capacity * (MAX_PLY + 2) * 2 * self.h, cp.int16)
-        self.tts = cp.zeros(capacity * (1 << TT_BITS) * 16, cp.uint8)
+        self.tables = cp.zeros(capacity * self.tables_bytes, cp.uint8)  # each game's TT and correction history
         self.k = {n: self.mod.get_function(n) for n in ("datagen_init", "datagen_setup", "datagen_step", "datagen_collect",
                                                          "datagen_done", "datagen_opening", "datagen_collect_slots", "score_step")}
 
@@ -199,11 +202,11 @@ class GpuDatagen:
         threads, warps = ((n + 127) // 128,), ((n + 3) // 4,)
         net = (self.ftw, self.ftb, self.outw, np.int32(self.outb))
         self.k["datagen_init"](threads, (128,), (self.games, np.int32(n), start))
-        self.k["datagen_setup"](warps, (128,), (self.games, np.int32(n)) + net + (self.accs, self.tts))
+        self.k["datagen_setup"](warps, (128,), (self.games, np.int32(n)) + net + (self.accs, self.tables))
         done = cp.zeros(n, cp.int32)
         steps, t0 = 0, time.perf_counter()
         while True:
-            self.k["datagen_step"](warps, (128,), (self.games, np.int32(n)) + net + (self.params, self.accs, self.tts, np.uint64(nodes),
+            self.k["datagen_step"](warps, (128,), (self.games, np.int32(n)) + net + (self.params, self.accs, self.tables, np.uint64(nodes),
                                                                                     self.budget))
             steps += 1
             self.k["datagen_done"](threads, (128,), (self.games, np.int32(n), done))
@@ -247,7 +250,7 @@ class GpuDatagen:
             ids = cp.arange(next_id, next_id + k, dtype=cp.uint64)
             next_id += k
             self.k["datagen_opening"](((k + 3) // 4,), (128,), (self.games, cp.asarray(slots, cp.int32), np.int32(k), start, ids,
-                                      np.uint64(seed), np.int32(random_plies)) + net + (self.accs, self.tts))
+                                      np.uint64(seed), np.int32(random_plies)) + net + (self.accs, self.tables))
 
         reset(np.arange(cap, dtype=np.int32))
         started = cap
@@ -273,7 +276,7 @@ class GpuDatagen:
         with open(out_path, "a") as out:
             while active.any():
                 self.k["datagen_step"](((cap + 3) // 4,), (128,), (self.games, np.int32(cap)) + net
-                                       + (self.params, self.accs, self.tts, np.uint64(nodes), self.budget))
+                                       + (self.params, self.accs, self.tables, np.uint64(nodes), self.budget))
                 if collected is not None:  # format and write on the CPU while the step runs
                     write(out, *collected)
                     collected = None
@@ -320,10 +323,10 @@ def rescore(dg, in_path, out_path, nodes, report_lines=1_000_000):
             n = len(lines)
             start = cp.asarray(np.stack([compact(l.split(" | ")[0]) for l in lines]))
             dg.k["datagen_init"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), start))
-            dg.k["datagen_setup"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net + (dg.accs, dg.tts))
+            dg.k["datagen_setup"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net + (dg.accs, dg.tables))
             while True:
                 dg.k["score_step"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net
-                                   + (dg.params, dg.accs, dg.tts, np.uint64(nodes), dg.budget, scores))
+                                   + (dg.params, dg.accs, dg.tables, np.uint64(nodes), dg.budget, scores))
                 dg.k["datagen_done"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), done))
                 wait()
                 if int(done[:n].sum()) == n:

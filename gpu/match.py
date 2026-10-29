@@ -24,7 +24,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from datagen import TT_BITS, GpuDatagen, compact, load_net, make_params, wait  # noqa: E402
+from datagen import GpuDatagen, compact, load_net, make_params, wait  # noqa: E402
 
 
 
@@ -69,18 +69,18 @@ def main():
     params_b = dg.params  # GPU_PARAMS, read by GpuDatagen
     if "GPU_PARAMS_B" in os.environ:
         params_b = cp.asarray(make_params(json.loads(os.environ["GPU_PARAMS_B"])).view(np.uint8))
-    tts_b = cp.zeros(n * (1 << TT_BITS) * 16, cp.uint8)
+    tables_b = cp.zeros(n * dg.tables_bytes, cp.uint8)  # side B's TTs and correction histories
     k = {name: dg.mod.get_function(name) for name in ("match_init", "match_setup", "match_step", "match_results")}
     start = cp.asarray(np.stack([compact(openings[i // 2]) for i in range(n)]))
     a_color = cp.asarray(np.array([i % 2 for i in range(n)], np.int32))  # A has White in even games
     threads, warps = ((n + 127) // 128,), ((n + 3) // 4,)
     slots = cp.arange(n, dtype=cp.int32)
     k["match_init"](threads, (128,), (dg.games, slots, np.int32(n), start, a_color))
-    k["match_setup"](warps, (128,), (slots, np.int32(n), dg.tts, tts_b))
+    k["match_setup"](warps, (128,), (slots, np.int32(n), dg.tables, tables_b))
     res = cp.full(n, -1, cp.int32)
     t0, steps = time.perf_counter(), 0
     while True:
-        k["match_step"](warps, (128,), (dg.games, np.int32(n)) + a + b + (dg.params, params_b, np.int32(0), dg.accs, dg.tts, tts_b,
+        k["match_step"](warps, (128,), (dg.games, np.int32(n)) + a + b + (dg.params, params_b, np.int32(0), dg.accs, dg.tables, tables_b,
                                                                           np.uint64(nodes), dg.budget))
         steps += 1
         if steps % 8 == 0:
