@@ -22,9 +22,9 @@
 // is a separate experiment for the ideas log. With more than one thread, helper
 // threads search the same root and share only the transposition table (Lazy SMP).
 //
-// cutNode, the per-ply stack, ttPv, the TT static eval and `improving` are
-// plumbed through and not yet read by reductions or pruning. The LMR table is
-// unchanged; a later change can use them without another signature rewrite.
+// Quiet late move reductions read cutNode, ttPv and improving. The base table
+// is unchanged. The history term is wired through and held at zero until
+// continuation history fills statScore. Captures are not reduced.
 
 std::atomic<bool> Search::stop{false};
 
@@ -338,8 +338,9 @@ struct Searcher {
     }
 
     // cutNode is true at an expected fail-high (cut) node. Root and PV children are never
-    // cut nodes. The first child of a non-PV node gets the opposite flag; later null-window
-    // children are cut nodes; the null-move child and a full-depth re-search get the opposite.
+    // cut nodes. The first child of a non-PV node gets the opposite flag. A reduced LMR
+    // probe is a cut node; a zero-window that skips LMR, and the re-search after a reduced
+    // probe, get the opposite flag. The null-move child gets the opposite flag.
     int search(int alpha, int beta, int depth, int ply, bool cutNode = false) {
         pvLength[ply] = 0;
         bool inCheck = pos.in_check();
@@ -449,6 +450,9 @@ struct Searcher {
         int legalMoves = 0;
         Move quietsTried[256];
         int quietCount = 0;
+        // A capturing transposition move: the other quiets lose one more ply.
+        const bool ttCapture = ttMove != MOVE_NONE
+            && (pos.piece_on(to_sq(ttMove)) != NO_PIECE || move_type(ttMove) == EN_PASSANT);
 
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
@@ -506,18 +510,43 @@ struct Searcher {
                 // Full window at a PV node; the first null-window child flips cutNode.
                 score = -search(-beta, -alpha, newDepth, ply + 1, pvNode ? false : !cutNode);
             else {
-                // Late quiet moves are searched shallower first, and only
-                // re-searched at full depth if they beat alpha. The reduction
-                // itself is unchanged: cutNode and improving are not inputs.
+                // Quiet LMR. The table stays int(0.82 + ln d · ln n / 1.72). The
+                // adjustments are in 1/1024 ply and divide back to whole plies.
+                // A check is reduced one ply less than a quiet of the same index.
+                // The parent, already extended, is not reduced. Captures are not.
                 int r = 0;
-                if (depth >= 3 && legalMoves > 4 && quiet && !inCheck && !pos.in_check()) {
-                    r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
+                if (depth >= 2 && legalMoves > 1 + int(pvNode) && quiet && !inCheck) {
+                    int R = 1024 * Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
+                    if (!ss->improving)
+                        R += 1024;
+                    if (cutNode)
+                        R += 2048;
+                    if (ss->ttPv)
+                        R -= 1024;
+                    if (ttCapture)
+                        R += 1024;
                     if (pvNode)
-                        --r;
-                    r = std::clamp(r, 0, depth - 2);
+                        R -= 1024;
+                    // statScore is 0 until continuation history. Two plies either way.
+                    R -= std::clamp(ss->statScore * 1024 / 8192, -2048, 2048);
+                    if (pos.in_check())
+                        R -= 1024;
+                    r = std::clamp(R / 1024, 0, depth - 1);
                 }
-                score = -search(-alpha - 1, -alpha, newDepth - r, ply + 1, true);
-                if (score > alpha && r > 0)
+                if (r > 0) {
+                    int reducedDepth = newDepth - r;
+                    score = -search(-alpha - 1, -alpha, reducedDepth, ply + 1, true);
+                    if (score > alpha) {
+                        // A strong reduced score searches one ply past full depth; a weak one, one short.
+                        int researchDepth = newDepth;
+                        if (score > best + 35 + 2 * newDepth)
+                            ++researchDepth;
+                        else if (score < best + 8)
+                            --researchDepth;
+                        if (researchDepth > reducedDepth)
+                            score = -search(-alpha - 1, -alpha, researchDepth, ply + 1, !cutNode);
+                    }
+                } else
                     score = -search(-alpha - 1, -alpha, newDepth, ply + 1, !cutNode);
                 if (score > alpha && score < beta)
                     score = -search(-beta, -alpha, newDepth, ply + 1, false);
