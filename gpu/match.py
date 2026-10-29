@@ -5,7 +5,8 @@ playing both sides of thousands of games at once.
 
 Each opening from the book is played twice, A with White and then with Black. Games end like our
 fastchess SPRTs (see match_step). Prints A's score, Elo with a 95% interval from the game pairs
-(pentanomial), and the SPRT [0, 5] log-likelihood ratio. Both networks must have the same hidden size.
+(pentanomial), and the SPRT [0, 5] log-likelihood ratio. Both networks must have the same hidden size and the same king-bucket count
+(CSNN is 1; a CSKB net13 file is 8 or 16). A CSNN file cannot play a CSKB file.
 The search's constants are src/search.cpp's, or GPU_PARAMS for A and GPU_PARAMS_B for B (JSON, as
 gpu/spsa.py prints them; B takes A's if GPU_PARAMS_B is unset), so A and B can also be one network
 with two sets of constants.
@@ -56,16 +57,17 @@ def main():
     nodes = int(sys.argv[4]) if len(sys.argv) > 4 else 20000
     seed = int(sys.argv[5]) if len(sys.argv) > 5 else 1
     book = sys.argv[6] if len(sys.argv) > 6 else os.path.join(HERE, "..", "books", "UHO_Lichess_4852_v1.epd")
-    ha, hb = load_net(net_a)[0], load_net(net_b)[0]
-    assert ha == hb, "both networks need the same hidden size"
+    la, lb = load_net(net_a), load_net(net_b)
+    assert la[0] == lb[0], "both networks need the same hidden size"
+    assert la[5] == lb[5], "both networks need the same king-bucket count"
     lines = [l.strip() for l in open(book) if l.strip()]
     rng = random.Random(seed)
     openings = [" ".join(lines[rng.randrange(len(lines))].split()[:6]) for _ in range(pairs)]  # with move counters
     n = 2 * pairs
     dg = GpuDatagen(net_a, n)  # compiles the kernels and allocates games; its TTs serve network A
-    _, ftw, ftb, outw, outb = load_net(net_b)
-    b = (cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw), np.int32(outb))
-    a = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb))
+    _, ftw, ftb, outw, outb, buckets_b = lb
+    b = (cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw), np.int32(outb), np.int32(buckets_b))
+    a = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb), np.int32(dg.buckets))
     params_b = dg.params  # GPU_PARAMS, read by GpuDatagen
     if "GPU_PARAMS_B" in os.environ:
         params_b = cp.asarray(make_params(json.loads(os.environ["GPU_PARAMS_B"])).view(np.uint8))

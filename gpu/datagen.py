@@ -3,6 +3,9 @@
     python gpu/datagen.py run <net.nnue> <out.txt> <games> [nodes=5000] [capacity=1024] [seed=1] [random plies=8]
     python gpu/datagen.py <net.nnue> <file of start FENs> <nodes> [-v]
 
+Loads CSNN (net12) or CSKB (net13 king buckets, 8 or 16). A king move on CSKB refreshes that
+perspective. gen9, after a net13 file exists: `python gpu/datagen.py run net13-k8.nnue gen9.txt <games> 5000`.
+
 run: like `chesssi datagen`. Each game opens with random legal plies from the start position, then
 plays at a fixed node count; lines are appended to out.txt as each game ends, and finished games are
 replaced at once so the GPU stays full.
@@ -91,14 +94,33 @@ def make_params(values=None):
 
 
 def load_net(path):
+    """CSNN (net12, one bucket) or CSKB (net13, 8 or 16 king buckets).
+
+    Returns hidden, ft weights int16[buckets * 768 * H], bias, output weights, output bias, buckets.
+    """
     with open(path, "rb") as f:
-        assert f.read(4) == b"CSNN"
+        magic = f.read(4)
         (h,) = struct.unpack("<i", f.read(4))
-        ftw = np.frombuffer(f.read(768 * h * 2), dtype="<i2").copy()
+        if magic == b"CSNN":
+            buckets, nfeat = 1, 768
+        elif magic == b"CSKB":
+            (buckets,) = struct.unpack("<i", f.read(4))
+            if buckets not in (8, 16):
+                raise SystemExit(f"{path}: net13 CSKB needs 8 or 16 king buckets, got {buckets}")
+            nfeat = buckets * 768
+        else:
+            raise SystemExit(
+                f"{path}: GPU datagen loads CSNN (net12) or CSKB (net13 king buckets). Got {magic!r}.")
+        ftw = np.frombuffer(f.read(nfeat * h * 2), dtype="<i2").copy()
         ftb = np.frombuffer(f.read(h * 2), dtype="<i2").copy()
         outw = np.frombuffer(f.read(2 * h * 2), dtype="<i2").copy()
         (outb,) = struct.unpack("<i", f.read(4))
-    return h, ftw, ftb, outw, outb
+    return h, ftw, ftb, outw, outb, buckets
+
+
+def net_args(ftw, ftb, outw, outb, buckets):
+    """Kernel arguments that follow the game count: weights, then the king-bucket count."""
+    return (ftw, ftb, outw, np.int32(outb), np.int32(buckets))
 
 
 def compact(fen):
@@ -163,7 +185,7 @@ def move_uci(m):
 
 class GpuDatagen:
     def __init__(self, net_path, capacity):
-        self.h, ftw, ftb, outw, self.outb = load_net(net_path)
+        self.h, ftw, ftb, outw, self.outb, self.buckets = load_net(net_path)
         src = open(os.path.join(HERE, "datagen.cu")).read()
         options = ("--std=c++17", f"-DH={self.h}", f"-DTT_BITS={TT_BITS}")
         # Registers per thread: the search wants 176, which fits two 4-warp blocks per SM; capped at 168,
@@ -197,7 +219,7 @@ class GpuDatagen:
         assert n <= self.capacity
         start = cp.asarray(np.stack([compact(f) for f in fens]))
         threads, warps = ((n + 127) // 128,), ((n + 3) // 4,)
-        net = (self.ftw, self.ftb, self.outw, np.int32(self.outb))
+        net = net_args(self.ftw, self.ftb, self.outw, self.outb, self.buckets)
         self.k["datagen_init"](threads, (128,), (self.games, np.int32(n), start))
         self.k["datagen_setup"](warps, (128,), (self.games, np.int32(n)) + net + (self.accs, self.tts))
         done = cp.zeros(n, cp.int32)
@@ -237,7 +259,7 @@ class GpuDatagen:
         """Plays total_games games (openings that end in mate or stalemate are replaced) into out_path."""
         assert random_plies < MAX_PLY, "each random ply takes one of the MAX_PLY + 2 accumulator slots"
         cap = self.capacity
-        net = (self.ftw, self.ftb, self.outw, np.int32(self.outb))
+        net = net_args(self.ftw, self.ftb, self.outw, self.outb, self.buckets)
         start = cp.asarray(compact("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"))
         next_id, started = 0, 0
 
@@ -307,7 +329,7 @@ def rescore(dg, in_path, out_path, nodes, report_lines=1_000_000):
     """Each line of a datagen file searched once from a cold start (an empty table, a fresh Searcher), and
     written back with only the score replaced, in order; as gpu/ref.cpp's score mode."""
     cap = dg.capacity
-    net = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb))
+    net = net_args(dg.ftw, dg.ftb, dg.outw, dg.outb, dg.buckets)
     done = cp.zeros(cap, cp.int32)
     scores = cp.zeros(cap, cp.int32)
     t0, count = time.perf_counter(), 0

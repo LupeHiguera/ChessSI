@@ -3,6 +3,9 @@
 // undo_move with the same Zobrist keys (src/position.cpp), and the game loop of src/datagen.cpp.
 // The aim is the same output as the CPU for the same start positions, checked with gpu/ref.cpp.
 //
+// CSKB (net13) uses the same kernels: each feature row is (king bucket * 768 + feature) * H, and a
+// king move refreshes that perspective. buckets <= 1 is the CSNN path, unchanged.
+//
 // One game per warp. All 32 lanes run the same scalar code in lockstep on one copy of the game in
 // global memory (same-address reads are broadcast and same-value writes merge), except the NNUE work:
 // each lane owns H / 32 hidden units of both perspectives. Every launch plays one ply of every game,
@@ -142,6 +145,7 @@ struct Game {
 struct Net {
     const short *ftw, *ftb, *outw;
     int outb;
+    int buckets; // 1 for CSNN (net12). 8 or 16 for CSKB (net13 king buckets).
 };
 
 
@@ -225,6 +229,19 @@ __device__ __forceinline__ short* acc_slot(short* acc, int slot) { return acc + 
 __device__ __forceinline__ int feat(int persp, int p, int s) { // White's view, or Black's (colors swapped, ranks flipped)
     return persp == 0 ? p * 64 + s : ((color_of(p) ^ 1) * 6 + type_of(p)) * 64 + (s ^ 56);
 }
+// NNUE::king_bucket. Real square, a1 = 0. Files a-d mirror with ^ 7. Rank is not flipped.
+__device__ __forceinline__ int king_bucket_sq(int king, int nBuckets) {
+    if ((king & 7) < 4)
+        king ^= 7;
+    int file = (king & 7) - 4;
+    int rank = king >> 3;
+    if (nBuckets == 8)
+        return file + 4 * (rank >= 4 ? 1 : 0);
+    return file + 4 * (rank >> 1);
+}
+__device__ __forceinline__ const short* ft_at(const Net& net, int bucket, int feature, int off) {
+    return net.ftw + ((size_t)bucket * 768 + feature) * H + off;
+}
 // A lane's units move in groups of 8 int16 values, one 16-byte load or store each (rows and
 // accumulators are 16-byte aligned). __vadd2 and __vsub2 add two int16 values per 32-bit word with
 // the same wrap-around as (short)(a + b).
@@ -238,7 +255,25 @@ __device__ __forceinline__ uint4 sub8(uint4 a, uint4 b) {
     return make_uint4(__vsub2(a.x, b.x), __vsub2(a.y, b.y), __vsub2(a.z, b.z), __vsub2(a.w, b.w));
 }
 
+// One perspective of a CSKB net, from the position as it stands (the king square is post-move).
+__device__ __noinline__ void refresh_side(const Game* g, const Net& net, short* half, int persp) {
+    int base = lane_id() * UNITS;
+    int bucket = king_bucket_sq(king_sq(g, persp), net.buckets);
+    for (int c = 0; c < UNITS; c += 8) {
+        uint4 v = load8(net.ftb + base + c);
+        for (u64 b = occupied(g); b; b &= b - 1) {
+            int s = lsb(b);
+            v = add8(v, load8(ft_at(net, bucket, feat(persp, g->board[s], s), base + c)));
+        }
+        store8(half + base + c, v);
+    }
+}
 __device__ void refresh(const Game* g, const Net& net, short* a) {
+    if (net.buckets > 1) {
+        refresh_side(g, net, a, 0);
+        refresh_side(g, net, a + H, 1);
+        return;
+    }
     int base = lane_id() * UNITS;
     for (int persp = 0; persp < 2; ++persp) {
         for (int c = 0; c < UNITS; c += 8) {
@@ -258,7 +293,32 @@ struct Delta {
     int n;
     int piece[4], sq[4];
 };
-__device__ void apply_delta(const Net& net, const short* from, short* to, const Delta& d) {
+// King moves change every row of that color's perspective. The other perspective keeps its bucket.
+__device__ __noinline__ void apply_delta_buckets(const Game* g, const Net& net, const short* from, short* to, const Delta& d) {
+    int base = lane_id() * UNITS;
+    int kingColor = (d.n > 0 && type_of(d.piece[0]) == KING) ? color_of(d.piece[0]) : -1;
+    for (int persp = 0; persp < 2; ++persp) {
+        if (persp == kingColor) {
+            refresh_side(g, net, to + persp * H, persp);
+            continue;
+        }
+        int bucket = king_bucket_sq(king_sq(g, persp), net.buckets);
+        for (int c = 0; c < UNITS; c += 8) {
+            uint4 v = load8(from + persp * H + base + c);
+            for (int k = 0; k < 4; ++k) {
+                if (k >= d.n) continue;
+                uint4 w = load8(ft_at(net, bucket, feat(persp, d.piece[k], d.sq[k]), base + c));
+                v = k % 2 ? add8(v, w) : sub8(v, w);
+            }
+            store8(to + persp * H + base + c, v);
+        }
+    }
+}
+__device__ void apply_delta(const Game* g, const Net& net, const short* from, short* to, const Delta& d) {
+    if (net.buckets > 1) {
+        apply_delta_buckets(g, net, from, to, d);
+        return;
+    }
     int base = lane_id() * UNITS;
     for (int c = 0; c < UNITS; c += 8) {
         // Every load first, both perspectives and all (up to 4) features, so their latencies overlap.
@@ -420,7 +480,7 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc) {
     // Legal first: the caller undoes an illegal move at once, and nothing ever reads its
     // accumulator, so it is only computed for legal ones (about a quarter of updates are not).
     bool legal = !attacked(g, king_sq(g, us), them);
-    if (legal) apply_delta(net, acc_slot(acc, top), acc_slot(acc, top + 1), d);
+    if (legal) apply_delta(g, net, acc_slot(acc, top), acc_slot(acc, top + 1), d);
     __syncwarp();
     return legal;
 }
@@ -1082,9 +1142,9 @@ __device__ bool is_noisy(const Game* g, u16 m) {
 
 // Sets up each game's accumulator and clears its TT (Search::clear()); the host has written the
 // position, its single state and the counters.
-extern "C" __global__ void datagen_setup(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
+extern "C" __global__ void datagen_setup(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb, int buckets,
                                           short* accs, TTEntry* tts) {
-    Net net = {ftw, ftb, outw, outb};
+    Net net = {ftw, ftb, outw, outb, buckets};
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
     if (w >= n) return;
     Game* g = games + w;
@@ -1098,10 +1158,10 @@ extern "C" __global__ void datagen_setup(Game* games, int n, const short* ftw, c
 }
 
 // Plays one ply of every unfinished game.
-extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
+extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb, int buckets,
                                          const Params* params, short* accs, TTEntry* tts, unsigned long long nodes,
                                          unsigned long long budget) {
-    Net net = {ftw, ftb, outw, outb};
+    Net net = {ftw, ftb, outw, outb, buckets};
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= n) return;
     Game* g = games + w;
@@ -1170,10 +1230,10 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
 // Rescoring (gpu/datagen.py rescore, as gpu/ref.cpp's score mode): one search per position from a cold
 // start: datagen_setup has cleared the game's table, think_start gives a fresh Searcher, and the search's
 // score goes to scores[], White-relative. The game is then done.
-extern "C" __global__ void score_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
+extern "C" __global__ void score_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb, int buckets,
                                       const Params* params, short* accs, TTEntry* tts, unsigned long long nodes,
                                       unsigned long long budget, int* scores) {
-    Net net = {ftw, ftb, outw, outb};
+    Net net = {ftw, ftb, outw, outb, buckets};
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= n) return;
     Game* g = games + w;
@@ -1265,11 +1325,11 @@ __device__ __forceinline__ u64 splitmix64(u64& x) {
 // with its own RNG seeded by the game's id), a fresh accumulator and a cleared TT. A game whose
 // opening runs out of legal moves is marked done with result -1 and gets no samples.
 extern "C" __global__ void datagen_opening(Game* games, const int* slots, int k, const u8* start, const u64* ids, u64 seed,
-                                           int randomPlies, const short* ftw, const short* ftb, const short* outw, int outb,
+                                           int randomPlies, const short* ftw, const short* ftb, const short* outw, int outb, int buckets,
                                            short* accs, TTEntry* tts) {
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
     if (w >= k) return;
-    Net net = {ftw, ftb, outw, outb};
+    Net net = {ftw, ftb, outw, outb, buckets};
     int slot = slots[w];
     Game* g = games + slot;
     short* acc = accs + (size_t)slot * ACC_SLOTS * 2 * H;
@@ -1382,8 +1442,8 @@ extern "C" __global__ void match_setup(const int* slots, int k, TTEntry* ttsA, T
     __syncwarp();
 }
 
-extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, const short* ftbA, const short* outwA, int outbA,
-                                      const short* ftwB, const short* ftbB, const short* outwB, int outbB,
+extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, const short* ftbA, const short* outwA, int outbA, int bucketsA,
+                                      const short* ftwB, const short* ftbB, const short* outwB, int outbB, int bucketsB,
                                       const Params* pa, const Params* pb, int perGame,
                                       short* accs, TTEntry* ttsA, TTEntry* ttsB, unsigned long long nodes,
                                       unsigned long long budget) {
@@ -1394,7 +1454,7 @@ extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, con
     short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
     bool idle = g->thinkState == T_IDLE; // otherwise a search is under way, in some position of its tree
     bool aToMove = (idle ? g->stm : g->rootStm) == g->aColor;
-    Net net = aToMove ? Net{ftwA, ftbA, outwA, outbA} : Net{ftwB, ftbB, outwB, outbB};
+    Net net = aToMove ? Net{ftwA, ftbA, outwA, outbA, bucketsA} : Net{ftwB, ftbB, outwB, outbB, bucketsB};
     TTEntry* tt = (aToMove ? ttsA : ttsB) + ((size_t)w << TT_BITS);
     int result = -1;
     if (idle) { // a new ply

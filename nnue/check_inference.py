@@ -3,45 +3,13 @@
     python check_inference.py <net.nnue> <chesssi binary> <data.txt> [positions=200]
 
 Recomputes each position's eval from the quantised file in exact integer arithmetic (the same
-steps as src/nnue.cpp) and compares it with the engine's "eval" command after loading the network
-with "setoption name EvalFile". Any difference is a bug in one of the two.
+steps as src/nnue.cpp, including CSKB king buckets) and compares it with the engine's "eval" command
+after loading the network with "setoption name EvalFile". Any difference is a bug in one of the two.
 """
-import struct
 import subprocess
 import sys
 
-import numpy as np
-
-from train import QA, QB, SCALE, features
-
-
-def load(path):
-    with open(path, "rb") as f:
-        assert f.read(4) == b"CSNN"
-        (h,) = struct.unpack("<i", f.read(4))
-        ft_w = np.frombuffer(f.read(768 * h * 2), dtype="<i2").reshape(768, h).astype(np.int64)
-        ft_b = np.frombuffer(f.read(h * 2), dtype="<i2").astype(np.int64)
-        out_w = np.frombuffer(f.read(2 * h * 2), dtype="<i2").astype(np.int64)
-        (out_b,) = struct.unpack("<i", f.read(4))
-    return ft_w, ft_b, out_w, out_b
-
-
-def tdiv(a, b):
-    """Integer division truncating toward zero, as in C++."""
-    q = abs(a) // abs(b)
-    return q if (a >= 0) == (b > 0) else -q
-
-
-def reference(net, fen):
-    ft_w, ft_b, out_w, out_b = net
-    parts = fen.split()
-    w, b = features(parts[0])
-    us, them = (w, b) if parts[1] == "w" else (b, w)
-    acc = np.concatenate([ft_b + ft_w[us].sum(0), ft_b + ft_w[them].sum(0)])
-    x = np.clip(acc, 0, QA)
-    total = int((x * x * out_w).sum())
-    total = tdiv(total, QA) + out_b
-    return tdiv(total * SCALE, QA * QB)
+from arch import evaluate
 
 
 def main():
@@ -54,7 +22,7 @@ def main():
                 fens.append(line.split("|")[0].strip())
             if len(fens) >= count:
                 break
-    net = load(net_path)
+    data = open(net_path, "rb").read()
     script = f"setoption name EvalFile value {net_path}\n"
     script += "".join(f"position fen {fen}\neval\n" for fen in fens) + "quit\n"
     out = subprocess.run([engine], input=script, capture_output=True, text=True).stdout.splitlines()
@@ -64,7 +32,7 @@ def main():
     if len(evals) != len(fens):
         print(f"expected {len(fens)} evals, parsed {len(evals)}; engine output starts: {out[:5]}")
         return 1
-    bad = [(fen, e, reference(net, fen)) for fen, e in zip(fens, evals) if e != reference(net, fen)]
+    bad = [(fen, e, evaluate(data, fen)) for fen, e in zip(fens, evals) if e != evaluate(data, fen)]
     print(f"{len(fens) - len(bad)}/{len(fens)} positions match")
     for fen, e, r in bad[:5]:
         print(f"  {fen}: engine {e}, reference {r}")

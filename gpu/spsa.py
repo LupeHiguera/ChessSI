@@ -68,7 +68,7 @@ def main():
 
     dg = GpuDatagen(net_path, n)
     tts_b = cp.zeros(n * (1 << TT_BITS) * 16, cp.uint8)
-    net = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb))
+    net = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb), np.int32(dg.buckets))
     k = {name: dg.mod.get_function(name) for name in ("match_init", "match_setup", "match_step", "match_results")}
     pa, pb = np.zeros(n, PARAMS), np.zeros(n, PARAMS)
     pa_gpu, pb_gpu = cp.zeros(n * PARAMS.itemsize, cp.uint8), cp.zeros(n * PARAMS.itemsize, cp.uint8)
