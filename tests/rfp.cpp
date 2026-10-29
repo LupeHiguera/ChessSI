@@ -49,8 +49,8 @@ void check(const char* name, const std::string& fen, int depth, int alpha, int b
     ok ? ++passed : ++failed;
 }
 
-// The original 15 direct probes deliberately leave moveStack zero, isolating
-// RFP from NMP at their entry. These two cases preserve actual prefix context.
+// The original 15 direct probes deliberately leave the ply stack's moves as MOVE_NONE,
+// isolating RFP from NMP at their entry. These two cases preserve actual prefix context.
 void check_context(const char* name, bool throughNull) {
     Position pos;
     const std::string initial = throughNull
@@ -76,22 +76,77 @@ void check_context(const char* name, bool throughNull) {
     limits.nodes = 200000;
     Searcher s(pos, limits);
     const int ply = throughNull ? 2 : 1;
-    if (throughNull) s.moveStack[0] = MOVE_NONE;
-    s.moveStack[ply - 1] = predecessor;
-    const int score = s.search(0, 1, 3, ply);
+    if (throughNull) s.ply_stack(0)->move = MOVE_NONE;
+    s.ply_stack(ply - 1)->move = predecessor;
+    const int score = s.search(0, 1, 3, ply, false);
     bool ok = !s.stopped && s.nodes == 1 && score == staticEval
            && staticEval - 450 >= 1
            && pos.rule50() == (throughNull ? 2 : 1)
            && pos.fen() == contextFen && pos.key() == contextKey
            && pos.is_draw() == contextDraw
-           && s.moveStack[ply - 1] == predecessor;
-    if (throughNull) ok &= s.moveStack[0] == MOVE_NONE;
+           && s.ply_stack(ply - 1)->move == predecessor;
+    if (throughNull) ok &= s.ply_stack(0)->move == MOVE_NONE;
     pos.undo_move(predecessor);
     if (throughNull) pos.undo_null_move();
     ok &= pos.fen() == initialFen && pos.key() == initialKey
        && pos.is_draw() == initialDraw;
     std::cout << (ok ? "PASS " : "FAIL ") << name << ": score " << score
               << ", nodes " << s.nodes << ", stopped " << s.stopped << '\n';
+    ok ? ++passed : ++failed;
+}
+
+// cutNode, ttPv and improving are not yet inputs to pruning, so the bench cannot see them.
+void check_plumbing() {
+    const std::string rook = "4k3/8/2K5/8/8/8/8/R7 w - - 0 1";
+    Position pos;
+    if (!pos.set(rook)) std::exit(2);
+    Search::clear();
+    TT.new_search();
+    SearchLimits limits;
+    limits.nodes = 200000;
+
+    TT.store(0x1234, make_move(0, 8), 12, 3, BOUND_LOWER, 400, true);
+    const TTEntry* e = TT.probe(0x1234);
+    bool ok = e && e->move == make_move(0, 8) && e->score == 12 && e->depth == 3
+           && e->bound() == BOUND_LOWER && e->eval == 400 && e->is_pv();
+    // A store with no move keeps the old one. An out-of-range eval is recorded as missing.
+    TT.store(0x1234, MOVE_NONE, -5, 4, BOUND_EXACT, 40000, false);
+    e = TT.probe(0x1234);
+    ok &= e && e->move == make_move(0, 8) && e->score == -5 && e->bound() == BOUND_EXACT
+       && e->eval == VALUE_NONE && !e->is_pv();
+
+    Search::clear();
+    TT.new_search();
+    Searcher wide(pos, limits);
+    const int raw = evaluate(pos);
+    wide.search(-1000, 1000, 1, 0, false);
+    e = TT.probe(pos.key());
+    ok &= e && e->is_pv() && e->eval == raw && wide.ply_stack(0)->ttPv
+       && wide.ply_stack(0)->improving && wide.ply_stack(0)->staticEval == raw;
+
+    Search::clear();
+    TT.new_search();
+    Searcher narrow(pos, limits);
+    narrow.ply_stack(0)->staticEval = 2000; // two plies before the node under test
+    narrow.search(0, 1, 1, 2, true);
+    ok &= narrow.ply_stack(2)->staticEval == raw && !narrow.ply_stack(2)->improving
+       && !narrow.ply_stack(2)->ttPv;
+
+    narrow.ply_stack(0)->staticEval = VALUE_NONE;
+    narrow.ply_stack(-2)->staticEval = 2000; // in check two plies ago: fall back four plies
+    narrow.search(0, 1, 1, 2, true);
+    ok &= !narrow.ply_stack(2)->improving;
+    narrow.ply_stack(-2)->staticEval = 0;
+    narrow.search(0, 1, 1, 2, true);
+    ok &= narrow.ply_stack(2)->improving;
+
+    Position checked;
+    if (!checked.set("7k/8/5K2/8/8/8/r7/7R b - - 0 1")) std::exit(2);
+    Searcher evasions(checked, limits);
+    evasions.search(-2001, -2000, 1, 1, true);
+    ok &= evasions.ply_stack(1)->staticEval == VALUE_NONE && !evasions.ply_stack(1)->improving;
+
+    std::cout << (ok ? "PASS " : "FAIL ") << "search plumbing round-trip\n";
     ok ? ++passed : ++failed;
 }
 
@@ -128,6 +183,7 @@ int main() {
     check("stop exit precedes pruning", rook, 3, 0, 1, Stop);
     check_context("real predecessor enables RFP before NMP", false);
     check_context("null descendant retains RFP eligibility", true);
+    check_plumbing();
     std::cout << passed << " passed, " << failed << " failed\n";
     return failed ? 1 : 0;
 }
