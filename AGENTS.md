@@ -46,9 +46,9 @@ The engine speaks UCI on stdin. Extra commands: `perft <depth>`, `d` (show board
 
 One idea per cycle. Do not batch ideas: a combined result says nothing about each one.
 
-1. Pick the top idea from the queue in `docs/IDEAS.md`, or propose a new one. The project's real
-   question is whether AI can find genuinely novel improvements, so look for those too (see
-   "Novel ideas" in `docs/IDEAS.md`), and check prior art before calling an idea novel.
+1. Pick the next open slot in the live claim order at the top of `docs/IDEAS.md`, or propose a new
+   one. The project's real question is whether AI can find genuinely novel improvements, so look for
+   those too (see "Novel ideas" in `docs/IDEAS.md`), and check prior art before calling an idea novel.
 2. Implement the smallest version of it.
 3. `make test` must pass. If the change should not alter search (refactor, speedup), the bench node
    count must be unchanged.
@@ -124,7 +124,9 @@ running, the other may borrow its cores for one test, but must say so in the log
 
 **One idea per agent at a time.** Claim an idea before starting it by writing your name next to it in
 the queue in `docs/IDEAS.md`, so two agents never test the same thing. Novel ideas are open to
-everyone; claim them the same way.
+everyone; claim them the same way. The live search order is the claim block at the top of that queue
+([issue #21](https://github.com/LupeHiguera/ChessSI/issues/21#issuecomment-6486478219) triage). Research
+PRs do not take cores.
 
 **The log is shared.** Add rows only for your own tests, with your own model name, and keep them in
 date order when merging.

@@ -105,8 +105,48 @@ What to watch over time:
 ## Queue
 
 Known techniques, roughly in order of expected gain for this baseline. Each is one experiment. An
-*italic name* marks an idea claimed by that agent (see "Sharing the PC" in `AGENTS.md`). Take the
-top one, test it, log it, then move on.
+*italic name* on the numbered list records who tested that idea (see "Sharing the PC" in `AGENTS.md`).
+The numbered list keeps its old numbers. The live claim order is the block below, from the merge-czar
+triage on [issue #21](https://github.com/LupeHiguera/ChessSI/issues/21#issuecomment-6486478219)
+(2026-10-29). Claim an idea in this file before coding it. Research PRs do not take cores. Lupe's lane
+rules: one live search SPRT, one net SPRT, and GPU datagen.
+
+### Live search SPRT order (2026-10-29)
+
+Search SPRTs run in this order, one at a time, bounds `[0, 5]` at 10+0.1 unless a line says otherwise.
+The lines point at patches that already exist. Claim the slot here before changing its search code.
+A "ready" claim on an older `claude/` branch for the same idea is cleared.
+
+1. Quiescence TT probe and store (qs-TT), [PR #59](https://github.com/LupeHiguera/ChessSI/pull/59).
+   Next search SPRT when the PC is up. Historical item 15.
+2. Singular extensions with multi-cut, [PR #60](https://github.com/LupeHiguera/ChessSI/pull/60).
+   Historical item 20.
+3. Internal iterative reductions, [PR #66](https://github.com/LupeHiguera/ChessSI/pull/66).
+   Historical item 11.
+4. Capture history, [PR #67](https://github.com/LupeHiguera/ChessSI/pull/67). Continuation history
+   [PR #61](https://github.com/LupeHiguera/ChessSI/pull/61) is the base when that base is still
+   required. Historical item 18. #61 waits with its capture-history consumer.
+5. Improving-flag plumbing (`cutNode`, TT eval, `ttPv`, `improving`),
+   [PR #64](https://github.com/LupeHiguera/ChessSI/pull/64). Non-regression first, then consumers.
+   Historical item 17.
+
+GPU datagen toward generation 9 and net13 is the parallel priority, on the net SPRT lane. The triage
+comment names the in-flight king-bucket FT draft as the assigned net path beside that datagen.
+
+Parked until the merge czar promotes them: no SPRT and no cores. Novel / +400 research
+[PR #69](https://github.com/LupeHiguera/ChessSI/pull/69). Exchange witness
+[PR #63](https://github.com/LupeHiguera/ChessSI/pull/63). LMR consumers
+[PR #65](https://github.com/LupeHiguera/ChessSI/pull/65) and
+[PR #68](https://github.com/LupeHiguera/ChessSI/pull/68). The same comment also parks research-only
+drafts #62, #56, #57, #13 and #29.
+
+The first tune of the search constants already passed (see the log). A further SPSA waits until two
+or three of the search merges above have landed.
+
+### Historical queue
+
+The numbers below are unchanged. Passed and failed results stay in the benchmark log. Where a ready
+claim disagreed with the live order, the item says so.
 
 1. Killer moves (two quiet moves per ply that caused a beta cutoff) - *Claude Code*
 2. History heuristic for quiet move ordering - *Claude Code*
@@ -117,39 +157,52 @@ top one, test it, log it, then move on.
 7. Late move pruning and futility pruning - *Claude Code*
 8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning - *Claude Code*
 9. Check evasions in quiescence search - *Astra / GPT-6 (Codex)*
-10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud); quiescence part taken over by Claude Code. The replacement change passed on 2026-10-26, +5.0 ± 3.6*
-11. Internal iterative reductions when there is no TT move - *Claude Code (ready on `claude/iir`: depth ≥ 4, one ply)*
-12. Mate distance pruning; insufficient-material draws
-13. Time management: stop early when the best move is stable - *Claude Code (ready on `claude/tm-stability`: Stash's best-move stability and score-trend scaling of the soft limit)*
+10. TT replacement by depth and age, and TT cutoffs in quiescence. The replacement change passed on
+    2026-10-26, +5.0 ± 3.6. The quiescence retest is live slot 1 ([PR #59](https://github.com/LupeHiguera/ChessSI/pull/59)), so the old "quiescence part taken over" claim is cleared.
+11. Internal iterative reductions when there is no TT move (depth ≥ 4, one ply). Live slot 3:
+    [PR #66](https://github.com/LupeHiguera/ChessSI/pull/66). The ready claim on `claude/iir` is cleared (2026-10-29).
+12. Mate distance pruning; insufficient-material draws. Outside the live search order until promoted.
+13. Time management: stop early when the best move is stable - *Claude Code (passed 2026-10-24, +15.1 ± 7.3, on `claude/tm-stability`: Stash's best-move stability and score-trend scaling of the soft limit)*
 14. Phase 3: self-play data generation and a first NNUE network - *Claude Code, done (net4)*
 
 Added 2026-10-22 from a prior-art review by Claude Code research agents (Stash's per-version
 changelog gives most of the expected gains, measured at 10+0.1 or 8+0.08). Rough order, after the
-first network is in, since pruning margins are in eval units and must be rechecked against it:
+first network is in, since pruning margins are in eval units and must be rechecked against it.
+What runs next is the live search SPRT order above.
 
-15. Probe and store the TT in quiescence (Stash +35.7 and +28.5) - *Claude Code (both earlier tries
-    failed on an always-replace table and a probe without prefetch; the retest on the depth-and-age
-    table, which also keeps a much deeper same-key bound, is ready on `claude/qs-tt`, stacked on
-    `claude/tt-replacement`: 15% fewer nodes to depth 11)*
+15. Probe and store the TT in quiescence (Stash +35.7 and +28.5). Both earlier tries failed on an
+    always-replace table and a probe without prefetch. The retest on the depth-and-age table, which
+    also keeps a much deeper same-key bound, was prepared on `claude/qs-tt`, stacked on
+    `claude/tt-replacement` (15% fewer nodes to depth 11). Live slot 1:
+    [PR #59](https://github.com/LupeHiguera/ChessSI/pull/59). The ready claim on `claude/qs-tt` is cleared (2026-10-29).
 16. Order losing captures (SEE < 0) below quiet moves (Stash +17.9); then SEE pruning in the main
     search - *Claude Code (the ordering passed on 2026-10-26, +30.4 ± 10.4; an older run had
     reached +14.5 ± 11.6 in 1,340 games before a memory kill stopped it; SEE pruning in
     the main search passed on 2026-10-26, +24.2 ± 9.3)*
-17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP - *Claude Code
-    (LMR alone was inconclusive, +6.7 ± 13.9; RFP untried; the LMP part, half the moves when not
-    improving as in Stockfish, is ready on `claude/lmp-improving`)*
-18. Continuation history (1 and 2 plies back), then capture history - *Claude Code (continuation
-    history failed its pre-screen, −2.9 ± 18.1; its 590k-entry table resets on every `go`. The
-    retest keeps the table and halves it at each search, like item 19's history: ready on
-    `claude/conthist2`, stacked on `claude/history-decay`)*
+17. Improving flag in RFP, LMP and LMR; count all moves, not just quiets, for LMP. LMR alone was
+    inconclusive, +6.7 ± 13.9; RFP is untried. Live slot 5 is the plumbing in
+    [PR #64](https://github.com/LupeHiguera/ChessSI/pull/64), not an LMP patch. The ready claim on
+    `claude/lmp-improving` is cleared (2026-10-29). LMR consumers
+    [PR #65](https://github.com/LupeHiguera/ChessSI/pull/65) and
+    [PR #68](https://github.com/LupeHiguera/ChessSI/pull/68) stay parked.
+18. Continuation history (1 and 2 plies back), then capture history. Continuation history failed its
+    pre-screen, −2.9 ± 18.1; its 590k-entry table resets on every `go`. The retest keeps the table
+    and halves it at each search, like item 19's history, and was prepared on `claude/conthist2`,
+    stacked on `claude/history-decay`. That ready claim is cleared (2026-10-29). Live slot 4 is
+    capture history [PR #67](https://github.com/LupeHiguera/ChessSI/pull/67), which needs continuation
+    history [PR #61](https://github.com/LupeHiguera/ChessSI/pull/61) as its base if that base is still
+    required. #61 is not a separate SPRT ahead of the live order.
 19. Keep killers and history between moves (they reset on every `go`) - *Claude Code (history
     without decay failed its pre-screen, −9.9 ± 18.5; halving it at each new search was
     inconclusive, +0.7 ± 2.7 over 19,978 games)*
-20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets - *Claude
-    Code (singular extensions with multi-cut ready on `claude/singular`, stacked on TT replacement)*
-21. Hard time limit capped below the remaining clock; node-fraction time management - *Claude Code
-    (node fraction, Ethereal's max(0.5, 2(1 - share) + 0.4) on the soft limit, is ready on
-    `claude/tm-nodes`, stacked on `claude/tm-stability`)*
+20. Null-move reduction that grows with eval − beta; singular extensions after TT buckets. Singular
+    extensions with multi-cut were prepared on `claude/singular`, stacked on TT replacement. That
+    ready claim is cleared (2026-10-29). Live slot 2:
+    [PR #60](https://github.com/LupeHiguera/ChessSI/pull/60).
+21. Hard time limit capped below the remaining clock; node-fraction time management. Node fraction,
+    Ethereal's max(0.5, 2(1 - share) + 0.4) on the soft limit, was prepared on `claude/tm-nodes`,
+    stacked on `claude/tm-stability`. That ready claim is cleared (2026-10-29): it is outside the
+    live search order and does not take cores until promoted.
 22. Small fixes: no futility/LMP pruning of checking moves; a rule50 guard on TT cutoffs (Astra's
     TT draw-clock probe showed a +562 score from clock 0 reused at clock 98); checkmate before the
     fifty-move draw; RFP's stalemate check costs a full move generation per cutoff (now answered
@@ -164,13 +217,14 @@ first network is in, since pruning margins are in eval units and must be recheck
     version passed on 2026-10-26, +18.5 ± 7.9)*
 24. Lazy SMP: helper threads on copies of the position sharing the TT, for games on more than one
     thread (owner's decision, 2026-10-24; single-thread strength and SPRTs are unchanged) - *Claude
-    Code (ready on `claude/lazy-smp`; bench identical at one thread, ThreadSanitizer shows only the
+    Code (passed on `claude/lazy-smp`; bench identical at one thread, ThreadSanitizer shows only the
     lockless TT races; 4 threads against 1: +129.0 ± 20.6 in 400 games)*
-25. Tune the search's constants with SPSA (fishtest's method; none has been tuned) - *Claude Code (on
-    the GPU: `gpu/spsa.py` on `claude/gpu-perft` plays the exact search at a fixed node count, about 4
-    game pairs a second on an RTX 5080 at 50,000 nodes. It tunes 17 constants: the pruning margins and
-    depths, the null-move reduction, the LMR table, the history bonus cap, the aspiration windows and
-    the quiescence SEE threshold. Tuned values then go to a CPU SPRT at 10+0.1)*
+25. Tune the search's constants with SPSA (fishtest's method). The first tune passed on 2026-10-25,
+    +40.4 ± 11.7 (see the log): `gpu/spsa.py` on `claude/gpu-perft` played the exact search at a fixed
+    node count, about 4 game pairs a second on an RTX 5080 at 50,000 nodes, over 17 constants (the
+    pruning margins and depths, the null-move reduction, the LMR table, the history bonus cap, the
+    aspiration windows and the quiescence SEE threshold). A further SPSA waits until two or three of
+    the live search merges have landed. It does not take cores before that.
 
 Research backlog updated 2026-10-26: [eight additional source-backed candidates and bounded screens](research/research-sprint-2026-10-26/REPORT.md), including softened RFP returns, folded feature factorization and randomized orthogonal GPU tuning. Proposals only; no new implementation claims, jobs or Elo results. [Follow-up on training capacity and net12 controls](research/research-followup-2026-10-27/REPORT.md), 2026-10-27: packed boards already exist; identify loader peaks before redesigning storage.
 
