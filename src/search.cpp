@@ -17,9 +17,18 @@
 // transposition table, check extension, and captures-only quiescence search
 // with MVV-LVA ordering, killer moves, a history heuristic, null-move pruning,
 // late move reductions, late move pruning, futility pruning, SEE pruning in
-// quiescence and aspiration windows. Other pruning is left out on purpose: each
-// is a separate experiment for the ideas log. With more than one thread, helper
-// threads search the same root and share only the transposition table (Lazy SMP).
+// quiescence and aspiration windows. At non-check depth-5-to-9 nodes, quiet
+// defenses chosen by one exchange witness are ordered earlier. That pass only
+// reorders: it does not prune, extend, or treat the witness as a proof the
+// move is safe. Other pruning is left out on purpose: each is a separate
+// experiment for the ideas log. With more than one thread, helper threads
+// search the same root and share only the transposition table (Lazy SMP).
+
+// Compile the witness out with -DCHESSSI_EXCHANGE_WITNESS=0. The UCI option
+// ExchangeWitness can disable it at runtime. Both default to on.
+#ifndef CHESSSI_EXCHANGE_WITNESS
+#define CHESSSI_EXCHANGE_WITNESS 1
+#endif
 
 std::atomic<bool> Search::stop{false};
 
@@ -39,6 +48,10 @@ struct ReductionTable {
     }
 };
 const ReductionTable Reductions;
+
+// Runtime gate for the UCI option ExchangeWitness. The search loop also
+// checks CHESSSI_EXCHANGE_WITNESS so a debug build can drop the pass entirely.
+bool exchangeWitnessEnabled = true;
 
 // Correction history (Caissa 2023, then Alexandria and Stockfish): how far the static eval has
 // been off from search results in positions with the same pawns and side to move. The main
@@ -117,7 +130,9 @@ struct Searcher {
         return pos.piece_on(to_sq(m)) == NO_PIECE && move_type(m) != EN_PASSANT && move_type(m) != PROMOTION;
     }
 
-    // Assigns each move an ordering score, best first.
+    // Assigns each move an ordering score, best first. Scores at or above 100000
+    // are the TT move and good captures; the exchange witness runs once the next
+    // selected move falls below that band.
     void score_moves(MoveList& list, int* scores, Move ttMove, int ply) {
         for (int i = 0; i < list.size; ++i) {
             Move m = list.moves[i];
@@ -216,6 +231,357 @@ struct Searcher {
                 attackers |= rook_attacks(to, occ) & rooks;
         }
         return result;
+    }
+
+    // Squares strictly between two aligned squares, empty when they are not aligned.
+    static Bitboard squares_between(Square a, Square b) {
+        if (a == b)
+            return 0;
+        int df = file_of(a) - file_of(b);
+        int dr = rank_of(a) - rank_of(b);
+        if (df == 0 || dr == 0)
+            return rook_attacks(a, square_bb(b)) & rook_attacks(b, square_bb(a));
+        if (df == dr || df == -dr)
+            return bishop_attacks(a, square_bb(b)) & bishop_attacks(b, square_bb(a));
+        return 0;
+    }
+
+    // The line through two aligned squares, excluding both squares.
+    static Bitboard line_excluding(Square a, Square b) {
+        if (a == b)
+            return 0;
+        int df = file_of(a) - file_of(b);
+        int dr = rank_of(a) - rank_of(b);
+        if (df == 0 || dr == 0)
+            return rook_attacks(a, 0) & rook_attacks(b, 0);
+        if (df == dr || df == -dr)
+            return bishop_attacks(a, 0) & bishop_attacks(b, 0);
+        return 0;
+    }
+
+    // One opponent capture that wins at least a pawn, plus the squares a quiet
+    // move can touch to change that exchange. Pin-unaware, matching see_ge
+    // (card 2 is a separate change).
+    struct ExchangeWitness {
+        Square from = SQ_NONE;
+        Square to = SQ_NONE;
+        int gain = 0;
+        Bitboard participants = 0;
+        Bitboard sliderDeps = 0;
+        Bitboard pinRays = 0;
+    };
+
+    static constexpr int SeeValue[6] = {100, 320, 330, 500, 900, 20000};
+    static constexpr int WitnessThreats = 4;
+    static constexpr int WitnessQuiets = 4;
+    static constexpr int WitnessScore = 95'000; // below good captures, above queen promotions
+
+    Bitboard attackers_of(Square t, Bitboard occ) const {
+        return (PawnAttacks[BLACK][t] & pos.pieces(WHITE, PAWN))
+             | (PawnAttacks[WHITE][t] & pos.pieces(BLACK, PAWN))
+             | (KnightAttacks[t] & pos.pieces(KNIGHT))
+             | (KingAttacks[t] & pos.pieces(KING))
+             | (bishop_attacks(t, occ) & (pos.pieces(BISHOP) | pos.pieces(QUEEN)))
+             | (rook_attacks(t, occ) & (pos.pieces(ROOK) | pos.pieces(QUEEN)));
+    }
+
+    // Attackers of `t` after relocating the pieces described by the bitboards.
+    static Bitboard attackers_with(Square t, Bitboard occ, Bitboard pawnsW, Bitboard pawnsB, Bitboard knights,
+                                    Bitboard bishopLike, Bitboard rookLike, Bitboard kings) {
+        return (PawnAttacks[BLACK][t] & pawnsW) | (PawnAttacks[WHITE][t] & pawnsB) | (KnightAttacks[t] & knights)
+             | (KingAttacks[t] & kings) | (bishop_attacks(t, occ) & bishopLike) | (rook_attacks(t, occ) & rookLike);
+    }
+
+    bool piece_attacks_square(Piece pc, Square from, Square to) const {
+        if (pc == NO_PIECE || from == to)
+            return false;
+        if (type_of(pc) == PAWN)
+            return (PawnAttacks[color_of(pc)][from] & square_bb(to)) != 0;
+        return (attacks_bb(type_of(pc), from, pos.pieces()) & square_bb(to)) != 0;
+    }
+
+    // Pawn captures onto the last rank are queen promotions. see_ge treats a
+    // non-normal move as even; the witness scores the captured piece instead,
+    // with the pawn as the attacker, and only uses this encoding for legality.
+    Move capture_move(Square from, Square to) const {
+        Piece pc = pos.piece_on(from);
+        if (pc != NO_PIECE && type_of(pc) == PAWN && (rank_of(to) == 0 || rank_of(to) == 7))
+            return make_move(from, to, PROMOTION, QUEEN);
+        return make_move(from, to);
+    }
+
+    // True when `cap` is legal for the side to move. Restores the position.
+    bool legal_now(Move cap) {
+        bool ok = pos.do_move(cap);
+        pos.undo_move(cap);
+        return ok;
+    }
+
+    // Material gain of a capture for the capturer, least valuable attacker
+    // each time, same piece values as see_ge. When `rec` is set, records the
+    // pieces that take part and the slider lines and pin lines those pieces use.
+    int see_gain(Square from, Square to, ExchangeWitness* rec) const {
+        Piece attackerPc = pos.piece_on(from);
+        Piece victimPc = pos.piece_on(to);
+        int gain[32];
+        int d = 0;
+        gain[0] = SeeValue[type_of(victimPc)];
+        PieceType taken = type_of(attackerPc);
+
+        if (rec) {
+            rec->from = from;
+            rec->to = to;
+            rec->participants = square_bb(from);
+            rec->sliderDeps = 0;
+            rec->pinRays = 0;
+            if (taken == BISHOP || taken == ROOK || taken == QUEEN)
+                rec->sliderDeps |= squares_between(from, to);
+        }
+
+        Bitboard occ = pos.pieces() ^ square_bb(from) ^ square_bb(to);
+        Bitboard bishopLike = pos.pieces(BISHOP) | pos.pieces(QUEEN);
+        Bitboard rookLike = pos.pieces(ROOK) | pos.pieces(QUEEN);
+        Bitboard attackers = (PawnAttacks[BLACK][to] & pos.pieces(WHITE, PAWN))
+                           | (PawnAttacks[WHITE][to] & pos.pieces(BLACK, PAWN))
+                           | (KnightAttacks[to] & pos.pieces(KNIGHT))
+                           | (KingAttacks[to] & pos.pieces(KING))
+                           | (bishop_attacks(to, occ) & bishopLike)
+                           | (rook_attacks(to, occ) & rookLike);
+        Color stm = color_of(attackerPc);
+        while (d < 30) {
+            stm = ~stm;
+            attackers &= occ;
+            Bitboard ours = attackers & pos.pieces(stm);
+            if (!ours)
+                break;
+            PieceType pt = PAWN;
+            while (!(ours & pos.pieces(pt)))
+                pt = PieceType(pt + 1);
+            Square s = lsb(ours & pos.pieces(pt));
+            if (pt == KING && (attackers & pos.pieces(~stm)))
+                break; // the king cannot capture while the square stays attacked
+            if (rec) {
+                rec->participants |= square_bb(s);
+                if (pt == BISHOP || pt == ROOK || pt == QUEEN)
+                    rec->sliderDeps |= squares_between(s, to);
+            }
+            gain[d + 1] = SeeValue[taken] - gain[d];
+            ++d;
+            if (pt == KING)
+                break;
+            taken = pt;
+            occ ^= square_bb(s);
+            if (pt == PAWN || pt == BISHOP || pt == QUEEN)
+                attackers |= bishop_attacks(to, occ) & bishopLike;
+            if (pt == ROOK || pt == QUEEN)
+                attackers |= rook_attacks(to, occ) & rookLike;
+        }
+        while (d > 0) {
+            --d;
+            gain[d] = -std::max(-gain[d], gain[d + 1]);
+        }
+        if (rec) {
+            rec->gain = gain[0];
+            Bitboard parts = rec->participants;
+            while (parts) {
+                Square s = pop_lsb(parts);
+                Piece pc = pos.piece_on(s);
+                if (pc == NO_PIECE)
+                    continue;
+                Square king = pos.king_square(color_of(pc));
+                if (s != king)
+                    rec->pinRays |= line_excluding(king, s);
+            }
+        }
+        return gain[0];
+    }
+
+    // First of at most four opponent captures, highest victim value first,
+    // that legally wins at least a pawn against a knight, bishop, rook or queen.
+    // Ties prefer the cheaper attacker, then the lower square.
+    bool select_exchange_witness(ExchangeWitness& ex) {
+        Color us = pos.side_to_move(), them = ~us;
+        Bitboard victims = pos.pieces(us) & (pos.pieces(KNIGHT) | pos.pieces(BISHOP) | pos.pieces(ROOK) | pos.pieces(QUEEN));
+        struct Cand {
+            int victim, attacker;
+            Square from, to;
+        };
+        Cand cands[64];
+        int n = 0;
+        Bitboard occ = pos.pieces();
+        for (Bitboard b = victims; b && n < 64;) {
+            Square to = pop_lsb(b);
+            int victim = SeeValue[type_of(pos.piece_on(to))];
+            for (Bitboard a = attackers_of(to, occ) & pos.pieces(them); a && n < 64;) {
+                Square from = pop_lsb(a);
+                cands[n++] = {victim, SeeValue[type_of(pos.piece_on(from))], from, to};
+            }
+        }
+        std::sort(cands, cands + n, [](const Cand& x, const Cand& y) {
+            if (x.victim != y.victim)
+                return x.victim > y.victim;
+            if (x.attacker != y.attacker)
+                return x.attacker < y.attacker;
+            if (x.to != y.to)
+                return x.to < y.to;
+            return x.from < y.from;
+        });
+
+        int limit = std::min(n, WitnessThreats);
+        for (int i = 0; i < limit; ++i) {
+            Move cap = capture_move(cands[i].from, cands[i].to);
+            // The opponent is not to move. A null move is legal here: the node
+            // is not in check. Undo restores the position, including en passant.
+            pos.do_null_move();
+            bool legal = legal_now(cap);
+            pos.undo_null_move();
+            if (!legal)
+                continue;
+            ExchangeWitness trial;
+            int gain = see_gain(cands[i].from, cands[i].to, &trial);
+            if (gain < SeeValue[PAWN])
+                continue;
+            ex = trial;
+            return true;
+        }
+        return false;
+    }
+
+    bool attacks_changed_by(Square target, Square from, Square to, PieceType pt, Color c) const {
+        Bitboard occ = pos.pieces();
+        Bitboard pawnsW = pos.pieces(WHITE, PAWN);
+        Bitboard pawnsB = pos.pieces(BLACK, PAWN);
+        Bitboard knights = pos.pieces(KNIGHT);
+        Bitboard bishopLike = pos.pieces(BISHOP) | pos.pieces(QUEEN);
+        Bitboard rookLike = pos.pieces(ROOK) | pos.pieces(QUEEN);
+        Bitboard kings = pos.pieces(KING);
+        Bitboard before = attackers_with(target, occ, pawnsW, pawnsB, knights, bishopLike, rookLike, kings);
+        auto shift = [](Bitboard& b, Square f, Square t) {
+            b ^= square_bb(f);
+            b |= square_bb(t);
+        };
+        Bitboard occAfter = (occ ^ square_bb(from)) | square_bb(to);
+        if (pt == PAWN)
+            shift(c == WHITE ? pawnsW : pawnsB, from, to);
+        else if (pt == KNIGHT)
+            shift(knights, from, to);
+        else if (pt == BISHOP)
+            shift(bishopLike, from, to);
+        else if (pt == ROOK)
+            shift(rookLike, from, to);
+        else if (pt == QUEEN) {
+            shift(bishopLike, from, to);
+            shift(rookLike, from, to);
+        } else
+            shift(kings, from, to);
+        Bitboard after = attackers_with(target, occAfter, pawnsW, pawnsB, knights, bishopLike, rookLike, kings);
+        return before != after;
+    }
+
+    bool castle_changes_attacks(Move m, Square target) const {
+        Square kFrom = from_sq(m), kTo = to_sq(m);
+        bool kingside = kTo > kFrom;
+        Square rFrom = kingside ? kFrom + 3 : kFrom - 4;
+        Square rTo = kingside ? kFrom + 1 : kFrom - 1;
+        Bitboard occ = pos.pieces();
+        Bitboard pawnsW = pos.pieces(WHITE, PAWN);
+        Bitboard pawnsB = pos.pieces(BLACK, PAWN);
+        Bitboard knights = pos.pieces(KNIGHT);
+        Bitboard bishopLike = pos.pieces(BISHOP) | pos.pieces(QUEEN);
+        Bitboard rookLike = pos.pieces(ROOK) | pos.pieces(QUEEN);
+        Bitboard kings = pos.pieces(KING);
+        Bitboard before = attackers_with(target, occ, pawnsW, pawnsB, knights, bishopLike, rookLike, kings);
+        Bitboard occAfter = (occ ^ square_bb(kFrom) ^ square_bb(rFrom)) | square_bb(kTo) | square_bb(rTo);
+        kings ^= square_bb(kFrom);
+        kings |= square_bb(kTo);
+        rookLike ^= square_bb(rFrom);
+        rookLike |= square_bb(rTo);
+        Bitboard after = attackers_with(target, occAfter, pawnsW, pawnsB, knights, bishopLike, rookLike, kings);
+        return before != after;
+    }
+
+    // Adds or removes an attack on the victim, or steps on a recorded slider
+    // line or pin line. Moving the victim itself is not a defense of another
+    // piece; the primary test leaves those moves in ordinary quiet order.
+    bool affects_witness(Move m, const ExchangeWitness& ex) const {
+        Square from = from_sq(m), to = to_sq(m);
+        if (from == ex.to)
+            return false;
+        if (move_type(m) == CASTLING) {
+            bool kingside = to > from;
+            Square rFrom = kingside ? from + 3 : from - 4;
+            Square rTo = kingside ? from + 1 : from - 1;
+            if (rFrom == ex.to)
+                return false;
+            Bitboard ends = square_bb(from) | square_bb(to) | square_bb(rFrom) | square_bb(rTo);
+            if (ends & (ex.sliderDeps | ex.pinRays))
+                return true;
+            return castle_changes_attacks(m, ex.to);
+        }
+        Bitboard ends = square_bb(from) | square_bb(to);
+        if (ends & (ex.sliderDeps | ex.pinRays))
+            return true;
+        Piece pc = pos.piece_on(from);
+        return attacks_changed_by(ex.to, from, to, type_of(pc), color_of(pc));
+    }
+
+    // After a legal quiet of ours, the opponent is to move. The witnessed
+    // capture is defeated when it is no longer legal or its gain is no longer
+    // positive. A gain that merely falls below a pawn, while staying positive,
+    // is not enough.
+    bool witness_defeated(const ExchangeWitness& ex) {
+        Piece att = pos.piece_on(ex.from);
+        Piece vic = pos.piece_on(ex.to);
+        if (att == NO_PIECE || vic == NO_PIECE || color_of(att) != pos.side_to_move() || color_of(vic) == pos.side_to_move())
+            return true;
+        if (!piece_attacks_square(att, ex.from, ex.to))
+            return true;
+        Move cap = capture_move(ex.from, ex.to);
+        if (!legal_now(cap))
+            return true;
+        return see_gain(ex.from, ex.to, nullptr) <= 0;
+    }
+
+    // Raises the ordering score of up to four remaining quiets, best history
+    // first, that defeat the witnessed exchange. Returns how many were promoted.
+    // `witnessPromotions` counts them for the selector tests.
+    int witnessPromotions = 0;
+
+    int promote_exchange_defenses(MoveList& list, int* scores, int begin) {
+        ExchangeWitness ex;
+        if (!select_exchange_witness(ex))
+            return 0;
+        int cand[256];
+        int n = 0;
+        for (int i = begin; i < list.size; ++i) {
+            Move m = list.moves[i];
+            if (!is_quiet(m) || !affects_witness(m, ex))
+                continue;
+            cand[n++] = i;
+        }
+        std::sort(cand, cand + n, [&](int a, int b) {
+            if (scores[a] != scores[b])
+                return scores[a] > scores[b];
+            return a < b;
+        });
+        int promoted = 0;
+        int inspect = std::min(n, WitnessQuiets);
+        for (int k = 0; k < inspect; ++k) {
+            int i = cand[k];
+            Move m = list.moves[i];
+            if (!pos.do_move(m)) {
+                pos.undo_move(m);
+                continue;
+            }
+            bool defeated = witness_defeated(ex);
+            pos.undo_move(m);
+            if (!defeated)
+                continue;
+            scores[i] = WitnessScore - promoted;
+            ++promoted;
+            ++witnessPromotions;
+        }
+        return promoted;
     }
 
     // Selection sort step: brings the best remaining move to index i.
@@ -346,9 +712,23 @@ struct Searcher {
         int legalMoves = 0;
         Move quietsTried[256];
         int quietCount = 0;
+#if CHESSSI_EXCHANGE_WITNESS
+        bool exchangeWitnessed = false;
+#endif
 
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
+#if CHESSSI_EXCHANGE_WITNESS
+            // The TT move and good captures are at least 100000. After they fail
+            // to cut off, promote one quiet that defeats a single winning exchange.
+            if (!exchangeWitnessed && scores[i] < 100'000) {
+                exchangeWitnessed = true;
+                if (exchangeWitnessEnabled && !inCheck && depth >= 5 && depth <= 9) {
+                    promote_exchange_defenses(list, scores, i);
+                    m = pick_move(list, scores, i);
+                }
+            }
+#endif
             bool quiet = is_quiet(m);
 
             // Late move pruning: near the leaves, quiet moves this far down
@@ -536,6 +916,10 @@ void Search::clear() {
 
 void Search::set_threads(int n) {
     threadCount = std::max(1, n);
+}
+
+void Search::set_exchange_witness(bool on) {
+    exchangeWitnessEnabled = on;
 }
 
 SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbose) {

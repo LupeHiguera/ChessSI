@@ -27,7 +27,7 @@ endif
 SRCS := $(wildcard src/*.cpp)
 HDRS := $(wildcard src/*.h)
 
-.PHONY: all debug test test-rfp bench clean
+.PHONY: all debug test test-rfp test-witness bench clean
 
 all: $(EXE)
 
@@ -39,9 +39,10 @@ debug:
 	$(CXX) -std=c++20 -O1 -g -fsanitize=address,undefined -Wall -Wextra $(SRCS) -o $(EXE)-debug $(LDFLAGS)
 
 # Move generator correctness: every count in tests/perft.epd up to depth 5.
-test: $(EXE) $(EXE)-rfp-tests
+test: $(EXE) $(EXE)-rfp-tests $(EXE)-witness-tests
 	./$(EXE) perftsuite tests/perft.epd 5
 	./$(EXE)-rfp-tests
+	./$(EXE)-witness-tests
 
 # Search boundaries for the shallow reverse futility trial.
 $(EXE)-rfp-tests: tests/rfp.cpp $(SRCS) $(HDRS)
@@ -50,8 +51,15 @@ $(EXE)-rfp-tests: tests/rfp.cpp $(SRCS) $(HDRS)
 test-rfp: $(EXE)-rfp-tests
 	./$(EXE)-rfp-tests
 
+# Exchange-witness selector: ordering only, no search extension.
+$(EXE)-witness-tests: tests/exchange_witness.cpp $(SRCS) $(HDRS)
+	$(CXX) $(CXXFLAGS) tests/exchange_witness.cpp $(filter-out src/main.cpp src/uci.cpp src/search.cpp src/datagen.cpp,$(SRCS)) -o $@ $(LDFLAGS)
+
+test-witness: $(EXE)-witness-tests
+	./$(EXE)-witness-tests
+
 bench: $(EXE)
 	./$(EXE) bench
 
 clean:
-	rm -f $(EXE) $(EXE).exe $(EXE)-debug $(EXE)-rfp-tests
+	rm -f $(EXE) $(EXE).exe $(EXE)-debug $(EXE)-rfp-tests $(EXE)-witness-tests
