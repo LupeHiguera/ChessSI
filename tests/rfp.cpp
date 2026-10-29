@@ -95,7 +95,7 @@ void check_context(const char* name, bool throughNull) {
     ok ? ++passed : ++failed;
 }
 
-// cutNode, ttPv and improving are not yet inputs to pruning, so the bench cannot see them.
+// Round-trip of the plumbing flags. Quiet LMR reads them deeper than these probes.
 void check_plumbing() {
     const std::string rook = "4k3/8/2K5/8/8/8/8/R7 w - - 0 1";
     Position pos;
