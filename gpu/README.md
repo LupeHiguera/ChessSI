@@ -10,12 +10,19 @@ is needed. The engine itself is unchanged.
 | `nnue.cu`, `nnue_check.py` | NNUE evaluation, one warp per position. Bit-exact with the engine on 100,000 positions |
 | `datagen.cu`, `datagen.py` | Self-play data generation: an exact port of `src/search.cpp`, the move order of `src/movegen.cpp`, the Zobrist keys and the datagen game loop |
 | `ref.cpp` | CPU reference: `Datagen::play_game` from given positions with a 1 MB TT, to check `datagen.py` line for line |
-| `match.py` | Fixed-node matches between two networks of the same size, both sides on the GPU |
+| `match.py` | Fixed-node matches between two networks of the same hidden size and king-bucket count |
 
 ## Data generation
 
 ```
 python gpu/datagen.py run <net.nnue> <out.txt> <games> [nodes=5000] [capacity=1024] [seed=1] [random plies=8]
+```
+
+`CSNN` (net12) and `CSKB` (net13, 8 or 16 king buckets) both load. A king move on a CSKB net
+refreshes that perspective. gen9, once a net13 file exists:
+
+```
+python gpu/datagen.py run net13-k8.nnue gen9.txt <games> 5000
 ```
 
 It writes the same lines as `chesssi datagen`: `<fen> | <score> | <result> | <eval>`. Every game opens

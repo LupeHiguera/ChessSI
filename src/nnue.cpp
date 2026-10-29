@@ -38,10 +38,14 @@ constexpr int Inputs = 768;
 constexpr int Scale = 400;
 constexpr int QA = 255, QB = 64;
 
-// File layout written by nnue/train.py, all little-endian.
+// File layout written by nnue/train.py (nnue/arch.py), all little-endian.
+// CSNN: magic, hidden, ft int16[768][H], bias int16[H], out int16[2H], out bias int32.
+// CSKB: magic, hidden, buckets (8 or 16), ft int16[buckets][768][H], then the CSNN bias and output.
+// A CSNN file does not parse as CSKB. net13 is the bucketed file; net12 stays CSNN.
 struct Network {
     int hidden = 0;
-    std::vector<int16_t> ftWeights; // [Inputs][hidden]
+    int buckets = 1;
+    std::vector<int16_t> ftWeights; // [buckets][Inputs][hidden]
     std::vector<int16_t> ftBias;    // [hidden]
     std::vector<int16_t> outWeights; // [2 * hidden]: side to move first, then the opponent
     int32_t outBias = 0;
@@ -67,24 +71,36 @@ bool read(const char* data, size_t size, size_t& pos, T* out, size_t count) {
     return true;
 }
 
+bool out_weights_fit(const std::vector<int16_t>& w) {
+    // evaluate() needs QA * w to fit int16.
+    for (int16_t x : w)
+        if (x < -128 || x > 128)
+            return false;
+    return true;
+}
+
 bool parse(const char* data, size_t size) {
     size_t pos = 0;
     char magic[4];
     Network n;
-    if (!read(data, size, pos, magic, 4) || std::memcmp(magic, "CSNN", 4) != 0 || !read(data, size, pos, &n.hidden, 1)
+    if (!read(data, size, pos, magic, 4) || !read(data, size, pos, &n.hidden, 1)
         || n.hidden <= 0 || n.hidden > 4096 || n.hidden % 32 != 0)
         return false;
-    n.ftWeights.resize(size_t(Inputs) * n.hidden);
+    const bool csnn = std::memcmp(magic, "CSNN", 4) == 0;
+    const bool cskb = std::memcmp(magic, "CSKB", 4) == 0;
+    if (cskb) {
+        if (!read(data, size, pos, &n.buckets, 1) || (n.buckets != 8 && n.buckets != 16))
+            return false;
+    } else if (!csnn)
+        return false;
+    n.ftWeights.resize(size_t(n.buckets) * Inputs * n.hidden);
     n.ftBias.resize(n.hidden);
     n.outWeights.resize(2 * size_t(n.hidden));
     if (!read(data, size, pos, n.ftWeights.data(), n.ftWeights.size())
         || !read(data, size, pos, n.ftBias.data(), n.ftBias.size())
-        || !read(data, size, pos, n.outWeights.data(), n.outWeights.size()) || !read(data, size, pos, &n.outBias, 1))
+        || !read(data, size, pos, n.outWeights.data(), n.outWeights.size()) || !read(data, size, pos, &n.outBias, 1)
+        || !out_weights_fit(n.outWeights))
         return false;
-    // evaluate() needs QA * w to fit int16.
-    for (int16_t w : n.outWeights)
-        if (w < -128 || w > 128)
-            return false;
     net = std::move(n);
     ++loadedGeneration;
     return true;
@@ -128,29 +144,6 @@ int NNUE::hidden() {
     return net.hidden;
 }
 
-void NNUE::refresh(const Position& pos, int16_t* acc) {
-    const int h = net.hidden;
-    std::copy(net.ftBias.begin(), net.ftBias.end(), acc);
-    std::copy(net.ftBias.begin(), net.ftBias.end(), acc + h);
-    for (Bitboard b = pos.pieces(); b;) {
-        Square s = pop_lsb(b);
-        add(acc, pos.piece_on(s), s);
-    }
-}
-
-// The trainer clips weights to +-1.98, so 32 pieces plus the bias stay within int16.
-void NNUE::add(int16_t* acc, Piece p, Square s) {
-    Delta d;
-    d.add(p, s);
-    apply(acc, acc, d);
-}
-
-void NNUE::sub(int16_t* acc, Piece p, Square s) {
-    Delta d;
-    d.sub(p, s);
-    apply(acc, acc, d);
-}
-
 namespace {
 
 // acc[i] = prev[i] + the added rows - the removed rows, in one pass; A and S are known at compile
@@ -167,6 +160,10 @@ void apply_rows(const int16_t* prev, int16_t* acc, const int16_t* const* add, co
     }
 }
 
+const int16_t* ft_row(int bucket, int featureIndex) {
+    return &net.ftWeights[(size_t(bucket) * Inputs + featureIndex) * net.hidden];
+}
+
 template <int A, int S>
 void apply_both(const int16_t* prev, int16_t* acc, const NNUE::Delta& d) {
     const int h = net.hidden;
@@ -174,16 +171,26 @@ void apply_both(const int16_t* prev, int16_t* acc, const NNUE::Delta& d) {
         const int16_t* add[2];
         const int16_t* sub[2];
         for (int k = 0; k < A; ++k)
-            add[k] = &net.ftWeights[size_t(feature(Color(persp), d.addPiece[k], d.addSq[k])) * h];
+            add[k] = ft_row(0, feature(Color(persp), d.addPiece[k], d.addSq[k]));
         for (int k = 0; k < S; ++k)
-            sub[k] = &net.ftWeights[size_t(feature(Color(persp), d.subPiece[k], d.subSq[k])) * h];
+            sub[k] = ft_row(0, feature(Color(persp), d.subPiece[k], d.subSq[k]));
         apply_rows<A, S>(prev + persp * h, acc + persp * h, add, sub, h);
     }
 }
 
-} // namespace
+// One perspective, rows taken from `bucket`. Used when the king did not move.
+template <int A, int S>
+void apply_one(const int16_t* prev, int16_t* acc, const NNUE::Delta& d, Color persp, int bucket) {
+    const int16_t* add[2];
+    const int16_t* sub[2];
+    for (int k = 0; k < A; ++k)
+        add[k] = ft_row(bucket, feature(persp, d.addPiece[k], d.addSq[k]));
+    for (int k = 0; k < S; ++k)
+        sub[k] = ft_row(bucket, feature(persp, d.subPiece[k], d.subSq[k]));
+    apply_rows<A, S>(prev, acc, add, sub, net.hidden);
+}
 
-void NNUE::apply(const int16_t* prev, int16_t* acc, const Delta& d) {
+void apply_plain(const int16_t* prev, int16_t* acc, const NNUE::Delta& d) {
     switch (d.adds * 4 + d.subs) {
     case 1 * 4 + 1: apply_both<1, 1>(prev, acc, d); break; // quiet move, promotion
     case 1 * 4 + 2: apply_both<1, 2>(prev, acc, d); break; // capture
@@ -193,11 +200,108 @@ void NNUE::apply(const int16_t* prev, int16_t* acc, const Delta& d) {
     case 0: if (prev != acc) std::copy(prev, prev + 2 * net.hidden, acc); break;
     default: // never produced by do_move
         apply_both<0, 0>(prev, acc, d);
-        for (int k = 0; k < d.adds; ++k)
-            add(acc, d.addPiece[k], d.addSq[k]);
-        for (int k = 0; k < d.subs; ++k)
-            sub(acc, d.subPiece[k], d.subSq[k]);
+        for (int k = 0; k < d.adds; ++k) {
+            NNUE::Delta one;
+            one.add(d.addPiece[k], d.addSq[k]);
+            apply_plain(acc, acc, one);
+        }
+        for (int k = 0; k < d.subs; ++k) {
+            NNUE::Delta one;
+            one.sub(d.subPiece[k], d.subSq[k]);
+            apply_plain(acc, acc, one);
+        }
     }
+}
+
+// Rebuild one perspective from the position. `half` is that perspective's H values.
+void refresh_side(const Position& pos, int16_t* half, Color persp) {
+    const int h = net.hidden;
+    const int bucket = NNUE::king_bucket(pos.king_square(persp), net.buckets);
+    std::copy(net.ftBias.begin(), net.ftBias.end(), half);
+    for (Bitboard b = pos.pieces(); b;) {
+        Square s = pop_lsb(b);
+        const int16_t* row = ft_row(bucket, feature(persp, pos.piece_on(s), s));
+        const int16_t* add[1] = {row};
+        apply_rows<1, 0>(half, half, add, nullptr, h);
+    }
+}
+
+bool king_moved(const NNUE::Delta& d, Color c) {
+    for (int k = 0; k < d.subs; ++k)
+        if (type_of(d.subPiece[k]) == KING && color_of(d.subPiece[k]) == c)
+            return true;
+    for (int k = 0; k < d.adds; ++k)
+        if (type_of(d.addPiece[k]) == KING && color_of(d.addPiece[k]) == c)
+            return true;
+    return false;
+}
+
+void apply_one_shaped(const int16_t* prev, int16_t* acc, const NNUE::Delta& d, Color persp, int bucket) {
+    switch (d.adds * 4 + d.subs) {
+    case 1 * 4 + 1: apply_one<1, 1>(prev, acc, d, persp, bucket); break;
+    case 1 * 4 + 2: apply_one<1, 2>(prev, acc, d, persp, bucket); break;
+    case 2 * 4 + 2: apply_one<2, 2>(prev, acc, d, persp, bucket); break;
+    case 1 * 4 + 0: apply_one<1, 0>(prev, acc, d, persp, bucket); break;
+    case 0 * 4 + 1: apply_one<0, 1>(prev, acc, d, persp, bucket); break;
+    case 0: if (prev != acc) std::copy(prev, prev + net.hidden, acc); break;
+    default: break; // caller refreshes
+    }
+}
+
+void apply_buckets(const int16_t* prev, int16_t* acc, const NNUE::Delta& d, const Position& pos) {
+    const int h = net.hidden;
+    const int shape = d.adds * 4 + d.subs;
+    const bool known = shape == 0 || shape == 1 || shape == 4 || shape == 5 || shape == 6 || shape == 10;
+    for (int p = 0; p < 2; ++p) {
+        Color persp = Color(p);
+        int16_t* dst = acc + p * h;
+        const int16_t* src = prev + p * h;
+        // A king move changes every row of that perspective. Rebuild it. The other
+        // perspective still has the same bucket, so it stays one add and one sub.
+        if (king_moved(d, persp) || !known) {
+            refresh_side(pos, dst, persp);
+            continue;
+        }
+        apply_one_shaped(src, dst, d, persp, NNUE::king_bucket(pos.king_square(persp), net.buckets));
+    }
+}
+
+} // namespace
+
+void NNUE::refresh(const Position& pos, int16_t* acc) {
+    const int h = net.hidden;
+    if (net.buckets > 1) {
+        refresh_side(pos, acc, WHITE);
+        refresh_side(pos, acc + h, BLACK);
+        return;
+    }
+    std::copy(net.ftBias.begin(), net.ftBias.end(), acc);
+    std::copy(net.ftBias.begin(), net.ftBias.end(), acc + h);
+    for (Bitboard b = pos.pieces(); b;) {
+        Square s = pop_lsb(b);
+        add(acc, pos.piece_on(s), s);
+    }
+}
+
+// The trainer clips weights to +-1.98, so 32 pieces plus the bias stay within int16.
+// Single-piece updates are the unbucketed refresh. A bucketed net uses refresh_side.
+void NNUE::add(int16_t* acc, Piece p, Square s) {
+    Delta d;
+    d.add(p, s);
+    apply_plain(acc, acc, d);
+}
+
+void NNUE::sub(int16_t* acc, Piece p, Square s) {
+    Delta d;
+    d.sub(p, s);
+    apply_plain(acc, acc, d);
+}
+
+void NNUE::apply(const int16_t* prev, int16_t* acc, const Delta& d, const Position& pos) {
+    if (net.buckets > 1)
+        apply_buckets(prev, acc, d, pos);
+    else
+        apply_plain(prev, acc, d);
 }
 
 int NNUE::evaluate(const Position& pos) {

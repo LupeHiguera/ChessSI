@@ -2,10 +2,43 @@
 
     python train.py <data.txt>... <out.nnue> [--hidden 128] [--epochs 20] [--lambda 0.75] [--cache-dir dir]
                     [--aux-weight 0] [--future-plies 8] [--policy-weight 0]
+                    [--buckets 8|16] [--init nets/net12-h256.nnue]
 
 Network: (768 -> H) x 2 perspectives -> SCReLU -> 1, the usual first NNUE. Input features are
 (piece colour relative to the perspective, piece type, square), with squares mirrored vertically for
 Black's perspective. The output, times SCALE, is centipawns for the side to move.
+
+net13 adds king buckets on that feature transformer (CSKB), for gen9+ datagen and the net. It is
+not a trained result and it claims no Elo. Omit --buckets to train a CSNN network, which is the
+net12 recipe.
+
+    --buckets 8    8 king buckets x 768, factorized as W = W0 + U. Requires --init.
+    --buckets 16   16 buckets, same factorization. Requires --init.
+
+Bucket id (friendly king, real board; arch.king_bucket and NNUE::king_bucket, the formula from
+the research note in PR #69): if the file is a-d, mirror with ^ 7. 8 buckets is that e-h file
+times ranks 1-4 vs 5-8. 16 is that file times the pairs (1-2, 3-4, 5-6, 7-8). Export folds
+W0+U into a dense CSKB table. A king move refreshes that perspective; any other move is one add
+and one sub of the current bucket. gpu/datagen.cu and gpu/nnue.cu load CSKB the same way, so a
+net13 file can generate gen9.
+
+--init copies W0 and the output from net12's int16 rows, dequantized, and sets U to 0. Before the
+data load the integer eval is compared with that file on --init-check positions (default 1000)
+and training stops if any position differs by more than 1 cp. The cache stores the 768 features,
+not the bucket, so a bucketed run can share a CSNN run's --cache-dir.
+
+5060 Ti, host mode, the net12 recipe otherwise (batch 16384, lambda 0.75). The data is the
+generation-8 unique set net12 used, or a frozen slice of it. This script does not cut the slice.
+
+    python train.py $DATA net13-k8.nnue --buckets 8 --init nets/net12-h256.nnue --hidden 256 --epochs 20 --seed 1 --cache-dir $CACHE --aux-weight 1.0 --future-plies 4 --gpu-data-gb 0
+
+    python train.py $DATA net13-k16.nnue --buckets 16 --init nets/net12-h256.nnue --hidden 256 --epochs 20 --seed 1 --cache-dir $CACHE --aux-weight 1.0 --future-plies 4 --gpu-data-gb 0
+
+gen9 self-play, after a net13 file exists, on the 5080:
+
+    python gpu/datagen.py run net13-k8.nnue gen9.txt <games> 5000
+
+Nothing here has been trained.
 
 Loss: mean squared error between sigmoid(output) and a blend of sigmoid(score / SCALE) and the game
 result, both from the side to move: target = lambda * score + (1 - lambda) * result. With
@@ -15,9 +48,8 @@ from and to squares of the move played (cross-entropy), where the next recorded 
 With --teacher <net.nnue>, a training-only head learns that network's evaluation of each position
 (self-distillation from an earlier ChessSI network), weighted by --teacher-weight.
 
-Export (little-endian, see src/nnue.cpp): magic "CSNN", hidden size (int32), feature weights
-int16[768][H] and biases int16[H] scaled by QA, output weights int16[2H] scaled by QB, output bias
-int32 scaled by QA * QB.
+Export (little-endian, see nnue/arch.py and src/nnue.cpp): CSNN as before; CSKB when --buckets
+is 8 or 16. QA, QB and SCALE live in arch.py.
 """
 import argparse
 import hashlib
@@ -31,31 +63,7 @@ import time
 import numpy as np
 import torch
 
-SCALE = 400
-QA, QB = 255, 64
-PIECES = {"P": 0, "N": 1, "B": 2, "R": 3, "Q": 4, "K": 5}
-PAD = 768
-
-
-def features(board_field):
-    """Feature indices from White's and Black's perspective for one FEN board field."""
-    white, black = [], []
-    rank = 7
-    file = 0
-    for ch in board_field:
-        if ch == "/":
-            rank -= 1
-            file = 0
-        elif ch.isdigit():
-            file += int(ch)
-        else:
-            sq = rank * 8 + file
-            is_white = ch.isupper()
-            pt = PIECES[ch.upper()]
-            white.append((0 if is_white else 384) + pt * 64 + sq)
-            black.append((0 if not is_white else 384) + pt * 64 + (sq ^ 56))
-            file += 1
-    return white, black
+from arch import PAD, PIECES, QA, QB, SCALE, evaluate, features, load_csnn, pack_cskb, pack_csnn
 
 
 # FLIP[f] is feature f seen from the other side: colours swap, squares mirror vertically. So one
@@ -373,11 +381,19 @@ def teacher_predictions(path, inputs, n, dev, data_dev, chunk=1 << 18):
 
 
 class Net(torch.nn.Module):
-    def __init__(self, hidden, aux=False, policy=False, teacher=False):
+    def __init__(self, hidden, aux=False, policy=False, teacher=False, buckets=1):
         super().__init__()
+        self.n_buckets = buckets
+        # W0, shared across king buckets. With buckets == 1 this is the whole feature transformer.
         self.ft = torch.nn.EmbeddingBag(PAD + 1, hidden, mode="sum", padding_idx=PAD)
         self.ft_bias = torch.nn.Parameter(torch.zeros(hidden))
         self.out = torch.nn.Linear(2 * hidden, 1)
+        # U[bucket, feature], the net13 factoriser offset. Export folds W0 + U into a dense table.
+        # The last row is the padding index and stays zero.
+        if buckets > 1:
+            self.U = torch.nn.EmbeddingBag(buckets * PAD + 1, hidden, mode="sum", padding_idx=buckets * PAD)
+        else:
+            self.U = None
         # Auxiliary head, used only in training and not exported: predicts the outcome a few plies
         # later from the same hidden layer, as extra signal for the shared first layer.
         self.aux = torch.nn.Linear(2 * hidden, 1) if aux else None
@@ -387,47 +403,150 @@ class Net(torch.nn.Module):
         with torch.no_grad():
             self.ft.weight.uniform_(-0.05, 0.05)
             self.ft.weight[PAD].zero_()
+            if self.U is not None:
+                self.U.weight.zero_()
         # Teacher head, also training only: predicts an earlier network's evaluation. Made after
         # the first layer's initialisation, so a run with a teacher starts from the same weights
         # as one without.
         self.teach = torch.nn.Linear(2 * hidden, 1) if teacher else None
 
-    def forward(self, stm, nstm):
-        a = torch.clamp(self.ft(stm) + self.ft_bias, 0, 1) ** 2
-        b = torch.clamp(self.ft(nstm) + self.ft_bias, 0, 1) ** 2
+    def embed(self, feats, buckets):
+        # W[bucket, feature] = W0[feature] + U[bucket, feature]. U is absent on a 768 net.
+        x = self.ft(feats)
+        if self.U is not None:
+            pad = self.n_buckets * PAD
+            idx = buckets.reshape(-1, 1) * PAD + feats
+            idx = torch.where(feats == PAD, pad, idx)
+            x = x + self.U(idx)
+        return x + self.ft_bias
+
+    def forward(self, stm, nstm, stm_bucket=None, nstm_bucket=None):
+        a = torch.clamp(self.embed(stm, stm_bucket), 0, 1) ** 2
+        b = torch.clamp(self.embed(nstm, nstm_bucket), 0, 1) ** 2
         x = torch.cat([a, b], dim=1)
-        return (self.out(x).squeeze(1), self.aux(x).squeeze(1) if self.aux is not None else None,
+        main = self.out(x).squeeze(1)
+        return (main, self.aux(x).squeeze(1) if self.aux is not None else None,
                 self.policy(x) if self.policy is not None else None,
                 self.teach(x).squeeze(1) if self.teach is not None else None)
 
     def clip(self):
         # Keeps quantised values in range: QA * w and QB * w must fit int16, and the int32
-        # output sum must not overflow (see src/nnue.cpp).
+        # output sum must not overflow (see src/nnue.cpp). The folded bucket row, not W0 or U
+        # alone, is what the accumulator adds.
         with torch.no_grad():
-            self.ft.weight.clamp_(-1.98, 1.98)
+            w0 = self.ft.weight[:PAD]
+            w0.clamp_(-1.98, 1.98)
+            if self.U is not None:
+                u = self.U.weight[:-1].view(self.n_buckets, PAD, -1)
+                u.copy_(torch.clamp(w0.unsqueeze(0) + u, -1.98, 1.98) - w0.unsqueeze(0))
+                self.U.weight[-1].zero_()
+            self.ft.weight[PAD].zero_()
             self.out.weight.clamp_(-1.98, 1.98)
 
+    def copy_init(self, path):
+        """W0 and the output dot from a CSNN file (net12). Bucket offsets stay 0."""
+        raw = load_csnn(path)
+        hidden = self.ft_bias.shape[0]
+        if raw["hidden"] != hidden:
+            raise SystemExit(f"{path} has hidden {raw['hidden']}, this arm wants {hidden}")
+        with torch.no_grad():
+            self.ft.weight[:PAD].copy_(torch.from_numpy(raw["ft_w"][0].astype(np.float32) / QA))
+            self.ft.weight[PAD].zero_()
+            self.ft_bias.copy_(torch.from_numpy(raw["ft_b"].astype(np.float32) / QA))
+            self.out.weight.copy_(torch.from_numpy(raw["out_w"].astype(np.float32) / QB).view(1, -1))
+            self.out.bias.copy_(torch.tensor([raw["out_b"] / (QA * QB)], dtype=torch.float32))
+            if self.U is not None:
+                self.U.weight.zero_()
 
-def export(net, path):
-    hidden = net.ft_bias.shape[0]
-    ft_w = torch.round(net.ft.weight[:PAD] * QA).to(torch.int16).cpu().numpy()
-    ft_b = torch.round(net.ft_bias * QA).to(torch.int16).cpu().numpy()
-    out_w = torch.round(net.out.weight[0] * QB).to(torch.int16).cpu().numpy()
-    out_b = int(round(net.out.bias.item() * QA * QB))
-    with open(path, "wb") as f:
-        f.write(b"CSNN")
-        f.write(struct.pack("<i", hidden))
-        f.write(ft_w.astype("<i2").tobytes())
-        f.write(ft_b.astype("<i2").tobytes())
-        f.write(out_w.astype("<i2").tobytes())
-        f.write(struct.pack("<i", out_b))
+
+def _round_i16(t):
+    return torch.round(t).clamp(-32767, 32767).to(torch.int16).cpu().numpy()
+
+
+def export(net, path=None):
+    """Write CSNN, or CSKB with W0+U folded. Returns the bytes as well."""
+    hidden = int(net.ft_bias.shape[0])
+    ft_b = _round_i16(net.ft_bias.detach() * QA)
+    out_w = _round_i16(net.out.weight.detach()[0] * QB)
+    out_b = int(round(net.out.bias.detach().item() * QA * QB))
+    if net.U is not None:
+        w0 = net.ft.weight.detach()[:PAD]
+        u = net.U.weight.detach()[:-1].view(net.n_buckets, PAD, hidden)
+        ft_w = _round_i16((w0.unsqueeze(0) + u) * QA)
+        blob = pack_cskb(hidden, net.n_buckets, ft_w, ft_b, out_w, out_b)
+    else:
+        ft_w = _round_i16(net.ft.weight.detach()[:PAD] * QA)
+        blob = pack_csnn(hidden, ft_w, ft_b, out_w, out_b)
+    if path is not None:
+        with open(path, "wb") as f:
+            f.write(blob)
+    return blob
+
+
+# Same formula as arch.king_bucket, on a tensor of real-board squares.
+def bucket_ids(sq, n_buckets):
+    sq = sq.long()
+    mirrored = torch.where((sq & 7) < 4, sq ^ 7, sq)
+    file_id = (mirrored & 7) - 4
+    rank = sq >> 3
+    if n_buckets == 8:
+        return file_id + 4 * (rank >= 4).long()
+    return file_id + 4 * (rank >> 1)
+
+
+def perspective_buckets(white_feats, n_buckets):
+    """White-perspective feature lists -> (white king bucket, black king bucket)."""
+    wk = (white_feats >= 320) & (white_feats < 384)
+    bk = (white_feats >= 704) & (white_feats < 768)
+    zero = torch.zeros((), dtype=white_feats.dtype, device=white_feats.device)
+    wsq = torch.where(wk, white_feats - 320, zero).sum(1)
+    bsq = torch.where(bk, white_feats - 704, zero).sum(1)
+    return bucket_ids(wsq, n_buckets), bucket_ids(bsq, n_buckets)
+
+
+def read_check_fens(path, n):
+    fens = []
+    with open(path, "r", errors="replace") as f:
+        for line in f:
+            fen = line.split("|", 1)[0].strip()
+            parts = fen.split()
+            if len(parts) >= 2 and parts[1] in ("w", "b"):
+                fens.append(fen)
+            if len(fens) >= n:
+                break
+    return fens
+
+
+def step0_check(blob, init_path, fens):
+    """Integer eval of the export against the init file. Within 1 cp on every position, or do not train."""
+    init = open(init_path, "rb").read()
+    worst = 0
+    bad = 0
+    for fen in fens:
+        diff = abs(evaluate(blob, fen) - evaluate(init, fen))
+        worst = max(worst, diff)
+        bad += diff > 1
+    if bad:
+        raise SystemExit(
+            f"step-0 init check failed: {bad}/{len(fens)} positions differ from {init_path} "
+            f"by more than 1 cp (max |diff| {worst}). Not training.")
+    print(f"step-0 init check: {len(fens)} positions, max |diff| {worst} cp", flush=True)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("data", nargs="+")
     ap.add_argument("out")
-    ap.add_argument("--hidden", type=int, default=128)
+    ap.add_argument("--hidden", type=int, default=None)
+    ap.add_argument("--buckets", type=int, default=1, choices=(1, 8, 16),
+                    help="king buckets. 8 or 16 is net13 (CSKB) and needs --init; 1 is today's CSNN")
+    ap.add_argument("--init", default=None, help="CSNN file copied into W0 and the output (net12 for net13)")
+    ap.add_argument("--init-check", type=int, default=None,
+                    help="positions for the step-0 integer check (default 1000 when --init is required)")
+    ap.add_argument("--init-check-file", default=None,
+                    help="FENs or datagen lines for the step-0 check (default: the first data file)")
+    ap.add_argument("--init-only", action="store_true",
+                    help="write the initialized network and exit, before loading the training set")
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--batch", type=int, default=16384)
     ap.add_argument("--lr", type=float, default=0.001)
@@ -445,8 +564,37 @@ def main():
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
-    t0 = time.time()
+    buckets = args.buckets
+    if buckets > 1 and not args.init:
+        raise SystemExit("--buckets 8 or 16 needs --init so step 0 matches that CSNN file (net12)")
+    if buckets == 1 and args.init:
+        raise SystemExit("--init is for net13 (--buckets 8 or 16). A CSNN run starts fresh")
+    hidden = args.hidden
+    if hidden is None:
+        hidden = 256 if buckets > 1 else 128
+    if args.init_check is None:
+        args.init_check = 1000 if buckets > 1 else 0
+
+    print(f"{'net13' if buckets > 1 else 'csnn'} hidden {hidden} buckets {buckets} "
+          f"init {args.init or 'fresh'}", flush=True)
     policy = args.policy_weight > 0
+    teacher = args.teacher is not None
+    # Built before the data load so a failed step-0 check does not read the training set.
+    net = Net(hidden, aux=args.aux_weight > 0, policy=policy, teacher=teacher, buckets=buckets)
+    if args.init:
+        net.copy_init(args.init)
+        if args.init_check:
+            src = args.init_check_file or args.data[0]
+            fens = read_check_fens(src, args.init_check)
+            if len(fens) < args.init_check:
+                raise SystemExit(f"{src}: needed {args.init_check} FENs for the step-0 check, found {len(fens)}")
+            step0_check(export(net), args.init, fens)
+    if args.init_only:
+        export(net, args.out)
+        print(f"wrote {args.out}")
+        return
+
+    t0 = time.time()
     d = load(args.data, args.cache_dir, args.future_plies, args.frozen, moves=policy)
     n = len(d["scores"])
     # Validation holds whole games, about 2%, chosen by each game's stable key. So no game has
@@ -498,16 +646,21 @@ def main():
         w = decode(to_dev(occ_t[idx]), to_dev(pcs_t[idx]))
         b = flip_t[w]
         wt = to_dev(white_t[idx]).unsqueeze(1)
-        return torch.where(wt, w, b), torch.where(wt, b, w)
+        stm, nstm = torch.where(wt, w, b), torch.where(wt, b, w)
+        if net.U is None:
+            return stm, nstm
+        # Buckets come from the white-perspective list (real king squares), then follow the side.
+        wb, bb = perspective_buckets(w, net.n_buckets)
+        side = wt.squeeze(1)
+        return stm, nstm, torch.where(side, wb, bb), torch.where(side, bb, wb)
 
+    net = net.to(dev)
     train_t, val_t = torch.from_numpy(train).to(data_dev), torch.from_numpy(val).to(data_dev)
-    teacher = args.teacher is not None
     if teacher:
         teacher_t = teacher_predictions(args.teacher, inputs, n, dev, data_dev)
         tv = torch.mean((teacher_t[val_t] - target[val_t]) ** 2).item()
         print(f"teacher {os.path.basename(args.teacher)}: validation loss {tv:.5f} on this run's target", flush=True)
 
-    net = Net(args.hidden, aux=args.aux_weight > 0, policy=args.policy_weight > 0, teacher=teacher).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
     zero = torch.zeros((), device=dev)

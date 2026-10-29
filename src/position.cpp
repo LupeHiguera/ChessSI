@@ -173,7 +173,7 @@ void Position::push_accumulator(const NNUE::Delta& delta) {
         accStack.resize(2 * accStack.size()); // deeper than ever before; rare
     int16_t* acc = accStack.data() + accTop;
     accTop += n;
-    NNUE::apply(acc - n, acc, delta);
+    NNUE::apply(acc - n, acc, delta, *this);
 }
 
 std::string Position::fen() const {

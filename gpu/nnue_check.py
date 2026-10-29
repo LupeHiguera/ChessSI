@@ -20,18 +20,28 @@ from perft import POS, WORDS, parse_fen  # noqa: E402  (also compiles chess.cu f
 
 
 def load_net(path):
+    """Same CSNN / CSKB layout as datagen.load_net. Returns buckets as the last value."""
     with open(path, "rb") as f:
-        assert f.read(4) == b"CSNN"
+        magic = f.read(4)
         (h,) = struct.unpack("<i", f.read(4))
-        ftw = np.frombuffer(f.read(768 * h * 2), dtype="<i2").copy()
+        if magic == b"CSNN":
+            buckets, nfeat = 1, 768
+        elif magic == b"CSKB":
+            (buckets,) = struct.unpack("<i", f.read(4))
+            if buckets not in (8, 16):
+                raise SystemExit(f"{path}: net13 CSKB needs 8 or 16 king buckets, got {buckets}")
+            nfeat = buckets * 768
+        else:
+            raise SystemExit(f"{path}: this GPU check loads CSNN or CSKB. Got {magic!r}.")
+        ftw = np.frombuffer(f.read(nfeat * h * 2), dtype="<i2").copy()
         ftb = np.frombuffer(f.read(h * 2), dtype="<i2").copy()
         outw = np.frombuffer(f.read(2 * h * 2), dtype="<i2").copy()
         (outb,) = struct.unpack("<i", f.read(4))
-    return h, ftw, ftb, outw, outb
+    return h, ftw, ftb, outw, outb, buckets
 
 
 def main():
-    h, ftw, ftb, outw, outb = load_net(sys.argv[1])
+    h, ftw, ftb, outw, outb, buckets = load_net(sys.argv[1])
     src = open(os.path.join(HERE, "chess.cu")).read() + open(os.path.join(HERE, "nnue.cu")).read()
     mod = cp.RawModule(code=src, options=("--std=c++17", f"-DH={h}"))
     eval_k, bench_k = mod.get_function("nnue_eval_kernel"), mod.get_function("nnue_update_bench")
@@ -56,7 +66,7 @@ def main():
     n = len(fens)
     out = cp.empty(n, dtype=cp.int32)
     grid = ((n + 3) // 4,)
-    eval_k(grid, (128,), (d_pos, np.int32(n), d_ftw, d_ftb, d_outw, np.int32(outb), out))
+    eval_k(grid, (128,), (d_pos, np.int32(n), d_ftw, d_ftb, d_outw, np.int32(outb), np.int32(buckets), out))
     got = cp.asnumpy(out) * stm_sign
     bad = int((got != ref).sum())
     print(f"h{h}: {n:,} positions; GPU eval differs from the CPU engine's on {bad}" + ("  -> BIT-EXACT" if bad == 0 else ""))
@@ -70,7 +80,7 @@ def main():
         cp.cuda.Device().synchronize()
         t = time.perf_counter()
         for _ in range(reps):
-            eval_k(grid, (128,), (d_pos, np.int32(n), d_ftw, d_ftb, d_outw, np.int32(outb), out))
+            eval_k(grid, (128,), (d_pos, np.int32(n), d_ftw, d_ftb, d_outw, np.int32(outb), np.int32(buckets), out))
         cp.cuda.Device().synchronize()
     dt = time.perf_counter() - t
     print(f"full evaluation from scratch: {n * reps / dt / 1e6:,.0f} M positions/s")
@@ -78,10 +88,10 @@ def main():
     for warps in (4096, 16384):
         m = min(warps, n)
         o = cp.empty(m, dtype=cp.int32)
-        bench_k(((m + 3) // 4,), (128,), (d_pos, np.int32(m), d_ftw, d_ftb, d_outw, np.int32(outb), np.int32(iters), o))
+        bench_k(((m + 3) // 4,), (128,), (d_pos, np.int32(m), d_ftw, d_ftb, d_outw, np.int32(outb), np.int32(buckets), np.int32(iters), o))
         cp.cuda.Device().synchronize()
         t = time.perf_counter()
-        bench_k(((m + 3) // 4,), (128,), (d_pos, np.int32(m), d_ftw, d_ftb, d_outw, np.int32(outb), np.int32(iters), o))
+        bench_k(((m + 3) // 4,), (128,), (d_pos, np.int32(m), d_ftw, d_ftb, d_outw, np.int32(outb), np.int32(buckets), np.int32(iters), o))
         cp.cuda.Device().synchronize()
         dt = time.perf_counter() - t
         print(f"incremental update + eval, {m:,} warps in flight: {m * iters / dt / 1e6:,.0f} M nodes/s")
