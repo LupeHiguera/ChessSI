@@ -1,6 +1,7 @@
 #include "search.h"
 
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <memory>
@@ -20,6 +21,10 @@
 // quiescence and aspiration windows. Other pruning is left out on purpose: each
 // is a separate experiment for the ideas log. With more than one thread, helper
 // threads search the same root and share only the transposition table (Lazy SMP).
+//
+// cutNode, the per-ply stack, ttPv, the TT static eval and `improving` are
+// plumbed through and not yet read by reductions or pruning. The LMR table is
+// unchanged; a later change can use them without another signature rewrite.
 
 std::atomic<bool> Search::stop{false};
 
@@ -77,9 +82,27 @@ struct Searcher {
     int history[2][64][64] = {}; // [side to move][from][to], quiet moves only
     int ownCorrHist[2][CorrHistSize] = {};
     int (*corrHist)[CorrHistSize] = ownCorrHist; // the main thread's points to mainCorrHist
-    Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
 
-    Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
+    // One frame per ply, plus four frames before the root so ss-2 and ss-4 exist at ply 0.
+    // `move` is the move played from this ply (MOVE_NONE is a null move); the child reads it
+    // as its previous move. statScore and continuationHistory are placeholders.
+    struct Stack {
+        int staticEval = VALUE_NONE; // corrected eval, or VALUE_NONE when in check
+        Move move = MOVE_NONE;
+        bool ttPv = false;
+        int statScore = 0;
+        void* continuationHistory = nullptr;
+        bool improving = false;
+    };
+    static constexpr int StackPad = 4;
+    Stack stack[MAX_PLY + StackPad + 2] = {};
+    Stack* ply_stack(int ply) { return stack + StackPad + ply; }
+
+    Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {
+        for (Stack& frame : stack) {
+            frame = Stack{};
+        }
+    }
 
     int64_t elapsed() const {
         return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start).count();
@@ -152,10 +175,25 @@ struct Searcher {
         h += bonus - h * std::abs(bonus) / MaxHistory;
     }
 
+    int correction() const { return corrHist[pos.side_to_move()][pawn_index(pos)] / 16; }
+
     // The network's eval plus what correction history has learned for these pawns.
-    int corrected_eval() {
-        int correction = corrHist[pos.side_to_move()][pawn_index(pos)] / 16;
-        return std::clamp(evaluate(pos) + correction, -VALUE_MATE_IN_MAX_PLY + 1, VALUE_MATE_IN_MAX_PLY - 1);
+    int apply_correction(int raw) const {
+        return std::clamp(raw + correction(), -VALUE_MATE_IN_MAX_PLY + 1, VALUE_MATE_IN_MAX_PLY - 1);
+    }
+
+    int corrected_eval() { return apply_correction(evaluate(pos)); }
+
+    // Stockfish-style: better than our eval two plies ago. In check now, not improving.
+    // In check two plies ago, compare with four plies ago; if that is missing too, assume improving.
+    bool improving_flag(const Stack* ss, bool inCheck) const {
+        if (inCheck)
+            return false;
+        if ((ss - 2)->staticEval != VALUE_NONE)
+            return ss->staticEval > (ss - 2)->staticEval;
+        if ((ss - 4)->staticEval != VALUE_NONE)
+            return ss->staticEval > (ss - 4)->staticEval;
+        return true;
     }
 
     // Moves the entry toward the search result, more for deeper searches; the gravity term
@@ -272,7 +310,10 @@ struct Searcher {
         return best;
     }
 
-    int search(int alpha, int beta, int depth, int ply) {
+    // cutNode is true at an expected fail-high (cut) node. Root and PV children are never
+    // cut nodes. The first child of a non-PV node gets the opposite flag; later null-window
+    // children are cut nodes; the null-move child and a full-depth re-search get the opposite.
+    int search(int alpha, int beta, int depth, int ply, bool cutNode = false) {
         pvLength[ply] = 0;
         bool inCheck = pos.in_check();
         if (inCheck)
@@ -287,6 +328,10 @@ struct Searcher {
 
         bool root = ply == 0;
         bool pvNode = beta - alpha > 1;
+        assert(!(pvNode && cutNode));
+        Stack* ss = ply_stack(ply);
+        ss->statScore = 0;
+        ss->continuationHistory = nullptr;
         if (!root) {
             if (pos.is_draw())
                 return 0;
@@ -296,15 +341,35 @@ struct Searcher {
 
         const TTEntry* tte = TT.probe(pos.key());
         Move ttMove = tte ? tte->move : MOVE_NONE;
-        if (tte && !pvNode && tte->depth >= depth) {
-            int ttScore = score_from_tt(tte->score, ply);
-            if (tte->bound == BOUND_EXACT
-                || (tte->bound == BOUND_LOWER && ttScore >= beta)
-                || (tte->bound == BOUND_UPPER && ttScore <= alpha))
+        // Copy before any child search: a recursive store can overwrite this slot.
+        const int ttEval = tte ? tte->eval : VALUE_NONE;
+        const int ttDepth = tte ? tte->depth : -1;
+        const Bound ttBound = tte ? tte->bound() : BOUND_NONE;
+        const int ttScoreRaw = tte ? tte->score : 0;
+        ss->ttPv = pvNode || (tte && tte->is_pv());
+        if (tte && !pvNode && ttDepth >= depth) {
+            int ttScore = score_from_tt(ttScoreRaw, ply);
+            if (ttBound == BOUND_EXACT
+                || (ttBound == BOUND_LOWER && ttScore >= beta)
+                || (ttBound == BOUND_UPPER && ttScore <= alpha))
                 return ttScore;
         }
 
-        int staticEval = inCheck ? -VALUE_INF : corrected_eval();
+        // In check the pruning code still sees -VALUE_INF, as before. The stack stores
+        // VALUE_NONE so improving falls through to an earlier quiet ply.
+        int rawEval = VALUE_NONE;
+        int staticEval;
+        if (inCheck)
+            staticEval = -VALUE_INF;
+        else if (ttEval != VALUE_NONE) {
+            rawEval = ttEval;
+            staticEval = apply_correction(rawEval);
+        } else {
+            rawEval = evaluate(pos);
+            staticEval = apply_correction(rawEval);
+        }
+        ss->staticEval = inCheck ? VALUE_NONE : staticEval;
+        ss->improving = improving_flag(ss, inCheck);
 
         // Reverse futility pruning: at shallow null-window nodes, a large
         // static advantage may make the remaining search unnecessary.
@@ -322,12 +387,12 @@ struct Searcher {
         // and right after another null move.
         Color us = pos.side_to_move();
         bool hasPieces = pos.pieces(us) & ~pos.pieces(PAWN) & ~pos.pieces(KING);
-        if (!pvNode && !inCheck && !root && depth >= 3 && hasPieces && moveStack[ply - 1] != MOVE_NONE
+        if (!pvNode && !inCheck && !root && depth >= 3 && hasPieces && (ss - 1)->move != MOVE_NONE
             && staticEval >= beta) {
             int R = 3 + depth / 4;
-            moveStack[ply] = MOVE_NONE;
+            ss->move = MOVE_NONE;
             pos.do_null_move();
-            int score = -search(-beta, -beta + 1, depth - 1 - R, ply + 1);
+            int score = -search(-beta, -beta + 1, depth - 1 - R, ply + 1, !cutNode);
             pos.undo_null_move();
             if (stopped)
                 return 0;
@@ -375,14 +440,16 @@ struct Searcher {
                 continue;
             }
             ++legalMoves;
-            moveStack[ply] = m;
+            ss->move = m;
 
             int score;
             if (legalMoves == 1)
-                score = -search(-beta, -alpha, depth - 1, ply + 1);
+                // Full window at a PV node; the first null-window child flips cutNode.
+                score = -search(-beta, -alpha, depth - 1, ply + 1, pvNode ? false : !cutNode);
             else {
                 // Late quiet moves are searched shallower first, and only
-                // re-searched at full depth if they beat alpha.
+                // re-searched at full depth if they beat alpha. The reduction
+                // itself is unchanged: cutNode and improving are not inputs.
                 int r = 0;
                 if (depth >= 3 && legalMoves > 4 && quiet && !inCheck && !pos.in_check()) {
                     r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
@@ -390,11 +457,11 @@ struct Searcher {
                         --r;
                     r = std::clamp(r, 0, depth - 2);
                 }
-                score = -search(-alpha - 1, -alpha, depth - 1 - r, ply + 1);
+                score = -search(-alpha - 1, -alpha, depth - 1 - r, ply + 1, true);
                 if (score > alpha && r > 0)
-                    score = -search(-alpha - 1, -alpha, depth - 1, ply + 1);
+                    score = -search(-alpha - 1, -alpha, depth - 1, ply + 1, !cutNode);
                 if (score > alpha && score < beta)
-                    score = -search(-beta, -alpha, depth - 1, ply + 1);
+                    score = -search(-beta, -alpha, depth - 1, ply + 1, false);
             }
             pos.undo_move(m);
             if (stopped)
@@ -437,7 +504,7 @@ struct Searcher {
         if (!inCheck && (bestMove == MOVE_NONE || is_quiet(bestMove)) && std::abs(best) < VALUE_MATE_IN_MAX_PLY
             && !(bound == BOUND_LOWER && best <= staticEval) && !(bound == BOUND_UPPER && best >= staticEval))
             update_corrhist(best - staticEval, depth);
-        TT.store(pos.key(), bestMove, score_to_tt(best, ply), depth, bound);
+        TT.store(pos.key(), bestMove, score_to_tt(best, ply), depth, bound, rawEval, ss->ttPv);
         return best;
     }
 
@@ -452,7 +519,7 @@ struct Searcher {
             beta = std::min(prevScore + delta, int(VALUE_INF));
         }
         while (true) {
-            int score = search(alpha, beta, depth, 0);
+            int score = search(alpha, beta, depth, 0, false);
             if (stopped)
                 return score;
             if (score <= alpha)
