@@ -31,7 +31,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from datagen import DEFAULTS, PARAMS, TT_BITS, GpuDatagen, compact, make_params, wait  # noqa: E402
+from datagen import DEFAULTS, PARAMS, GpuDatagen, compact, make_params, wait  # noqa: E402
 
 # Each constant's lowest and highest value, and its step at the end of the run (c_end).
 SPACE = {
@@ -41,6 +41,7 @@ SPACE = {
     "futDepth": (1, 12, 1), "futMargin": (40, 400, 12),
     "lmrDepth": (1, 8, 1), "lmrMoves": (0, 10, 1), "lmrBase": (-0.5, 2.5, 0.1), "lmrDiv": (1.0, 5.0, 0.15),
     "histMax": (200, 4000, 100), "aspDepth": (1, 12, 1), "aspDelta": (5, 100, 3), "qsSee": (-200, 200, 10),
+    "seeDepth": (1, 12, 1), "seeQuiet": (10, 200, 6), "seeCapture": (5, 100, 3),
 }
 R_END, ALPHA, GAMMA = 0.002, 0.602, 0.101
 
@@ -67,7 +68,7 @@ def main():
     a0 = {x: R_END * c_end ** 2 * (big_a + total) ** ALPHA for x, (_, _, c_end) in SPACE.items()}
 
     dg = GpuDatagen(net_path, n)
-    tts_b = cp.zeros(n * (1 << TT_BITS) * 16, cp.uint8)
+    tables_b = cp.zeros(n * dg.tables_bytes, cp.uint8)  # side B's TTs and correction histories
     net = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb))
     k = {name: dg.mod.get_function(name) for name in ("match_init", "match_setup", "match_step", "match_results")}
     pa, pb = np.zeros(n, PARAMS), np.zeros(n, PARAMS)
@@ -117,7 +118,7 @@ def main():
         positions = cp.asarray(np.stack([compact(f) for f in fens]))
         k["match_init"](((m + 127) // 128,), (128,), (dg.games, slots_gpu, np.int32(m), positions,
                                                       cp.asarray(np.array(colors, np.int32))))
-        k["match_setup"](((m + 3) // 4,), (128,), (slots_gpu, np.int32(m), dg.tts, tts_b))
+        k["match_setup"](((m + 3) // 4,), (128,), (slots_gpu, np.int32(m), dg.tables, tables_b))
 
     print(f"SPSA of {len(SPACE)} constants: {total} pairs at {nodes} nodes a move, {n} games at once, "
           f"{os.path.basename(net_path)}, seed {seed}", flush=True)
@@ -128,7 +129,7 @@ def main():
     steps = 0
     while any(g is not None for g in slot_game):
         k["match_step"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net + net
-                        + (pa_gpu, pb_gpu, np.int32(1), dg.accs, dg.tts, tts_b, np.uint64(nodes), dg.budget))
+                        + (pa_gpu, pb_gpu, np.int32(1), dg.accs, dg.tables, tables_b, np.uint64(nodes), dg.budget))
         k["match_results"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), res))
         wait()
         r = res.get()  # 0 Black won, 1 draw, 2 White won

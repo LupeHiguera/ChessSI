@@ -72,8 +72,7 @@ struct TTEntry {
     u16 move;
     short score;
     signed char depth;
-    u8 bound;
-    u16 pad;
+    u8 bound, gen, pad;
 };
 struct Sample { // one datagen line before formatting: the position, and White-relative score and eval
     u8 board[64];
@@ -103,7 +102,20 @@ struct Params {
     int histMax;                   // history bonus min(depth * depth, 1200)
     int aspDepth, aspDelta;        // aspiration windows from depth 5, delta 25
     int qsSee;                     // quiescence skips captures that fail see_ge(m, 0)
+    int seeDepth, seeQuiet, seeCapture; // SEE pruning: depth <= 6, quiets below -60 * depth, captures below -30 * depth^2
     u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
+};
+
+// Correction history (src/search.cpp): per side to move and pawn structure, in 1/16 cp.
+#define CORR_SIZE 16384
+#define CORR_LIMIT 1024
+// What one engine keeps from move to move, and Search::clear() empties: the TT with its generation, and
+// the main thread's correction history (int in the engine; its values stay within +-CORR_LIMIT). Each game
+// has one; in a match each side has its own, as two engines would.
+struct Tables {
+    TTEntry tt[1 << TT_BITS];
+    short corr[2][CORR_SIZE];
+    unsigned gen, pad[3]; // TT.new_search() at each search; entries keep its low 8 bits, as the engine's uint8_t
 };
 
 struct Game {
@@ -573,7 +585,8 @@ __device__ int generate(Game* g, u16* list, bool noisy) {
     return n;
 }
 
-// ---- TT (src/tt.cpp: one entry per index, always replace, keep the old move) ----
+// ---- TT (src/tt.cpp: one entry per index; an entry from the current search stays unless the new one,
+// for another position, is at least as deep; keep the old move) ----
 __device__ __forceinline__ TTEntry* tt_entry(TTEntry* tt, u64 key) { return tt + (key >> (64 - TT_BITS)); }
 __device__ __forceinline__ int score_to_tt(int s, int ply) {
     return s >= VALUE_MATE_IN_MAX_PLY ? s + ply : s <= -VALUE_MATE_IN_MAX_PLY ? s - ply : s;
@@ -581,15 +594,27 @@ __device__ __forceinline__ int score_to_tt(int s, int ply) {
 __device__ __forceinline__ int score_from_tt(int s, int ply) {
     return s >= VALUE_MATE_IN_MAX_PLY ? s - ply : s <= -VALUE_MATE_IN_MAX_PLY ? s + ply : s;
 }
-__device__ void tt_store(TTEntry* tt, u64 key, u16 move, int score, int depth, int bound) {
-    TTEntry* e = tt_entry(tt, key);
+__device__ void tt_store(Tables* tb, u64 key, u16 move, int score, int depth, int bound) {
+    TTEntry* e = tt_entry(tb->tt, key);
     __syncwarp();
     TTEntry old = *e;
+    u8 gen = (u8)tb->gen;
+    // A deeper result for another position, written during this search, stays (every lane agrees).
+    if (old.key != key && old.gen == gen && depth < old.depth) return;
     if (move == MOVE_NONE && old.key == key) move = old.move;
     TTEntry n;
-    n.key = key; n.move = move; n.score = (short)score; n.depth = (signed char)depth; n.bound = (u8)bound; n.pad = 0;
+    n.key = key; n.move = move; n.score = (short)score; n.depth = (signed char)depth; n.bound = (u8)bound; n.gen = gen; n.pad = 0;
     __syncwarp();
     *e = n;
+    __syncwarp();
+}
+// Search::clear(): an empty TT and correction history.
+__device__ void clear_tables(Tables* tb) {
+    TTEntry z;
+    z.key = 0; z.move = 0; z.score = 0; z.depth = 0; z.bound = 0; z.gen = 0; z.pad = 0;
+    for (int i = lane_id(); i < (1 << TT_BITS); i += 32) tb->tt[i] = z;
+    for (int i = lane_id(); i < 2 * CORR_SIZE; i += 32) (&tb->corr[0][0])[i] = 0;
+    if (lane_id() == 0) tb->gen = 0;
     __syncwarp();
 }
 
@@ -605,11 +630,13 @@ __device__ __forceinline__ bool is_quiet(const Game* g, u16 m) {
     int t = m & (3 << 14);
     return g->board[(m >> 6) & 63] == NO_PIECE && t != M_EN_PASSANT && t != M_PROMOTION;
 }
+__device__ bool see_ge(const Game* g, u16 m, int threshold);
 // Move order as in src/search.cpp, in 16 bits: the same order with the categories moved down, since
 // only the order matters. History stays within +-16384 (its gravity), and above it come the second and
 // first killer (17,000 and 18,000 there, 70,000 and 80,000 in the engine), a queen promotion (19,000;
 // 90,000), captures (20,000 + 10 * victim value - attacker type; 100,000 + ...) and the TT move
-// (32,000; 1,000,000).
+// (32,000; 1,000,000). In the main search, captures that lose material by SEE go below all of history
+// (-32,000 + 10 * victim value - attacker type, at most -23,000; -100,000 + ...).
 __device__ void score_moves(Game* g, const u16* list, int n, short* scores, u16 ttMove, int ply) {
     __syncwarp();
     for (int i = lane_id(); i < n; i += 32) { // every lane scores every 32nd move
@@ -617,7 +644,10 @@ __device__ void score_moves(Game* g, const u16* list, int n, short* scores, u16 
         int from = m & 63, to = (m >> 6) & 63, t = m & (3 << 14), s;
         if (m == ttMove) s = 32000;
         else if (t == M_EN_PASSANT) s = 20000 + PIECE_VALUE[PAWN] * 10 - PAWN;
-        else if (g->board[to] != NO_PIECE) s = 20000 + PIECE_VALUE[type_of(g->board[to])] * 10 - type_of(g->board[from]);
+        else if (g->board[to] != NO_PIECE) {
+            int mvvLva = PIECE_VALUE[type_of(g->board[to])] * 10 - type_of(g->board[from]);
+            s = (ply >= 0 && !see_ge(g, m, 0) ? -32000 : 20000) + mvvLva;
+        }
         else if (t == M_PROMOTION && ((m >> 12) & 3) + KNIGHT == QUEEN) s = 19000;
         else if (ply >= 0 && m == g->killers[ply][0]) s = 18000;
         else if (ply >= 0 && m == g->killers[ply][1]) s = 17000;
@@ -633,6 +663,29 @@ __device__ void update_history(Game* g, u16 m, int bonus) {
     v += bonus - v * abs(bonus) / 16384;
     __syncwarp();
     h = v;
+    __syncwarp();
+}
+__device__ __forceinline__ int pawn_index(const Game* g) {
+    u64 h = pcs(g, 0, PAWN) * 0x9E3779B97F4A7C15ULL ^ pcs(g, 1, PAWN) * 0xC2B2AE3D27D4EB4FULL;
+    h ^= h >> 31;
+    h *= 0xBF58476D1CE4E5B9ULL;
+    return (int)(h >> 50); // top 14 bits: 0 to CORR_SIZE - 1
+}
+// The network's eval plus what correction history has learned for these pawns.
+__device__ int corrected_eval(const Game* g, const Net& net, const short* acc, const Tables* tb) {
+    int e = evaluate(g, net, acc) + tb->corr[g->stm][pawn_index(g)] / 16;
+    return min(max(e, -VALUE_MATE_IN_MAX_PLY + 1), VALUE_MATE_IN_MAX_PLY - 1);
+}
+// Moves the entry toward the search result, more for deeper searches; the gravity term keeps it within
+// +-CORR_LIMIT.
+__device__ void update_corrhist(const Game* g, Tables* tb, int diff, int depth) {
+    short* e = &tb->corr[g->stm][pawn_index(g)];
+    __syncwarp();
+    int v = *e;
+    int bonus = min(max(diff * depth / 4, -CORR_LIMIT / 4), CORR_LIMIT / 4);
+    v += bonus - v * abs(bonus) / CORR_LIMIT;
+    __syncwarp();
+    *e = (short)v;
     __syncwarp();
 }
 __device__ u16 pick_move(u16* list, short* scores, int n, int i) {
@@ -754,7 +807,7 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
 // code, from the root call think_run put in g->cur. Returns true when the root call returns, with its
 // score in *score, or false once the node count reaches stopAt: the running call goes back to g->cur,
 // and the next call carries on from it.
-__device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, u64 stopAt, int* score) {
+__device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc, Tables* tb, u64 stopAt, int* score) {
     __syncwarp();
     Frame f = g->cur;
     int sp = g->sp, ret = 0;
@@ -787,7 +840,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 if (f.ply >= MAX_PLY - 1) RETURN(evaluate(g, net, acc))
             }
             f.key = g->states[g->nstates - 1].key;
-            PB(6) TTEntry e = *tt_entry(tt, f.key); PE(6)
+            PB(6) TTEntry e = *tt_entry(tb->tt, f.key); PE(6)
             bool hit = e.key == f.key && e.bound != BOUND_NONE;
             f.ttMove = hit ? e.move : MOVE_NONE;
             if (hit && !f.pvNode && e.depth >= f.depth) {
@@ -795,7 +848,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 if (e.bound == BOUND_EXACT || (e.bound == BOUND_LOWER && ttScore >= f.beta) || (e.bound == BOUND_UPPER && ttScore <= f.alpha))
                     RETURN(ttScore)
             }
-            PB(5) f.staticEval = f.inCheck ? -VALUE_INF : evaluate(g, net, acc); PE(5)
+            PB(5) f.staticEval = f.inCheck ? -VALUE_INF : corrected_eval(g, net, acc, tb); PE(5)
             int us = g->stm;
             if (!f.root && !f.pvNode && !f.inCheck && f.depth <= p.rfpDepth && g->states[g->nstates - 1].rule50 + f.depth < 100
                 && abs(f.beta) < VALUE_MATE_IN_MAX_PLY && (g->byColor[us] & ~(g->byType[PAWN] | g->byType[KING]))) {
@@ -844,6 +897,10 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 bool quiet = is_quiet(g, m);
                 if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.lmpDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.quietCount >= p.lmpBase + f.depth * f.depth) continue;
                 if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.futDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.staticEval + p.futMargin * f.depth <= f.alpha) continue;
+                if (!f.root && !f.inCheck && f.depth <= p.seeDepth && f.best > -VALUE_MATE_IN_MAX_PLY) {
+                    PB(7) bool seeOk = see_ge(g, m, quiet ? -p.seeQuiet * f.depth : -p.seeCapture * f.depth * f.depth); PE(7)
+                    if (!seeOk) continue;
+                }
                 PB(3) bool legal = do_move(g, m, net, acc); PE(3)
                 if (!legal) {
                     PB(4) undo_move(g, m); PE(4)
@@ -870,7 +927,10 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             }
             if (f.legalMoves == 0) RETURN(f.inCheck ? -VALUE_MATE + f.ply : 0)
             int bound = f.best >= f.beta ? BOUND_LOWER : f.alpha > f.originalAlpha ? BOUND_EXACT : BOUND_UPPER;
-            { PB(6) tt_store(tt, f.key, f.bestMove, score_to_tt(f.best, f.ply), f.depth, bound); PE(6) }
+            if (!f.inCheck && (f.bestMove == MOVE_NONE || is_quiet(g, f.bestMove)) && abs(f.best) < VALUE_MATE_IN_MAX_PLY
+                && !(bound == BOUND_LOWER && f.best <= f.staticEval) && !(bound == BOUND_UPPER && f.best >= f.staticEval))
+                update_corrhist(g, tb, f.best - f.staticEval, f.depth);
+            { PB(6) tt_store(tb, f.key, f.bestMove, score_to_tt(f.best, f.ply), f.depth, bound); PE(6) }
             RETURN(f.best)
         }
         case S_RED_DONE: // the reduced zero-window search returned
@@ -926,7 +986,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             check_limits(g);
             __syncwarp();
             if (g->stopped) RETURN(0)
-            PB(5) int standPat = evaluate(g, net, acc); PE(5)
+            PB(5) int standPat = corrected_eval(g, net, acc, tb); PE(5)
             if (f.ply >= MAX_PLY - 1 || standPat >= f.beta) RETURN(standPat)
             f.alpha = max(f.alpha, standPat);
             PB(0) f.n = generate(g, g->moves[f.ply], true);
@@ -987,18 +1047,21 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
 #undef RETURN
 
 // Search::think with a node limit and one thread, over as many kernel launches as it takes.
-// think_start sets up a fresh Searcher (history, killers and the move stack zeroed; the TT is kept),
-// and each think_run searches up to `budget` more nodes. Once it returns true the search is over:
-// the best move is in g->thinkBest and its score in g->thinkScore.
+// think_start sets up a fresh Searcher (history, killers and the move stack zeroed; the TT and the
+// correction history are kept) and starts a new TT generation, and each think_run searches up to
+// `budget` more nodes. Once it returns true the search is over: the best move is in g->thinkBest and
+// its score in g->thinkScore.
 enum { T_IDLE, T_DEPTH, T_SEARCH, T_SEARCHING };
 
-__device__ void think_start(Game* g, u64 nodeLimit) {
+__device__ void think_start(Game* g, Tables* tb, u64 nodeLimit) {
     int lane = lane_id();
     for (int i = lane; i < 2 * 64 * 64; i += 32) (&g->history[0][0][0])[i] = 0;
     for (int i = lane; i < (MAX_PLY + 1) * 2; i += 32) (&g->killers[0][0])[i] = 0;
     for (int i = lane; i < MAX_PLY + 1; i += 32) g->moveStack[i] = 0;
     int stm = g->stm;
+    unsigned gen = tb->gen;
     __syncwarp();
+    tb->gen = gen + 1; // TT.new_search()
     g->nodes = 0;
     g->nodeLimit = nodeLimit;
     g->stopped = 0;
@@ -1012,7 +1075,7 @@ __device__ void think_start(Game* g, u64 nodeLimit) {
     __syncwarp();
 }
 
-__device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, u64 budget) {
+__device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, Tables* tb, u64 budget) {
     __syncwarp();
     u64 stopAt = g->nodes + budget;
     int state = g->thinkState, depth = g->thinkDepth, bestScore = g->thinkScore;
@@ -1039,7 +1102,7 @@ __device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, 
             state = T_SEARCHING;
         }
         int score;
-        if (!search_run(g, net, p, acc, tt, stopAt, &score)) {
+        if (!search_run(g, net, p, acc, tb, stopAt, &score)) {
             __syncwarp();
             g->thinkState = state;
             g->thinkDepth = depth;
@@ -1080,16 +1143,15 @@ __device__ bool is_noisy(const Game* g, u16 m) {
     return g->board[(m >> 6) & 63] != NO_PIECE || t == M_EN_PASSANT || t == M_PROMOTION;
 }
 
-// Sets up each game's accumulator and clears its TT (Search::clear()); the host has written the
-// position, its single state and the counters.
+// Sets up each game's accumulator and clears its TT and correction history (Search::clear()); the host
+// has written the position, its single state and the counters.
 extern "C" __global__ void datagen_setup(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
-                                          short* accs, TTEntry* tts) {
+                                          short* accs, Tables* tables) {
     Net net = {ftw, ftb, outw, outb};
-    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= n) return;
     Game* g = games + w;
-    TTEntry* tt = tts + ((size_t)w << TT_BITS);
-    for (int i = lane; i < (1 << TT_BITS); i += 32) tt[i].key = 0, tt[i].move = 0, tt[i].score = 0, tt[i].depth = 0, tt[i].bound = 0, tt[i].pad = 0;
+    clear_tables(tables + w);
     short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
     g->accTop = 0;
     __syncwarp();
@@ -1099,7 +1161,7 @@ extern "C" __global__ void datagen_setup(Game* games, int n, const short* ftw, c
 
 // Plays one ply of every unfinished game.
 extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
-                                         const Params* params, short* accs, TTEntry* tts, unsigned long long nodes,
+                                         const Params* params, short* accs, Tables* tables, unsigned long long nodes,
                                          unsigned long long budget) {
     Net net = {ftw, ftb, outw, outb};
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
@@ -1108,7 +1170,7 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     if (g->done) return;
     PB(10)
     short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
-    TTEntry* tt = tts + ((size_t)w << TT_BITS);
+    Tables* tb = tables + w;
     if (g->thinkState == T_IDLE) { // a new ply
         if (g->ply >= MAX_PLIES) { g->result = 0.5f; g->done = 1; return; }
         if (first_legal_move(g, net, acc, 0) == MOVE_NONE) {
@@ -1120,9 +1182,9 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
         int ev = evaluate(g, net, acc);
         __syncwarp();
         g->rootEval = g->stm == 0 ? ev : -ev;
-        think_start(g, nodes);
+        think_start(g, tb, nodes);
     }
-    if (!think_run(g, net, *params, acc, tt, budget)) {
+    if (!think_run(g, net, *params, acc, tb, budget)) {
         PE(10)
         return;
     }
@@ -1168,10 +1230,10 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
 }
 
 // Rescoring (gpu/datagen.py rescore, as gpu/ref.cpp's score mode): one search per position from a cold
-// start: datagen_setup has cleared the game's table, think_start gives a fresh Searcher, and the search's
+// start: datagen_setup has cleared the game's tables, think_start gives a fresh Searcher, and the search's
 // score goes to scores[], White-relative. The game is then done.
 extern "C" __global__ void score_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
-                                      const Params* params, short* accs, TTEntry* tts, unsigned long long nodes,
+                                      const Params* params, short* accs, Tables* tables, unsigned long long nodes,
                                       unsigned long long budget, int* scores) {
     Net net = {ftw, ftb, outw, outb};
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
@@ -1179,9 +1241,9 @@ extern "C" __global__ void score_step(Game* games, int n, const short* ftw, cons
     Game* g = games + w;
     if (g->done) return;
     short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
-    TTEntry* tt = tts + ((size_t)w << TT_BITS);
-    if (g->thinkState == T_IDLE) think_start(g, nodes);
-    if (!think_run(g, net, *params, acc, tt, budget)) return;
+    Tables* tb = tables + w;
+    if (g->thinkState == T_IDLE) think_start(g, tb, nodes);
+    if (!think_run(g, net, *params, acc, tb, budget)) return;
     int score = g->thinkScore, white = g->stm == 0 ? score : -score;
     __syncwarp();
     if (lane_id() == 0) scores[w] = white;
@@ -1195,6 +1257,7 @@ extern "C" __global__ void datagen_sizes(int* out) {
     out[1] = sizeof(Sample);
     out[2] = sizeof(TTEntry);
     out[3] = sizeof(Params);
+    out[4] = sizeof(Tables);
 }
 
 // Position::set from a compact start position: 64 piece codes (0-11 as make_piece, 12 empty, a1 first),
@@ -1262,18 +1325,17 @@ __device__ __forceinline__ u64 splitmix64(u64& x) {
 }
 
 // For each listed slot: the start position, then randomPlies random legal moves (as src/datagen.cpp,
-// with its own RNG seeded by the game's id), a fresh accumulator and a cleared TT. A game whose
+// with its own RNG seeded by the game's id), a fresh accumulator and cleared tables. A game whose
 // opening runs out of legal moves is marked done with result -1 and gets no samples.
 extern "C" __global__ void datagen_opening(Game* games, const int* slots, int k, const u8* start, const u64* ids, u64 seed,
                                            int randomPlies, const short* ftw, const short* ftb, const short* outw, int outb,
-                                           short* accs, TTEntry* tts) {
+                                           short* accs, Tables* tables) {
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
     if (w >= k) return;
     Net net = {ftw, ftb, outw, outb};
     int slot = slots[w];
     Game* g = games + slot;
     short* acc = accs + (size_t)slot * ACC_SLOTS * 2 * H;
-    TTEntry* tt = tts + ((size_t)slot << TT_BITS);
     if (lane == 0) init_game(g, start);
     __syncwarp();
     u64 rng = seed ^ (ids[w] * 0xD1B54A32D192ED03ULL);
@@ -1300,11 +1362,7 @@ extern "C" __global__ void datagen_opening(Game* games, const int* slots, int k,
         do_move(g, m, net, acc);
         __syncwarp();
     }
-    for (int i = lane; i < (1 << TT_BITS); i += 32) {
-        TTEntry z; z.key = 0; z.move = 0; z.score = 0; z.depth = 0; z.bound = 0; z.pad = 0;
-        tt[i] = z;
-    }
-    __syncwarp();
+    clear_tables(tables + slot);
     g->accTop = 0;
     __syncwarp();
     refresh(g, net, acc_slot(acc, 0));
@@ -1369,23 +1427,18 @@ extern "C" __global__ void match_init(Game* games, const int* slots, int k, cons
     g->matchResult = -1;
 }
 
-// Clears both sides' TTs in each of k slots (ucinewgame).
-extern "C" __global__ void match_setup(const int* slots, int k, TTEntry* ttsA, TTEntry* ttsB) {
-    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
+// Clears both sides' tables in each of k slots (ucinewgame).
+extern "C" __global__ void match_setup(const int* slots, int k, Tables* tablesA, Tables* tablesB) {
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= k) return;
-    TTEntry* ta = ttsA + ((size_t)slots[w] << TT_BITS);
-    TTEntry* tb = ttsB + ((size_t)slots[w] << TT_BITS);
-    for (int i = lane; i < (1 << TT_BITS); i += 32) {
-        TTEntry z; z.key = 0; z.move = 0; z.score = 0; z.depth = 0; z.bound = 0; z.pad = 0;
-        ta[i] = z; tb[i] = z;
-    }
-    __syncwarp();
+    clear_tables(tablesA + slots[w]);
+    clear_tables(tablesB + slots[w]);
 }
 
 extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, const short* ftbA, const short* outwA, int outbA,
                                       const short* ftwB, const short* ftbB, const short* outwB, int outbB,
                                       const Params* pa, const Params* pb, int perGame,
-                                      short* accs, TTEntry* ttsA, TTEntry* ttsB, unsigned long long nodes,
+                                      short* accs, Tables* tablesA, Tables* tablesB, unsigned long long nodes,
                                       unsigned long long budget) {
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= n) return;
@@ -1395,7 +1448,7 @@ extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, con
     bool idle = g->thinkState == T_IDLE; // otherwise a search is under way, in some position of its tree
     bool aToMove = (idle ? g->stm : g->rootStm) == g->aColor;
     Net net = aToMove ? Net{ftwA, ftbA, outwA, outbA} : Net{ftwB, ftbB, outwB, outbB};
-    TTEntry* tt = (aToMove ? ttsA : ttsB) + ((size_t)w << TT_BITS);
+    Tables* tb = (aToMove ? tablesA : tablesB) + w;
     int result = -1;
     if (idle) { // a new ply
         if (first_legal_move(g, net, acc, 0) == MOVE_NONE) result = in_check(g) ? (g->stm == 0 ? 0 : 2) : 1;
@@ -1411,9 +1464,9 @@ extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, con
         __syncwarp();
         refresh(g, net, acc_slot(acc, 0)); // this side's network
         __syncwarp();
-        think_start(g, nodes);
+        think_start(g, tb, nodes);
     }
-    if (!think_run(g, net, (aToMove ? pa : pb)[perGame ? w : 0], acc, tt, budget)) return;
+    if (!think_run(g, net, (aToMove ? pa : pb)[perGame ? w : 0], acc, tb, budget)) return;
     int score = g->thinkScore;
     u16 best = g->thinkBest;
     int whiteScore = g->stm == 0 ? score : -score;
