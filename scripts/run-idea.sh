@@ -17,14 +17,15 @@ pin() { if [ -n "${CPUS:-}" ]; then taskset -c "$CPUS" "$@"; else "$@"; fi; }
 mkdir -p engines
 
 pin make -s >/dev/null 2>&1 || { echo "BUILD FAILED"; exit 1; }
-# Exit codes: 0 = finished or gated, 1 = build failed, 2 = infrastructure failure (test, bench,
-# pre-screen or SPRT didn't complete). The queue treats exit 2 as "not done" and stops.
+# Exit codes: 0 = finished or gated, 1 = build, test or bench failed (a verdict on the branch: the
+# queue marks it done and goes on), 2 = infrastructure failure (pre-screen or SPRT didn't complete).
+# The queue treats exit 2 as "not done" and stops.
 test_out=$(pin make test 2>&1); test_rc=$?
 echo "perft: $(grep -E 'passed|failed' <<< "$test_out" | tail -1)"
-[ "$test_rc" -eq 0 ] || { echo "TEST FAILED (exit $test_rc)"; exit 2; }
+[ "$test_rc" -eq 0 ] || { echo "TEST FAILED (exit $test_rc)"; exit 1; }
 bench_out=$(pin ./chesssi bench 2>&1); bench_rc=$?
 echo "bench: $(tail -1 <<< "$bench_out")"
-[ "$bench_rc" -eq 0 ] || { echo "BENCH FAILED (exit $bench_rc)"; exit 2; }
+[ "$bench_rc" -eq 0 ] || { echo "BENCH FAILED (exit $bench_rc)"; exit 1; }
 
 rm -f "engines/$name-pre.log" "engines/$name-sprt.log"
 scripts/prescreen.sh "$base" > "engines/$name-pre.log" 2>&1

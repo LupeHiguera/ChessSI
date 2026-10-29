@@ -84,7 +84,7 @@ while [ ! -e engines/queue.stop ] && line=$(next_test) && [ -n "$line" ]; do
     verdict=$(grep -E 'BUILD FAILED|TEST FAILED|BENCH FAILED|GATED|DID NOT RUN' "engines/queue-$name.log" | head -1)
     result=$(grep -E 'Elo:|H0 was|H1 was' "engines/queue-$name.log" | tail -2 | tr -s ' \n' ' ')
     git worktree remove --force "$dir"
-    # Exit 2 (test, bench, pre-screen or SPRT didn't complete) is an infrastructure failure: leave the
+    # Exit 2 (pre-screen or SPRT didn't complete; a failed build, test or bench is exit 1, a verdict) is an infrastructure failure: leave the
     # line pending so no partial or pre-screen result is recorded as a verdict, and stop the queue.
     if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
         log "$branch vs $base" "INFRA FAILURE (exit $rc): ${verdict:-$(tail -1 "engines/queue-$name.log")}, left pending; queue stopped"
