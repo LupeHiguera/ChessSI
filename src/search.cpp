@@ -335,6 +335,13 @@ struct Searcher {
                 return score >= VALUE_MATE_IN_MAX_PLY ? beta : score;
         }
 
+        // Internal iterative reductions: with no TT move the ordering here is
+        // poor, so a full-depth search is mostly wasted. Search one ply
+        // shallower (Ed Schröder's form). Null-move pruning above still sees
+        // the original depth, and the stored TT depth is the depth searched.
+        if (!root && depth >= 4 && ttMove == MOVE_NONE)
+            --depth;
+
         MoveList list;
         generate(pos, list, ALL_MOVES);
         int scores[256];
