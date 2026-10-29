@@ -4,6 +4,8 @@
 /chesssi-debug
 /chesssi-rfp-tests
 /chesssi-rfp-tests.exe
+/chesssi-witness-tests
+/chesssi-witness-tests.exe
 *.o
 
 # Test runs

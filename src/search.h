@@ -32,6 +32,10 @@ void clear();
 // search the same root and share the transposition table (Lazy SMP).
 void set_threads(int n);
 
+// Quiet defenses selected by one exchange witness. Ordering only: no extension
+// and no pruning. Default on, so a match of this branch measures the idea.
+void set_exchange_witness(bool on);
+
 // Iterative deepening from the root. Prints UCI "info" lines when verbose.
 SearchResult think(Position& pos, const SearchLimits& limits, bool verbose);
 

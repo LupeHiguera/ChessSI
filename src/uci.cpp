@@ -135,6 +135,8 @@ void set_option(std::istringstream& is) {
                                     : "info string could not load network " + value);
     else if (name == "Threads" && !value.empty())
         Search::set_threads(std::clamp(std::stoi(value), 1, MaxThreads));
+    else if (name == "ExchangeWitness" && !value.empty())
+        Search::set_exchange_witness(value == "true");
 }
 
 } // namespace
@@ -184,6 +186,7 @@ int UCI::loop(int argc, char* argv[]) {
             send("id author Lupe Higuera");
             send("option name Hash type spin default " + std::to_string(DefaultHashMB) + " min 1 max 65536");
             send("option name Threads type spin default 1 min 1 max " + std::to_string(MaxThreads));
+            send("option name ExchangeWitness type check default true");
             send(std::string("option name EvalFile type string default ") + (NNUE::has_embedded() ? "<embedded>" : "<empty>"));
             send("uciok");
         } else if (token == "isready")
