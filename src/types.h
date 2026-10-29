@@ -43,3 +43,5 @@ constexpr int MAX_PLY = 128;
 constexpr int VALUE_INF = 32001;
 constexpr int VALUE_MATE = 32000;
 constexpr int VALUE_MATE_IN_MAX_PLY = VALUE_MATE - MAX_PLY;
+// No static eval stored. Outside the mate band, so it cannot be a search score or a raw eval.
+constexpr int VALUE_NONE = 32767;

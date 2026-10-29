@@ -128,12 +128,17 @@ void set_option(std::istringstream& is) {
 
     if (name == "Hash" && !value.empty())
         TT.resize(std::max(1, std::stoi(value)));
-    else if (name == "EvalFile" && value == "<embedded>")
-        NNUE::load_embedded();
-    else if (name == "EvalFile" && !value.empty() && value != "<empty>")
-        UCI::send(NNUE::load(value) ? "info string loaded network " + value
-                                    : "info string could not load network " + value);
-    else if (name == "Threads" && !value.empty())
+    else if (name == "EvalFile" && value == "<embedded>") {
+        // Stored static evals belong to the previous network.
+        if (NNUE::load_embedded())
+            TT.clear();
+    } else if (name == "EvalFile" && !value.empty() && value != "<empty>") {
+        if (NNUE::load(value)) {
+            TT.clear();
+            UCI::send("info string loaded network " + value);
+        } else
+            UCI::send("info string could not load network " + value);
+    } else if (name == "Threads" && !value.empty())
         Search::set_threads(std::clamp(std::stoi(value), 1, MaxThreads));
 }
 
