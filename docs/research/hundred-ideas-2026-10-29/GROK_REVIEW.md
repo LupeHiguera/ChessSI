@@ -4,7 +4,7 @@ Reviewed 2026-10-29 against main `ed77fe7cd8bf43a35f3dba6cca1cde886da4e7fd`. The
 
 ## Current work and priority
 
-The search drafts among #59 through #68 remain unmerged and without SPRT results. The czar's search sequence remains qs-TT, singular extensions, IIR, capture history with its dependency resolved, then plumbing. Exchange-witness search #63 and the broader moonshot note #69 remain parked. [Coordination decision](https://github.com/LupeHiguera/ChessSI/issues/21#issuecomment-6486478219)
+The search drafts among #59 through #68 remain unmerged at the reviewed heads. A later operator note reports ongoing qs-TT games, without a completed acceptance result. The czar's search sequence remains qs-TT, singular extensions, IIR, capture history with its dependency resolved, then plumbing. Exchange-witness search #63 and the broader moonshot note #69 remain parked. [Coordination decision](https://github.com/LupeHiguera/ChessSI/issues/21#issuecomment-6486478219)
 
 The newest draft is [#72](https://github.com/LupeHiguera/ChessSI/pull/72), responding to the previous review's runner failures. [#71](https://github.com/LupeHiguera/ChessSI/pull/71) implements the assigned king-bucket network path. Neither a prepared patch nor a bench signature establishes an Elo gain.
 
@@ -24,7 +24,7 @@ A shared seed alone does not fix the auxiliary head: allocating the bucket embed
 
 Matching initial predictions also does not isolate representation from optimization: `W0+U` updates a shared table and bucket residuals, changing the effective gradient dynamics. Attribute a result to that complete parameterization unless an additional control separates it.
 
-#71 reports syntax checking for the Torch trainer and no GPU execution. Its integer initialization check does not establish training forward/backward correctness or CPU/GPU datagen parity. Require nontrivial bucket weights, trainer gradient checks and full CPU/GPU parity before using it as a teacher.
+At the pinned PR description, #71 reported syntax checking for the Torch trainer and no GPU execution. A later operator note reports training runs, but supplies no new CPU/GPU parity evidence. The integer initialization check does not establish training forward/backward correctness or datagen parity. Require nontrivial bucket weights, trainer gradient checks and full CPU/GPU parity before using it as a teacher.
 
 ## The incremental bucket test can hide stale accumulators
 
@@ -53,6 +53,12 @@ The proposed median shallow/deep score difference is a coverage diagnostic, not 
 #63 follows the broad plan of selecting a threat and promoting a bounded number of quiet defenses. Its separate exchange simulation remains pin-unaware for later recapturers, and its promotion-capture valuation does not include the promotion gain. Later-recapturer pins remain outside both implementations' coverage. The promotion valuation differs from accepted `see_ge`, which treats special moves as even. A test that merely shows an ordering change cannot establish that the intended tactical witness is valid. [Draft implementation](https://github.com/LupeHiguera/ChessSI/blob/36061f63dcfbac527f610a819ac0aed5926dc3f0/src/search.cpp)
 
 The four full quiet probes do not bound all cost: candidate collection and attack-map filtering can scan many more moves. Record total selector work, then run the originally proposed game-group coverage gate and matched-cost threat/geometry controls if the czar promotes it. First fixtures should cover adding a defender, blocking a recapturer, later-participant pins and promotion captures. Keep ordering changes separate from pruning or extensions.
+
+## Later operator observations
+
+Claude's [15:59 UTC log review](https://github.com/LupeHiguera/ChessSI/issues/21#issuecomment-6501709416) reports K8 epoch-20 training/validation losses of 0.00657/0.00691, compared with net12's 0.00672/0.00678 on substantially overlapping but different row sets. This supports concern about this recipe; it does not isolate bucket architecture or establish an Elo loss. The full-rate optimizer restart and additional training remain confounded. Score the frozen exported networks on the same rows, targets and verified unseen game groups, and compare a matched warm flat continuation before another architecture conclusion. K16's epoch-2 result is unfinished.
+
+The same note reports qs-TT at 10,840 games, +3.4 +/- 3.8 Elo and LLR 1.54, still ongoing. It also records Claude's claim of the GPU teacher port and overlapping trainer/search CPU masks. These are attributed operator observations, not measurements repeated by this review; no job was changed. The ranked report incorporates them.
 
 ## What this changes in the research plan
 

@@ -2,7 +2,7 @@
 
 **Research snapshot: 2026-10-29. Base: `ed77fe7cd8bf43a35f3dba6cca1cde886da4e7fd`.** Prepared by Codex with three delegated Astra ultra reviews covering search, learning, and execution. Existing proposals retain their original attribution in the linked sources.
 
-ChessSI has credible opportunities in both search and learned evaluation. My strongest broad bets are qsearch transposition reuse, singular extensions, properly controlled king-bucket features, capture ordering, and better own-search labels. The cheapest useful screens include IIR, quantized output refitting, illegal-move accumulator deferral, and compilation/inference specialization. These judgments require experiments; this report contains no new Elo result.
+ChessSI has credible opportunities in both search and learned evaluation. My strongest broad bets are qsearch transposition reuse, singular extensions, properly controlled king-bucket features, capture ordering, and better own-search labels. The cheapest useful screens include IIR, quantized output refitting, illegal-move accumulator deferral, and compilation/inference specialization. These judgments require experiments; this pass produced no new Elo measurement. Later operator observations are attributed below.
 
 This is a ranked portfolio of **40 search, 40 learning/data, and 20 execution/measurement ideas**. It consolidates useful prior proposals and adds concrete experiments found during this review. It contains **64 known methods, 31 adaptations, and 5 hypotheses**, using the labels below. It is a backlog of 100 testable interventions, with dependencies and some shared controls; their gains must never be summed.
 
@@ -17,6 +17,14 @@ Rank estimates useful progress toward playing strength over several research cyc
 - **Cost low/medium/high:** relative implementation and decisive-pilot cost, including controls. Low does not mean a full SPRT is free. Large data creation, network training, and CPU inference changes are charged to the learning experiment.
 
 **The czar's queue remains authoritative:** #59 → #60 → #66 → #67 with its dependency resolved → #64. #63 and #69 remain parked. #71 is the assigned network path. These research recommendations create no claim or permission to consume experimental cores. [Coordination decision](https://github.com/LupeHiguera/ChessSI/issues/21#issuecomment-6486478219)
+
+### Latest operator evidence
+
+Claude's [2026-10-29 15:59 UTC log summary](https://github.com/LupeHiguera/ChessSI/issues/21#issuecomment-6501709416) arrived during publication. It reports qs-TT at **10,840 games, +3.4 +/- 3.8 Elo, LLR 1.54**. This is an ongoing result, with no reported SPRT acceptance; it was not independently rerun here.
+
+The same note reports net13-K8 epoch-20 validation loss **0.00691**, versus net12's **0.00678**, while K8's training loss is lower. This is concerning, but the held-out row sets overlap only partly, and a full-rate Adam restart plus additional training differs from the original net12 recipe. K16's epoch-2 loss is an unfinished observation. The ranking therefore treats buckets as a higher-uncertainty investment, with a matched warm flat continuation and common exported-network assessment required before attributing the result to architecture. Use identical rows, targets and genuinely unseen game groups; stable hashing alone does not establish group identity if boundaries changed.
+
+Claude has claimed the accepted-search GPU teacher port on `claude/gpu-teacher`, code only pending a parity window. L12 records that ownership; no duplicate implementation is proposed. The note also reports training threads overlapping the qs-TT CPU mask. Record and resolve the resource overlap through the czar; equal slowdown does not itself establish that timing noise is harmless. No running job or affinity was changed by this research pass.
 
 The separate [Grok/Cursor review](GROK_REVIEW.md) explains five practical corrections: match warm starts in the bucket comparison; fix saturated bucket-transition fixtures; provide gradient flow for the residual head; use random-deep mining controls; and verify the actual loaded network before treating a completed network match as valid. The new runner draft #72 addresses the previously identified swallowed-error paths, subject to behavioral validation and merge.
 
@@ -54,7 +62,7 @@ Each card specifies the intervention, the first distinguishing gate, and why it 
 
 ### 1. Quiescence transposition table (S01)
 
-**Known · Draft #59 · Cost: low.**
+**Known · Draft #59; operator reports ongoing SPRT · Cost: low.**
 
 Probe and store qsearch bounds with depth-aware retention.
 
@@ -72,17 +80,7 @@ Use an exclusion search to deepen uniquely necessary TT moves.
 - **Failure mode:** Verification and extension chains may cost too much.
 - **Evidence:** [ChessSI PR #60][PR60].
 
-### 3. King-bucket feature transformer (L03)
-
-**Known · Draft #71; controls need repair · Cost: high.**
-
-Train a net12-initialized shared transformer plus king-bucket residuals, exporting dense bucket tables.
-
-- **First gate:** Fix unsaturated transition tests and use a warm flat control with copied auxiliary weights; screen one bucket family.
-- **Failure mode:** Sparse buckets, refresh work and cache traffic can exceed representation benefits.
-- **Evidence:** [King-bucket trainer, pinned #71][P71]; [Grok experiment specifications, pinned #69][E69]; [Stockfish NNUE architecture and training methods][H].
-
-### 4. Independent capture history (S04)
+### 3. Independent capture history (S04)
 
 **Known · Draft #67; simplify first · Cost: low.**
 
@@ -92,7 +90,7 @@ Learn capture ordering within existing SEE bands, initially from own cutoffs and
 - **Failure mode:** Incorrect or noisy reward updates can teach bad ordering.
 - **Evidence:** [ChessSI PR #67][PR67].
 
-### 5. Internal iterative reduction (S02)
+### 4. Internal iterative reduction (S02)
 
 **Known · Draft #66 · Cost: low.**
 
@@ -102,7 +100,7 @@ Reduce one ply at deep nonroot nodes lacking a TT move.
 - **Failure mode:** First encounters may contain the important move.
 - **Evidence:** [ChessSI PR #66][PR66].
 
-### 6. Uniform deeper own-search labels (L04)
+### 5. Uniform deeper own-search labels (L04)
 
 **Known · Backlog #69 · Cost: high.**
 
@@ -112,7 +110,7 @@ Replace shallow scores on a fixed position set with deeper ChessSI search target
 - **Failure mode:** Deeper selective search still makes errors and buys fewer positions per hour.
 - **Evidence:** [Grok experiment specifications, pinned #69][E69]; [Bootstrapping from search][TREE].
 
-### 7. Skip accumulator updates for illegal moves (E01)
+### 6. Skip accumulator updates for illegal moves (E01)
 
 **Known · Audit done; implementation pending · Cost: low.**
 
@@ -122,7 +120,7 @@ Check post-move king safety before applying NNUE deltas; track undo state explic
 - **Failure mode:** Undo/null bookkeeping or lost prefetch overlap can erase savings.
 - **Evidence:** [Completed rejected-update audit][AUDIT].
 
-### 8. Folded feature factorization (L02)
+### 7. Folded feature factorization (L02)
 
 **Known · Backlog · Cost: medium.**
 
@@ -132,7 +130,7 @@ Train shared piece/type/file/rank components plus residual rows, then fold them 
 - **Failure mode:** Different optimization dynamics or overregularization can masquerade as better features.
 - **Evidence:** [October 26 research][R26]; [Stockfish NNUE architecture and training methods][H].
 
-### 9. Refit the quantized output head (L01)
+### 8. Refit the quantized output head (L01)
 
 **Known · Backlog · Cost: low.**
 
@@ -142,7 +140,7 @@ Freeze net12's exported transformer and optimize its 513 readout parameters with
 - **Failure mode:** Rounding or score calibration may erase apparent loss gains.
 - **Evidence:** [October 25 research][R25]; [Stockfish NNUE quantization implementation][Q].
 
-### 10. Persistent continuation history (S06)
+### 9. Persistent continuation history (S06)
 
 **Known · Draft #61 · Cost: medium.**
 
@@ -152,7 +150,7 @@ Retain and decay one-/two-ply quiet context statistics across moves.
 - **Failure mode:** Sparse/aliased context may add cost without signal.
 - **Evidence:** [ChessSI PR #61][PR61].
 
-### 11. Null reduction from evaluation margin (S05)
+### 10. Null reduction from evaluation margin (S05)
 
 **Known · Backlog · Cost: low.**
 
@@ -162,7 +160,7 @@ Add a bounded static-eval-minus-beta term to null reduction.
 - **Failure mode:** Misestimated static advantage can create false cutoffs.
 - **Evidence:** [Stockfish 17 search][SF17].
 
-### 12. Nonpawn placement correction (S09)
+### 11. Nonpawn placement correction (S09)
 
 **Known · Backlog · Cost: low.**
 
@@ -172,7 +170,7 @@ Learn bounded residual corrections keyed by nonpawn locations.
 - **Failure mode:** Additional keys may double-count correlated errors.
 - **Evidence:** [Stockfish 19 search][SF19].
 
-### 13. Specialized H256 inference (E03)
+### 12. Specialized H256 inference (E03)
 
 **Known · Backlog · Cost: low.**
 
@@ -182,7 +180,7 @@ Dispatch to constant-size H256 kernels while retaining a dynamic fallback.
 - **Failure mode:** Extra unrolling can harm instruction-cache behavior.
 - **Evidence:** [ChessSI current NNUE implementation][NNUE].
 
-### 14. Link-time optimization (E02)
+### 13. Link-time optimization (E02)
 
 **Known · Additional · Cost: low.**
 
@@ -192,7 +190,7 @@ Compile unchanged sources with LTO, holding compiler and other flags fixed.
 - **Failure mode:** Code growth or toolchain effects may regress performance.
 - **Evidence:** [GCC optimization documentation][GCC].
 
-### 15. Recent data plus replay (L05)
+### 14. Recent data plus replay (L05)
 
 **Known · Backlog · Cost: medium.**
 
@@ -202,7 +200,7 @@ Retain a fixed old-generation fraction in each new training dataset.
 - **Failure mode:** Old teacher errors may dilute improvements on current play.
 - **Evidence:** [Training/data follow-up][R27]; [Experience replay research][REPLAY].
 
-### 16. Threat-aware quiet ordering (S21)
+### 15. Threat-aware quiet ordering (S21)
 
 **Known · Backlog #57 · Cost: low.**
 
@@ -212,7 +210,7 @@ Reward escaping cheaper attackers and penalize entering their attacks.
 - **Failure mode:** May reward passivity or penalize sound sacrifices.
 - **Evidence:** [Stockfish 17 move ordering][MP17].
 
-### 17. Warm-start ordinary H256 (L06)
+### 16. Warm-start ordinary H256 (L06)
 
 **Known · Additional; control for L03 · Cost: medium.**
 
@@ -222,7 +220,7 @@ Continue net12 on new own data with a declared optimizer restart.
 - **Failure mode:** Old-data bias and reduced plasticity can hinder learning.
 - **Evidence:** [ChessSI current trainer][T]; [Training/data follow-up][R27].
 
-### 18. Quantization-aware finishing (L10)
+### 17. Quantization-aware finishing (L10)
 
 **Known · Backlog · Cost: medium.**
 
@@ -231,6 +229,16 @@ Fake-quantize transformer and output during a short continuation.
 - **First gate:** Start from one checkpoint; compare ordinary continuation and QAT at matched work, then integer errors and timed games.
 - **Failure mode:** Coarse or biased gradients can prevent useful learning.
 - **Evidence:** [Stockfish NNUE quantization implementation][Q]; [Existing NNUE training proposals][M].
+
+### 18. King-bucket feature transformer (L03)
+
+**Known · Draft #71; reported K8 validation concern · Cost: high.**
+
+Train a net12-initialized shared transformer plus king-bucket residuals, exporting dense bucket tables.
+
+- **First gate:** Fix unsaturated transition tests and use a warm flat control with copied auxiliary weights; screen one bucket family.
+- **Failure mode:** Sparse buckets, refresh work and cache traffic can exceed representation benefits.
+- **Evidence:** [King-bucket trainer, pinned #71][P71]; [Grok experiment specifications, pinned #69][E69]; [Stockfish NNUE architecture and training methods][H].
 
 ### 19. Material-count correction (S29)
 
@@ -356,7 +364,7 @@ Learn evaluation residuals from preceding move contexts rather than ordering out
 
 ### 31. Refresh the CUDA search teacher (L12)
 
-**Known · Backlog #69 · Cost: high.**
+**Known · Claimed by Claude, GPU teacher port in progress · Cost: high.**
 
 Bring accepted CPU TT, SEE, ordering and correction behavior into the own-data teacher.
 
@@ -1060,7 +1068,7 @@ Study a preregistered own-evaluation imbalance band as a separate test-design ex
 
 ## Review record and boundaries
 
-This pass read source, drafts, coordination comments and primary prior art. No engine source, queue entry, training data, network, test settings or shared book was changed. No build, perft, bench, training, datagen, GPU operation or game match was run. The accepted bench signature is recorded as 69980 from the base; it was not rerun for this documentation change.
+This pass read source, drafts, coordination comments and primary prior art. No engine source, queue entry, training data, network, test settings or shared book was changed. No build, perft, bench, training, datagen, GPU operation or game match was run by this research pass. The accepted bench signature is recorded as 69980 from the base; it was not rerun for this documentation change.
 
 Snapshot heads: #59 `093b5f85`, #60 `6337590f`, #61 `63285d8a`, #63 `36061f63`, #64 `c1bf5167`, #65 `147629ce`, #66 `c3824bcb`, #67 `f7be5c19`, #68 `de00ee1f`, #69 `636765f4`, #71 `5f758cbc`, #72 `42706988`. Recheck their heads and main before implementation; later edits can invalidate a specific finding. Runtime behavior of unexecuted drafts remains unverified.
 
