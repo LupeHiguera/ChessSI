@@ -17,10 +17,11 @@
 // transposition table, check extension, and captures-only quiescence search
 // with MVV-LVA ordering, killer moves, a history heuristic with continuation
 // history (one and two plies back) and capture history, null-move pruning,
-// late move reductions, late move pruning, futility pruning, SEE pruning in
-// quiescence and aspiration windows. Other pruning is left out on purpose: each
-// is a separate experiment for the ideas log. With more than one thread, helper
-// threads search the same root and share only the transposition table (Lazy SMP).
+// late move reductions scaled by that quiet-history sum, late move pruning,
+// futility pruning, SEE pruning in quiescence and aspiration windows. Other
+// pruning is left out on purpose: each is a separate experiment for the ideas
+// log. With more than one thread, helper threads search the same root and share
+// only the transposition table (Lazy SMP).
 
 std::atomic<bool> Search::stop{false};
 
@@ -187,14 +188,22 @@ struct Searcher {
                 scores[i] = 80'000;
             else if (ply >= 0 && m == killers[ply][1])
                 scores[i] = 70'000;
-            else if (ply >= 0) {
-                scores[i] = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
-                for (int back = 1; back <= 2; ++back)
-                    if (const int* c = cont_entry(ply, back, m))
-                        scores[i] += *c;
-            } else
+            else if (ply >= 0)
+                scores[i] = quiet_history(ply, m);
+            else
                 scores[i] = 0;
         }
+    }
+
+    // Quiet ordering score: butterfly history plus the continuation entries one
+    // and two plies back. Capture history is not included. Late-move reduction
+    // reads this same sum.
+    int quiet_history(int ply, Move m) {
+        int h = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
+        for (int back = 1; back <= 2; ++back)
+            if (const int* c = cont_entry(ply, back, m))
+                h += *c;
+        return h;
     }
 
     // The continuation-history entry for quiet move m after the move `back`
@@ -221,7 +230,8 @@ struct Searcher {
                 gravity(*c, bonus);
     }
 
-    // Capture history is ordering only. It does not change late-move reductions.
+    // Capture history is ordering only. Quiet late-move reductions read
+    // quiet_history, not this table.
     void update_capthist(Piece piece, Square to, PieceType victim, int bonus) {
         gravity(captHist[piece][to][victim], bonus);
     }
@@ -460,6 +470,8 @@ struct Searcher {
                 continue;
 
             Piece moved = pos.piece_on(from_sq(m));
+            // Read before the piece leaves its square and the side flips.
+            const int quietHist = quiet ? quiet_history(ply, m) : 0;
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
@@ -473,12 +485,17 @@ struct Searcher {
                 score = -search(-beta, -alpha, depth - 1, ply + 1);
             else {
                 // Late quiet moves are searched shallower first, and only
-                // re-searched at full depth if they beat alpha.
+                // re-searched at full depth if they beat alpha. The history
+                // term is the ordering sum (butterfly plus one-ply and two-ply
+                // continuation), one ply per 8192, truncated, and at most two
+                // plies either way. Capture history does not enter it. The
+                // cut-node and improving adjustments are a different patch.
                 int r = 0;
                 if (depth >= 3 && legalMoves > 4 && quiet && !inCheck && !pos.in_check()) {
                     r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
                     if (pvNode)
                         --r;
+                    r -= std::clamp(quietHist / 8192, -2, 2);
                     r = std::clamp(r, 0, depth - 2);
                 }
                 score = -search(-alpha - 1, -alpha, depth - 1 - r, ply + 1);
