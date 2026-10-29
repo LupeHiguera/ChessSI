@@ -53,6 +53,10 @@ while [ ! -e engines/queue.stop ] && line=$(next_test) && [ -n "$line" ]; do
         ref=$(git rev-parse --short origin/main)
         log "$name" "started: $third vs $fourth, binary from $ref"
         NAME=$name REF=$ref scripts/nnue-sprt.sh "$third" "$fourth" < /dev/null > "engines/$name.log" 2>&1
+        rc=$?
+        if [ "$rc" -ne 0 ] || ! grep -q "Finished match" "engines/$name.log"; then
+            log "$name" "INFRA FAILURE (exit $rc), left pending; queue stopped"; stopped=1; break
+        fi
         log "$name" "done $(grep -E 'Elo:|H0 was|H1 was' "engines/$name.log" | tail -2 | tr -s ' \n' ' ')"
         finish; continue
     fi
@@ -72,14 +76,23 @@ while [ ! -e engines/queue.stop ] && line=$(next_test) && [ -n "$line" ]; do
 
     log "$branch vs $base" "started: $(git -C "$dir" log -1 --format='%h %s') on ${base_sha:0:7}"
     (cd "$dir" && scripts/run-idea.sh "$name" "$base_sha") < /dev/null > "engines/queue-$name.log" 2>&1
+    rc=$?
     for f in "$name-pre.log" "$name-sprt.log"; do
         [ -f "$dir/engines/$f" ] && cp "$dir/engines/$f" engines/
     done
     [ -f "$dir/engines/sprt.pgn" ] && cp "$dir/engines/sprt.pgn" "engines/$name.pgn"
-    verdict=$(grep -E 'BUILD FAILED|GATED|DID NOT RUN' "engines/queue-$name.log" | head -1)
+    verdict=$(grep -E 'BUILD FAILED|TEST FAILED|BENCH FAILED|GATED|DID NOT RUN' "engines/queue-$name.log" | head -1)
     result=$(grep -E 'Elo:|H0 was|H1 was' "engines/queue-$name.log" | tail -2 | tr -s ' \n' ' ')
-    log "$branch vs $base" "${verdict:-done} $result"
     git worktree remove --force "$dir"
+    # Exit 2 (test, bench, pre-screen or SPRT didn't complete) is an infrastructure failure: leave the
+    # line pending so no partial or pre-screen result is recorded as a verdict, and stop the queue.
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+        log "$branch vs $base" "INFRA FAILURE (exit $rc): ${verdict:-$(tail -1 "engines/queue-$name.log")}, left pending; queue stopped"
+        stopped=1; break
+    fi
+    log "$branch vs $base" "${verdict:-done} $result"
     finish
 done
 if [ -e engines/queue.stop ]; then log queue "stopped by engines/queue.stop"; fi
+[ "${stopped:-0}" = 1 ] && exit 2
+exit 0
