@@ -15,7 +15,8 @@
 
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
-// with MVV-LVA ordering, killer moves, a history heuristic, null-move pruning,
+// with MVV-LVA ordering (capture history as tiebreak), killer moves, a history
+// heuristic, null-move pruning,
 // late move reductions, late move pruning, futility pruning, SEE pruning in
 // quiescence and aspiration windows. Other pruning is left out on purpose: each
 // is a separate experiment for the ideas log. With more than one thread, helper
@@ -48,6 +49,16 @@ constexpr int CorrHistSize = 16384;
 constexpr int CorrHistLimit = 1024;
 int mainCorrHist[2][CorrHistSize];
 
+// Capture history (port of #67): how a capture fared, indexed by the moving piece, its target
+// square and the captured piece type, each entry within +/-16,384. It only breaks ties between
+// captures with the same MVV-LVA value; MVV-LVA stays the primary key. The main thread keeps the
+// table for the game and halves it at each new search; helpers keep their own.
+constexpr int CaptHistPieces = 12;
+constexpr int CaptHistVictims = 6; // PAWN..KING
+static_assert(CaptHistPieces == NO_PIECE, "capture history is indexed by piece 0..11");
+static_assert(KING < CaptHistVictims, "captured piece type indexes the last dimension");
+int mainCaptHist[CaptHistPieces][64][CaptHistVictims];
+
 int pawn_index(const Position& pos) {
     uint64_t h = pos.pieces(WHITE, PAWN) * 0x9E3779B97F4A7C15ull ^ pos.pieces(BLACK, PAWN) * 0xC2B2AE3D27D4EB4Full;
     h ^= h >> 31;
@@ -75,6 +86,8 @@ struct Searcher {
     int pvLength[MAX_PLY + 1];
     Move killers[MAX_PLY + 1][2] = {};
     int history[2][64][64] = {}; // [side to move][from][to], quiet moves only
+    int ownCaptHist[CaptHistPieces][64][CaptHistVictims] = {};
+    int (*captHist)[64][CaptHistVictims] = ownCaptHist; // the main thread's points to mainCaptHist
     int ownCorrHist[2][CorrHistSize] = {};
     int (*corrHist)[CorrHistSize] = ownCorrHist; // the main thread's points to mainCorrHist
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
@@ -119,19 +132,39 @@ struct Searcher {
         return pos.piece_on(to_sq(m)) == NO_PIECE && move_type(m) != EN_PASSANT && move_type(m) != PROMOTION;
     }
 
+    // A capture, including en passant. Promotions that do not capture are excluded.
+    bool is_capture(Move m) const {
+        return move_type(m) == EN_PASSANT || pos.piece_on(to_sq(m)) != NO_PIECE;
+    }
+
+    // Piece type removed by m. En passant takes a pawn that is not on the target square.
+    PieceType captured_type(Move m) const {
+        return move_type(m) == EN_PASSANT ? PAWN : type_of(pos.piece_on(to_sq(m)));
+    }
+
+    int capture_history(Move m) const {
+        return captHist[pos.piece_on(from_sq(m))][to_sq(m)][captured_type(m)];
+    }
+
     // Assigns each move an ordering score, best first.
     void score_moves(MoveList& list, int* scores, Move ttMove, int ply) {
         for (int i = 0; i < list.size; ++i) {
             Move m = list.moves[i];
             if (m == ttMove)
                 scores[i] = 1'000'000;
-            else if (move_type(m) == EN_PASSANT)
-                scores[i] = 100'000 + PieceValue[PAWN] * 10 - PAWN;
-            else if (pos.piece_on(to_sq(m)) != NO_PIECE) {
+            else if (is_capture(m)) {
                 // In the main search, captures that lose material by SEE go
                 // after the quiet moves (whose history scores are above -16,384).
-                int mvvLva = PieceValue[type_of(pos.piece_on(to_sq(m)))] * 10 - type_of(pos.piece_on(from_sq(m)));
-                scores[i] = (ply >= 0 && !see_ge(m, 0) ? -100'000 : 100'000) + mvvLva;
+                // MVV-LVA is the primary key, scaled by 32; capture history maps
+                // into 0..31 below it, so it only orders captures with equal
+                // MVV-LVA. Winning: 100,000 + [31,840, 288,031], above the queen
+                // promotion at 90,000 and below the TT move. Losing: -400,000 +
+                // the same, below every quiet. En passant is not SEE-demoted
+                // (as before: it always took the winning band).
+                int mvvLva = PieceValue[captured_type(m)] * 10 - type_of(pos.piece_on(from_sq(m)));
+                int tiebreak = (capture_history(m) + 16384) * 31 / 32768;
+                bool losing = ply >= 0 && move_type(m) != EN_PASSANT && !see_ge(m, 0);
+                scores[i] = (losing ? -400'000 : 100'000) + mvvLva * 32 + tiebreak;
             }
             else if (move_type(m) == PROMOTION && promotion_type(m) == QUEEN)
                 scores[i] = 90'000;
@@ -152,6 +185,26 @@ struct Searcher {
         constexpr int MaxHistory = 16384;
         int& h = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
         h += bonus - h * std::abs(bonus) / MaxHistory;
+    }
+
+    // Capture history is ordering only; it does not change late-move reductions.
+    void update_capthist(Piece piece, Square to, PieceType victim, int bonus) {
+        constexpr int MaxHistory = 16384;
+        int& h = captHist[piece][to][victim];
+        h += bonus - h * std::abs(bonus) / MaxHistory;
+    }
+
+    void update_capthist(Move m, int bonus) {
+        update_capthist(pos.piece_on(from_sq(m)), to_sq(m), captured_type(m), bonus);
+    }
+
+    // The capture that entered this all-node refuted every reply, so bonus it. The moved piece now
+    // stands on the target square (for a promotion, the promoted piece).
+    void bonus_refuting_capture(int ply, int bonus) {
+        if (ply <= 0 || moveStack[ply - 1] == MOVE_NONE || pos.captured_piece() == NO_PIECE)
+            return;
+        Square to = to_sq(moveStack[ply - 1]);
+        update_capthist(pos.piece_on(to), to, type_of(pos.captured_piece()), bonus);
     }
 
     // The network's eval plus what correction history has learned for these pawns.
@@ -359,6 +412,8 @@ struct Searcher {
         int legalMoves = 0;
         Move quietsTried[256];
         int quietCount = 0;
+        Move capturesTried[256];
+        int captureCount = 0;
 
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
@@ -444,15 +499,23 @@ struct Searcher {
                         pv[ply][j + 1] = pv[ply + 1][j];
                     pvLength[ply] = pvLength[ply + 1] + 1;
                     if (score >= beta) {
+                        int bonus = std::min(depth * depth, 1239);
                         if (quiet) {
                             if (m != killers[ply][0]) {
                                 killers[ply][1] = killers[ply][0];
                                 killers[ply][0] = m;
                             }
-                            int bonus = std::min(depth * depth, 1239);
                             update_history(m, bonus);
                             for (int j = 0; j < quietCount; ++j)
                                 update_history(quietsTried[j], -bonus);
+                        }
+                        // Capture history: bonus a capture cutoff, penalize the captures tried
+                        // before it. Not inside a singular (excluded-move) search.
+                        if (!excludedMove) {
+                            if (!quiet && is_capture(m))
+                                update_capthist(m, bonus);
+                            for (int j = 0; j < captureCount; ++j)
+                                update_capthist(capturesTried[j], -bonus);
                         }
                         break;
                     }
@@ -460,7 +523,13 @@ struct Searcher {
             }
             if (quiet)
                 quietsTried[quietCount++] = m;
+            else if (is_capture(m))
+                capturesTried[captureCount++] = m;
         }
+
+        // Fail-low: nothing beat alpha, so the incoming capture refuted this node.
+        if (bestMove == MOVE_NONE && legalMoves > 0 && !excludedMove)
+            bonus_refuting_capture(ply, std::min(depth * depth, 1239));
 
         if (legalMoves == 0) // with a move excluded, the excluded move was the only legal one
             return excludedMove ? alpha : inCheck ? -VALUE_MATE + ply : 0;
@@ -570,6 +639,7 @@ struct Searcher {
 
 void Search::clear() {
     TT.clear();
+    std::fill(&mainCaptHist[0][0][0], &mainCaptHist[0][0][0] + CaptHistPieces * 64 * CaptHistVictims, 0);
     std::fill(&mainCorrHist[0][0], &mainCorrHist[0][0] + 2 * CorrHistSize, 0);
 }
 
@@ -579,7 +649,12 @@ void Search::set_threads(int n) {
 
 SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbose) {
     TT.new_search();
+    for (auto& byPiece : mainCaptHist)
+        for (auto& byTo : byPiece)
+            for (int& h : byTo)
+                h /= 2;
     Searcher s(pos, limits);
+    s.captHist = mainCaptHist;
     s.corrHist = mainCorrHist;
     s.set_time_limits();
     SearchResult result;

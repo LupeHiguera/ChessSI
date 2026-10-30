@@ -38,6 +38,9 @@ public:
     int castling_rights() const { return states.back().castling; }
     int rule50() const { return states.back().rule50; }
     uint64_t key() const { return states.back().key; }
+    // Piece taken by the move that reached this position, or NO_PIECE.
+    // En passant stores the pawn. A null move clears it.
+    Piece captured_piece() const { return states.back().captured; }
 
     bool attacked(Square s, Color by) const;
     bool in_check() const { return attacked(king_square(stm), ~stm); }
