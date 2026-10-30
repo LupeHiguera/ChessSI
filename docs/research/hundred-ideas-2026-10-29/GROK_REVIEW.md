@@ -1,5 +1,7 @@
 # Review of Grok and Cursor research
 
+**Later research:** [Deep follow-up](DEEP_FOLLOWUP.md) incorporates the capped qs-TT result, GPU teacher cost, bucket optimizer analysis and new controlled experiments. The snapshot below records the earlier review.
+
 Reviewed 2026-10-29 against main `ed77fe7cd8bf43a35f3dba6cca1cde886da4e7fd`. The associated [ranked backlog](REPORT.md) contains 100 proposed experiments. This review concerns the work posted through Cursor/Grok; commit authorship should remain with the actual proposing and implementing models in the project log.
 
 ## Current work and priority

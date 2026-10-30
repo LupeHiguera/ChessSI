@@ -1,5 +1,7 @@
 # 100 ranked research ideas for ChessSI
 
+**Later research:** [Deep follow-up](DEEP_FOLLOWUP.md) incorporates the capped qs-TT result, GPU teacher cost, bucket optimizer analysis and new controlled experiments. The snapshot below records the earlier review.
+
 **Research snapshot: 2026-10-29. Base: `ed77fe7cd8bf43a35f3dba6cca1cde886da4e7fd`.** Prepared by Codex with three delegated Astra ultra reviews covering search, learning, and execution. Existing proposals retain their original attribution in the linked sources.
 
 ChessSI has credible opportunities in both search and learned evaluation. My strongest broad bets are qsearch transposition reuse, singular extensions, properly controlled king-bucket features, capture ordering, and better own-search labels. The cheapest useful screens include IIR, quantized output refitting, illegal-move accumulator deferral, and compilation/inference specialization. These judgments require experiments; this pass produced no new Elo measurement. Later operator observations are attributed below.
