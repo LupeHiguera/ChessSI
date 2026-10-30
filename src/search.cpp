@@ -341,6 +341,13 @@ struct Searcher {
                 return score >= VALUE_MATE_IN_MAX_PLY ? beta : score;
         }
 
+        // Internal iterative reductions: with no TT move the ordering here is
+        // poor, so search one ply shallower. Skipped in a singular search
+        // (a move excluded): there the TT is not probed, so ttMove is always
+        // none and the verification depth must stay as the caller set it.
+        if (!root && !excludedMove && depth >= 4 && ttMove == MOVE_NONE)
+            --depth;
+
         MoveList list;
         generate(pos, list, ALL_MOVES);
         int scores[256];
