@@ -1,5 +1,7 @@
 # Deep follow-up: search reuse, bucket optimization and teacher cost
 
+**Latest follow-up:** [Revisiting old results](REVISITING_FAILURES.md) audits auxiliary-loss controls, reduced-search penalties, correction drift, reusable labels and learned search allocation. Earlier snapshots below retain their original dates.
+
 **Research date: 2026-10-29 Phoenix / 2026-10-30 UTC.** Accepted main remains `ed77fe7cd8bf43a35f3dba6cca1cde886da4e7fd`. Codex coordinated three Astra ultra source-and-prior-art reviews. This follows the [100-idea portfolio](REPORT.md); it adds mechanism-level findings and experiments rather than another broad list.
 
 The strongest new leads are a decomposition-dependent clipping operation in the bucket trainer, optimizer coupling hidden by identical starting predictions, and two ways to eliminate repeated work in the GPU teacher. The qs-TT result also needs a cleaner interpretation: its patch changes main-search replacement as well as quiescence reuse. These are source findings and derived hypotheses, not explanations established by the match.

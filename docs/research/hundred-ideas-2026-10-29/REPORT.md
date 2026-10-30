@@ -1,5 +1,7 @@
 # 100 ranked research ideas for ChessSI
 
+**Latest follow-up:** [Revisiting old results](REVISITING_FAILURES.md) audits auxiliary-loss controls, reduced-search penalties, correction drift, reusable labels and learned search allocation. Earlier snapshots below retain their original dates.
+
 **Later research:** [Deep follow-up](DEEP_FOLLOWUP.md) incorporates the capped qs-TT result, GPU teacher cost, bucket optimizer analysis and new controlled experiments. The snapshot below records the earlier review.
 
 **Research snapshot: 2026-10-29. Base: `ed77fe7cd8bf43a35f3dba6cca1cde886da4e7fd`.** Prepared by Codex with three delegated Astra ultra reviews covering search, learning, and execution. Existing proposals retain their original attribution in the linked sources.
