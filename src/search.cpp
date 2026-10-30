@@ -47,12 +47,25 @@ const ReductionTable Reductions;
 constexpr int CorrHistSize = 16384;
 constexpr int CorrHistLimit = 1024;
 int mainCorrHist[2][CorrHistSize];
+// Non-pawn correction history (Alexandria, Stockfish): the same idea keyed by one side's
+// non-pawn pieces (knights, bishops, rooks, queens and king), one table per keyed colour.
+int mainNonPawnCorrHist[2][2][CorrHistSize]; // [side to move][keyed colour][hash]
 
 int pawn_index(const Position& pos) {
     uint64_t h = pos.pieces(WHITE, PAWN) * 0x9E3779B97F4A7C15ull ^ pos.pieces(BLACK, PAWN) * 0xC2B2AE3D27D4EB4Full;
     h ^= h >> 31;
     h *= 0xBF58476D1CE4E5B9ull;
     return int(h >> 50); // top 14 bits: 0 to CorrHistSize - 1
+}
+
+int nonpawn_index(const Position& pos, Color c) {
+    uint64_t h = (pos.pieces(c) & ~pos.pieces(PAWN)) * 0x9E3779B97F4A7C15ull;
+    h ^= pos.pieces(c, KNIGHT) * 0xD6E8FEB86659FD93ull ^ pos.pieces(c, BISHOP) * 0xC2B2AE3D27D4EB4Full
+       ^ pos.pieces(c, ROOK) * 0x165667B19E3779F9ull ^ pos.pieces(c, QUEEN) * 0x27D4EB2F165667C5ull;
+    h ^= h >> 31;
+    h *= 0xBF58476D1CE4E5B9ull;
+    h ^= h >> 29;
+    return int(h >> 50);
 }
 
 int threadCount = 1; // the UCI Threads option
@@ -77,6 +90,8 @@ struct Searcher {
     int history[2][64][64] = {}; // [side to move][from][to], quiet moves only
     int ownCorrHist[2][CorrHistSize] = {};
     int (*corrHist)[CorrHistSize] = ownCorrHist; // the main thread's points to mainCorrHist
+    int ownNonPawnCorrHist[2][2][CorrHistSize] = {};
+    int (*nonPawnCorrHist)[2][CorrHistSize] = ownNonPawnCorrHist; // main thread: mainNonPawnCorrHist
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
     Move excluded[MAX_PLY + 1] = {};  // move a singular search leaves out at each ply
     int rootDepth = 0;
@@ -156,7 +171,10 @@ struct Searcher {
 
     // The network's eval plus what correction history has learned for these pawns.
     int corrected_eval() {
-        int correction = corrHist[pos.side_to_move()][pawn_index(pos)] / 16;
+        Color us = pos.side_to_move();
+        int nonPawn = nonPawnCorrHist[us][WHITE][nonpawn_index(pos, WHITE)]
+                    + nonPawnCorrHist[us][BLACK][nonpawn_index(pos, BLACK)];
+        int correction = (corrHist[us][pawn_index(pos)] + nonPawn / 2) / 16;
         return std::clamp(evaluate(pos) + correction, -VALUE_MATE_IN_MAX_PLY + 1, VALUE_MATE_IN_MAX_PLY - 1);
     }
 
@@ -166,6 +184,10 @@ struct Searcher {
         int& e = corrHist[pos.side_to_move()][pawn_index(pos)];
         int bonus = std::clamp(diff * depth / 4, -CorrHistLimit / 4, CorrHistLimit / 4);
         e += bonus - e * std::abs(bonus) / CorrHistLimit;
+        for (Color c : {WHITE, BLACK}) {
+            int& n = nonPawnCorrHist[pos.side_to_move()][c][nonpawn_index(pos, c)];
+            n += bonus - n * std::abs(bonus) / CorrHistLimit;
+        }
     }
 
     // Static exchange evaluation: does capturing on the target square, with
@@ -571,6 +593,7 @@ struct Searcher {
 void Search::clear() {
     TT.clear();
     std::fill(&mainCorrHist[0][0], &mainCorrHist[0][0] + 2 * CorrHistSize, 0);
+    std::fill(&mainNonPawnCorrHist[0][0][0], &mainNonPawnCorrHist[0][0][0] + 4 * CorrHistSize, 0);
 }
 
 void Search::set_threads(int n) {
@@ -581,6 +604,7 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
     TT.new_search();
     Searcher s(pos, limits);
     s.corrHist = mainCorrHist;
+    s.nonPawnCorrHist = mainNonPawnCorrHist;
     s.set_time_limits();
     SearchResult result;
     int maxDepth = std::min(limits.depth, MAX_PLY - 1);
