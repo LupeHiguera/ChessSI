@@ -107,6 +107,7 @@ struct Searcher {
     Move excluded[MAX_PLY + 1] = {};  // move a singular search leaves out at each ply
     int rootDepth = 0;
     Piece pieceStack[MAX_PLY + 1] = {}; // piece that played it
+    int evalStack[MAX_PLY + 1] = {};    // static eval at each ply (-VALUE_INF in check), for "improving"
     int (*contHist)[ContHistStride] = nullptr; // the main thread's points to mainContHist
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
@@ -366,6 +367,10 @@ struct Searcher {
         }
 
         int staticEval = inCheck ? -VALUE_INF : corrected_eval();
+        if (!excludedMove)
+            evalStack[ply] = staticEval;
+        // Improving: the static eval is above its value two plies ago, for the same side to move.
+        bool improving = !inCheck && ply >= 2 && staticEval > evalStack[ply - 2];
 
         // Reverse futility pruning: at shallow null-window nodes, a large
         // static advantage may make the remaining search unnecessary.
@@ -423,9 +428,9 @@ struct Searcher {
 
             // Late move pruning: near the leaves, quiet moves this far down
             // the ordering almost never matter, so skip them once a move has
-            // kept us out of a mate score.
+            // kept us out of a mate score. Half as many when the eval is not improving.
             if (!pvNode && !inCheck && quiet && depth <= 7 && best > -VALUE_MATE_IN_MAX_PLY
-                && quietCount >= 6 + depth * depth)
+                && quietCount >= (6 + depth * depth) / (improving ? 1 : 2))
                 continue;
 
             // Futility pruning: if even a generous margin over the static
