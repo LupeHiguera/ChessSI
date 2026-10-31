@@ -405,8 +405,43 @@ struct Searcher {
             --depth;
 
         MoveList list;
-        generate(pos, list, ALL_MOVES);
         int scores[256];
+
+        // ProbCut: at a null-window node, a capture whose search 4 plies shallower still beats
+        // beta by a margin would almost surely beat beta at full depth, so cut. Quiescence
+        // screens each capture first. Skipped when the TT already holds a score below the
+        // raised beta from a search nearly as deep.
+        int probCutBeta = beta + 200;
+        if (!pvNode && !inCheck && !root && !excludedMove && depth >= 5 && std::abs(beta) < VALUE_MATE_IN_MAX_PLY
+            && !(ttDepth >= depth - 3 && ttScore < probCutBeta)) {
+            generate(pos, list, NOISY_MOVES);
+            score_moves(list, scores, MOVE_NONE, -1);
+            for (int i = 0; i < list.size; ++i) {
+                Move m = pick_move(list, scores, i);
+                if (!see_ge(m, 0))
+                    continue;
+                Piece moved = pos.piece_on(from_sq(m));
+                if (!pos.do_move(m)) {
+                    pos.undo_move(m);
+                    continue;
+                }
+                moveStack[ply] = m;
+                pieceStack[ply] = moved;
+                int score = -qsearch(-probCutBeta, -probCutBeta + 1, ply + 1);
+                if (score >= probCutBeta)
+                    score = -search(-probCutBeta, -probCutBeta + 1, depth - 4, ply + 1);
+                pos.undo_move(m);
+                if (stopped)
+                    return 0;
+                if (score >= probCutBeta) {
+                    TT.store(pos.key(), m, score_to_tt(score, ply), depth - 3, BOUND_LOWER);
+                    return score;
+                }
+            }
+            list.size = 0;
+        }
+
+        generate(pos, list, ALL_MOVES);
         score_moves(list, scores, ttMove, ply);
 
         int originalAlpha = alpha;
