@@ -116,10 +116,20 @@ def decode(occ, pcs):
 
 
 FIELDS = ("feats", "white", "scores", "results", "keys", "ply")
-# Cache files are named <data file>.v<CACHE_VERSION>.<byte offset>.npz. Version 2: deterministic
-# position keys (version 1 used Python's hash(), which differs between processes, so duplicates in
-# chunks cached by different runs were never found).
+# Cache files are named <data file>.<fingerprint>.v<CACHE_VERSION>.<byte offset>.npz (see
+# cache_stem). Version 2: deterministic position keys (version 1 used Python's hash(), which differs
+# between processes, so duplicates in chunks cached by different runs were never found).
 CACHE_VERSION = 2
+
+
+def cache_stem(path, cache_dir):
+    """Where one data file's parsed chunks are cached. The fingerprint hashes the file's first
+    megabyte, which appending lines never changes. Without it, two data files with the same name (the
+    20M-line pieces of different datagen files, say) shared cached chunks: the second file was read as
+    the first one's positions plus whatever followed at the first one's length."""
+    with open(path, "rb") as f:
+        tag = hashlib.blake2b(f.read(1 << 20), digest_size=6).hexdigest()
+    return os.path.join(cache_dir, f"{os.path.basename(path)}.{tag}.v{CACHE_VERSION}")
 
 
 def position_key(fields):
@@ -175,7 +185,7 @@ def load_file(path, cache_dir, frozen=False, fields=FIELDS):
     chunks, start = [], 0
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
-        stem = os.path.join(cache_dir, f"{os.path.basename(path)}.v{CACHE_VERSION}")
+        stem = cache_stem(path, cache_dir)
         while os.path.exists(f"{stem}.{start}.npz"):
             with np.load(f"{stem}.{start}.npz") as z:
                 chunks.append({k: z[k] for k in fields})
