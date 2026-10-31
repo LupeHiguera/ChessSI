@@ -110,7 +110,7 @@ struct Params {
     int singDepth, singTTMargin, singBeta; // singular extensions: depth >= 8, ttDepth >= depth - 3, beta ttScore - 16 * depth / 16
     int negExt;                    // 1: a non-singular TT move whose TT score beats beta gets extension -1 (off in the engine)
     int dextMargin, dextLimit;     // extension 2 below singular beta - dextMargin, dextLimit times a path (off: limit 0)
-    int contHist;                  // 1: continuation history in quiet-move order (claude/conthist3; off: PR #78)
+    int contHist;                  // 1: continuation history in quiet-move order (#81; 0: PR #78)
     u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
 };
 
