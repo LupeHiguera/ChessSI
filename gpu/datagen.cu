@@ -110,6 +110,7 @@ struct Params {
     int singDepth, singTTMargin, singBeta; // singular extensions: depth >= 8, ttDepth >= depth - 3, beta ttScore - 16 * depth / 16
     int negExt;                    // 1: a non-singular TT move whose TT score beats beta gets extension -1 (off in the engine)
     int dextMargin, dextLimit;     // extension 2 below singular beta - dextMargin, dextLimit times a path (off: limit 0)
+    int contHist;                  // 1: continuation history in quiet-move order (claude/conthist3; off: PR #78)
     u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
 };
 
@@ -124,6 +125,9 @@ struct Tables {
     TTEntry tt[1 << TT_BITS];
     short corr[2][CORR_SIZE];
     short npcorr[2][2][CORR_SIZE]; // [side to move][keyed colour][hash]
+    // Continuation history (the engine's mainContHist, an int table whose gravity keeps it within +-16384):
+    // [earlier piece * 64 + its target][piece * 64 + target], kept for the game and halved at each search
+    short conthist[12 * 64][12 * 64];
     unsigned gen, pad[3]; // TT.new_search() at each search; entries keep its low 8 bits, as the engine's uint8_t
 };
 
@@ -144,13 +148,14 @@ struct Game {
     u16 thinkBest, pad17;
     u16 killers[MAX_PLY + 1][2];
     u16 moveStack[MAX_PLY + 1];
+    u8 pieceStack[MAX_PLY + 1]; // the piece that played moveStack[ply], for continuation history
     signed char doubleExt[MAX_PLY + 2]; // double extensions on the path to each ply
     int history[2][64][64];
     // A singular search runs at its parent's ply while the parent waits, so each ply has two slots for
     // the calls in flight and their moves: [ply] for ordinary calls, [MAX_PLY + 1 + ply] for singular ones.
     Frame frames[2 * (MAX_PLY + 1)];
     u16 moves[2 * (MAX_PLY + 1)][256];
-    short scores[2 * (MAX_PLY + 1)][256]; // move order (see score_moves)
+    int scores[2 * (MAX_PLY + 1)][256]; // move order (see score_moves)
     u16 quiets[2 * (MAX_PLY + 1)][256];
     // Game loop (src/datagen.cpp)
     int winStreak, ply, done, nsamples;
@@ -627,6 +632,8 @@ __device__ void clear_tables(Tables* tb) {
     for (int i = lane_id(); i < (1 << TT_BITS); i += 32) tb->tt[i] = z;
     for (int i = lane_id(); i < 2 * CORR_SIZE; i += 32) (&tb->corr[0][0])[i] = 0;
     for (int i = lane_id(); i < 4 * CORR_SIZE; i += 32) (&tb->npcorr[0][0][0])[i] = 0;
+    int4* ch = reinterpret_cast<int4*>(&tb->conthist[0][0]);
+    for (int i = lane_id(); i < 12 * 64 * 12 * 64 / 8; i += 32) ch[i] = make_int4(0, 0, 0, 0);
     if (lane_id() == 0) tb->gen = 0;
     __syncwarp();
 }
@@ -644,38 +651,54 @@ __device__ __forceinline__ bool is_quiet(const Game* g, u16 m) {
     return g->board[(m >> 6) & 63] == NO_PIECE && t != M_EN_PASSANT && t != M_PROMOTION;
 }
 __device__ bool see_ge(const Game* g, u16 m, int threshold);
-// Move order as in src/search.cpp, in 16 bits: the same order with the categories moved down, since
-// only the order matters. History stays within +-16384 (its gravity), and above it come the second and
-// first killer (17,000 and 18,000 there, 70,000 and 80,000 in the engine), a queen promotion (19,000;
-// 90,000), captures (20,000 + 10 * victim value - attacker type; 100,000 + ...) and the TT move
-// (32,000; 1,000,000). In the main search, captures that lose material by SEE go below all of history
-// (-32,000 + 10 * victim value - attacker type, at most -23,000; -100,000 + ...).
-__device__ void score_moves(Game* g, const u16* list, int n, short* scores, u16 ttMove, int ply) {
+// The continuation-history entry for quiet move m after the move `back` plies earlier (the engine's
+// cont_entry), or null at the root, after a null move, or with continuation history off.
+__device__ __forceinline__ short* cont_entry(Game* g, Tables* tb, int on, int ply, int back, u16 m) {
+    if (!on || ply < back) return nullptr;
+    u16 prev = g->moveStack[ply - back];
+    if (prev == MOVE_NONE) return nullptr;
+    return &tb->conthist[g->pieceStack[ply - back] * 64 + ((prev >> 6) & 63)][g->board[m & 63] * 64 + ((m >> 6) & 63)];
+}
+// Move order exactly as src/search.cpp scores it: the TT move, captures by MVV-LVA (in the main search those
+// that lose material by SEE go below every quiet move), a queen promotion, the two killers, then quiet moves
+// by history plus their two continuation entries (each within +-16384).
+__device__ void score_moves(Game* g, Tables* tb, int contHist, const u16* list, int n, int* scores, u16 ttMove, int ply) {
     __syncwarp();
     for (int i = lane_id(); i < n; i += 32) { // every lane scores every 32nd move
         u16 m = list[i];
         int from = m & 63, to = (m >> 6) & 63, t = m & (3 << 14), s;
-        if (m == ttMove) s = 32000;
-        else if (t == M_EN_PASSANT) s = 20000 + PIECE_VALUE[PAWN] * 10 - PAWN;
+        if (m == ttMove) s = 1000000;
+        else if (t == M_EN_PASSANT) s = 100000 + PIECE_VALUE[PAWN] * 10 - PAWN;
         else if (g->board[to] != NO_PIECE) {
             int mvvLva = PIECE_VALUE[type_of(g->board[to])] * 10 - type_of(g->board[from]);
-            s = (ply >= 0 && !see_ge(g, m, 0) ? -32000 : 20000) + mvvLva;
+            s = (ply >= 0 && !see_ge(g, m, 0) ? -100000 : 100000) + mvvLva;
         }
-        else if (t == M_PROMOTION && ((m >> 12) & 3) + KNIGHT == QUEEN) s = 19000;
-        else if (ply >= 0 && m == g->killers[ply][0]) s = 18000;
-        else if (ply >= 0 && m == g->killers[ply][1]) s = 17000;
-        else if (ply >= 0) s = g->history[g->stm][from][to];
+        else if (t == M_PROMOTION && ((m >> 12) & 3) + KNIGHT == QUEEN) s = 90000;
+        else if (ply >= 0 && m == g->killers[ply][0]) s = 80000;
+        else if (ply >= 0 && m == g->killers[ply][1]) s = 70000;
+        else if (ply >= 0) {
+            s = g->history[g->stm][from][to];
+            if (const short* c = cont_entry(g, tb, contHist, ply, 1, m)) s += *c;
+            if (const short* c = cont_entry(g, tb, contHist, ply, 2, m)) s += *c;
+        }
         else s = 0;
-        scores[i] = (short)s;
+        scores[i] = s;
     }
     __syncwarp();
 }
-__device__ void update_history(Game* g, u16 m, int bonus) {
+// Gravity moves history and both continuation entries toward +-16384 by the same bonus.
+__device__ void update_history(Game* g, Tables* tb, int contHist, int ply, u16 m, int bonus) {
     int& h = g->history[g->stm][m & 63][(m >> 6) & 63];
-    int v = h;
+    short* c1 = cont_entry(g, tb, contHist, ply, 1, m);
+    short* c2 = cont_entry(g, tb, contHist, ply, 2, m);
+    int v = h, v1 = c1 ? *c1 : 0, v2 = c2 ? *c2 : 0;
     v += bonus - v * abs(bonus) / 16384;
+    v1 += bonus - v1 * abs(bonus) / 16384;
+    v2 += bonus - v2 * abs(bonus) / 16384;
     __syncwarp();
     h = v;
+    if (c1) *c1 = (short)v1;
+    if (c2) *c2 = (short)v2;
     __syncwarp();
 }
 __device__ __forceinline__ int pawn_index(const Game* g) {
@@ -719,7 +742,7 @@ __device__ void update_corrhist(const Game* g, Tables* tb, int diff, int depth) 
     *nb = (short)vb;
     __syncwarp();
 }
-__device__ u16 pick_move(u16* list, short* scores, int n, int i) {
+__device__ u16 pick_move(u16* list, int* scores, int n, int i) {
     __syncwarp();
     int bestS = -2147483647 - 1, bestJ = n;
     for (int j = i + lane_id(); j < n; j += 32) {
@@ -734,7 +757,7 @@ __device__ u16 pick_move(u16* list, short* scores, int n, int i) {
     int si = scores[i];
     __syncwarp();
     list[i] = mb; list[bestJ] = mi;
-    scores[i] = (short)bestS; scores[bestJ] = (short)si;
+    scores[i] = bestS; scores[bestJ] = si;
     __syncwarp();
     return mb;
 }
@@ -936,7 +959,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             int slot = move_slot(f);
             PB(0) f.n = generate(g, g->moves[slot], false);
             __syncwarp(); PE(0)
-            PB(1) score_moves(g, g->moves[slot], f.n, g->scores[slot], f.ttMove, f.ply); PE(1)
+            PB(1) score_moves(g, tb, p.contHist, g->moves[slot], f.n, g->scores[slot], f.ttMove, f.ply); PE(1)
             f.originalAlpha = f.alpha;
             f.best = -VALUE_INF;
             f.legalMoves = f.quietCount = f.i = 0;
@@ -949,7 +972,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             // loop, since its continue would continue the loop.
             int slot = move_slot(f);
             u16* list = g->moves[slot];
-            short* scores = g->scores[slot];
+            int* scores = g->scores[slot];
             bool found = false, singular = false;
             while (f.i < f.n) {
                 PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
@@ -971,6 +994,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                     singular = true;
                     break;
                 }
+                u8 moved = g->board[m & 63];
                 PB(3) bool legal = do_move(g, m, net, acc); PE(3)
                 if (!legal) {
                     PB(4) undo_move(g, m); PE(4)
@@ -978,6 +1002,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 }
                 ++f.legalMoves;
                 g->moveStack[f.ply] = m;
+                g->pieceStack[f.ply] = moved;
                 g->doubleExt[f.ply + 1] = g->doubleExt[f.ply] + (f.ext == 2);
                 __syncwarp();
                 found = true;
@@ -1012,6 +1037,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 f.ext = !f.pvNode && f.childScore < singularBeta - p.dextMargin && g->doubleExt[f.ply] < p.dextLimit ? 2 : 1;
             else if (singularBeta >= f.beta) RETURN(singularBeta) // several moves beat beta: multi-cut
             else if (p.negExt && f.ttScore >= f.beta) f.ext = -1; // others likely beat beta too: a ply shallower
+            u8 moved = g->board[f.m & 63];
             PB(3) bool legal = do_move(g, f.m, net, acc); PE(3)
             if (!legal) {
                 PB(4) undo_move(g, f.m); PE(4)
@@ -1020,6 +1046,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             }
             ++f.legalMoves;
             g->moveStack[f.ply] = f.m;
+            g->pieceStack[f.ply] = moved;
             g->doubleExt[f.ply + 1] = g->doubleExt[f.ply] + (f.ext == 2);
             __syncwarp();
         }
@@ -1069,9 +1096,9 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                                 __syncwarp();
                             }
                             int bonus = min(f.depth * f.depth, p.histMax);
-                            update_history(g, m, bonus);
+                            update_history(g, tb, p.contHist, f.ply, m, bonus);
                             u16* quiets = g->quiets[move_slot(f)];
-                            for (int j = 0; j < f.quietCount; ++j) update_history(g, quiets[j], -bonus);
+                            for (int j = 0; j < f.quietCount; ++j) update_history(g, tb, p.contHist, f.ply, quiets[j], -bonus);
                         }
                         f.i = f.n; // break
                         continue;
@@ -1094,7 +1121,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             f.alpha = max(f.alpha, standPat);
             PB(0) f.n = generate(g, g->moves[move_slot(f)], true);
             __syncwarp(); PE(0)
-            PB(1) score_moves(g, g->moves[move_slot(f)], f.n, g->scores[move_slot(f)], MOVE_NONE, -1); PE(1)
+            PB(1) score_moves(g, tb, 0, g->moves[move_slot(f)], f.n, g->scores[move_slot(f)], MOVE_NONE, -1); PE(1)
             f.best = standPat;
             f.i = 0;
             f.state = Q_LOOP;
@@ -1102,7 +1129,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         // fall through
         case Q_LOOP: {
             u16* list = g->moves[move_slot(f)];
-            short* scores = g->scores[move_slot(f)];
+            int* scores = g->scores[move_slot(f)];
             bool found = false;
             while (f.i < f.n) {
                 PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
@@ -1156,8 +1183,22 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
 // its score in g->thinkScore.
 enum { T_IDLE, T_DEPTH, T_SEARCH, T_SEARCHING };
 
+// Two int16 entries in one int, each divided by 2 toward zero (the engine's h /= 2).
+__device__ __forceinline__ int halve2(int v) {
+    short lo = (short)(v & 0xffff), hi = (short)(v >> 16);
+    lo = lo / 2;
+    hi = hi / 2;
+    return (int)(((unsigned)(u16)hi << 16) | (unsigned)(u16)lo);
+}
 __device__ void think_start(Game* g, Tables* tb, u64 nodeLimit) {
     int lane = lane_id();
+    // Search::think halves the continuation history before each search.
+    int4* ch = reinterpret_cast<int4*>(&tb->conthist[0][0]);
+    for (int i = lane; i < 12 * 64 * 12 * 64 / 8; i += 32) {
+        int4 v = ch[i];
+        ch[i] = make_int4(halve2(v.x), halve2(v.y), halve2(v.z), halve2(v.w));
+    }
+    for (int i = lane; i < MAX_PLY + 1; i += 32) g->pieceStack[i] = 0;
     for (int i = lane; i < 2 * 64 * 64; i += 32) (&g->history[0][0][0])[i] = 0;
     for (int i = lane; i < (MAX_PLY + 1) * 2; i += 32) (&g->killers[0][0])[i] = 0;
     for (int i = lane; i < MAX_PLY + 1; i += 32) g->moveStack[i] = 0;
