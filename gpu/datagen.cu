@@ -91,7 +91,7 @@ struct Frame {
     u16 excl; // the move a singular search leaves out (excluded[ply]); MOVE_NONE otherwise
     signed char ttDepth, ext; // the TT entry's depth (-1 without one), and the singular extension of f.m
     u8 ttBound;
-    bool inCheck, pvNode, root, quiet;
+    bool inCheck, pvNode, root, quiet, improving;
 };
 
 // The search's constants (src/search.cpp has them inline), so that matches can give each side its own.
@@ -111,6 +111,7 @@ struct Params {
     int negExt;                    // 1: a non-singular TT move whose TT score beats beta gets extension -1 (off in the engine)
     int dextMargin, dextLimit;     // extension 2 below singular beta - dextMargin, dextLimit times a path (off: limit 0)
     int contHist;                  // 1: continuation history in quiet-move order (#81; 0: PR #78)
+    int lmpImproving, rfpImproving; // 1: LMP keeps half the quiets when not improving; RFP's margin a ply smaller when improving
     u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
 };
 
@@ -149,6 +150,7 @@ struct Game {
     u16 killers[MAX_PLY + 1][2];
     u16 moveStack[MAX_PLY + 1];
     u8 pieceStack[MAX_PLY + 1]; // the piece that played moveStack[ply], for continuation history
+    int evalStack[MAX_PLY + 1]; // each ply's static eval (-VALUE_INF in check), for "improving"
     signed char doubleExt[MAX_PLY + 2]; // double extensions on the path to each ply
     int history[2][64][64];
     // A singular search runs at its parent's ply while the parent waits, so each ply has two slots for
@@ -926,10 +928,12 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                     RETURN(f.ttScore)
             }
             PB(5) f.staticEval = f.inCheck ? -VALUE_INF : corrected_eval(g, net, acc, tb); PE(5)
+            if (!f.excl) g->evalStack[f.ply] = f.staticEval;
+            f.improving = !f.inCheck && f.ply >= 2 && f.staticEval > g->evalStack[f.ply - 2];
             int us = g->stm;
             if (!f.root && !f.pvNode && !f.inCheck && !f.excl && f.depth <= p.rfpDepth && g->states[g->nstates - 1].rule50 + f.depth < 100
                 && abs(f.beta) < VALUE_MATE_IN_MAX_PLY && (g->byColor[us] & ~(g->byType[PAWN] | g->byType[KING]))) {
-                if (abs(f.staticEval) < VALUE_MATE_IN_MAX_PLY && f.staticEval - p.rfpMargin * f.depth >= f.beta)
+                if (abs(f.staticEval) < VALUE_MATE_IN_MAX_PLY && f.staticEval - p.rfpMargin * (f.depth - (p.rfpImproving && f.improving)) >= f.beta)
                     RETURN(has_legal_move(g, net, acc, f.ply) ? f.staticEval : 0)
             }
             bool hasPieces = (g->byColor[us] & ~g->byType[PAWN] & ~g->byType[KING]) != 0;
@@ -979,7 +983,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 ++f.i;
                 if (m == f.excl) continue;
                 bool quiet = is_quiet(g, m);
-                if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.lmpDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.quietCount >= p.lmpBase + f.depth * f.depth) continue;
+                if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.lmpDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.quietCount >= (p.lmpBase + f.depth * f.depth) / (p.lmpImproving && !f.improving ? 2 : 1)) continue;
                 if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.futDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.staticEval + p.futMargin * f.depth <= f.alpha) continue;
                 if (!f.root && !f.inCheck && f.depth <= p.seeDepth && f.best > -VALUE_MATE_IN_MAX_PLY) {
                     PB(7) bool seeOk = see_ge(g, m, quiet ? -p.seeQuiet * f.depth : -p.seeCapture * f.depth * f.depth); PE(7)
@@ -1199,6 +1203,7 @@ __device__ void think_start(Game* g, Tables* tb, u64 nodeLimit) {
         ch[i] = make_int4(halve2(v.x), halve2(v.y), halve2(v.z), halve2(v.w));
     }
     for (int i = lane; i < MAX_PLY + 1; i += 32) g->pieceStack[i] = 0;
+    for (int i = lane; i < MAX_PLY + 1; i += 32) g->evalStack[i] = 0;
     for (int i = lane; i < 2 * 64 * 64; i += 32) (&g->history[0][0][0])[i] = 0;
     for (int i = lane; i < (MAX_PLY + 1) * 2; i += 32) (&g->killers[0][0])[i] = 0;
     for (int i = lane; i < MAX_PLY + 1; i += 32) g->moveStack[i] = 0;
