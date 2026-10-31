@@ -99,6 +99,7 @@ struct Frame {
 struct Params {
     int rfpDepth, rfpMargin;       // reverse futility pruning: depth <= 3, staticEval - 150 * depth >= beta
     int nmpDepth, nmpBase, nmpDiv; // null move: depth >= 3, R = 3 + depth / 6
+    int nmpEvalDiv, nmpEvalMax;    // null move R += min((staticEval - beta) / nmpEvalDiv, nmpEvalMax) (0: off; nmp-eval: 200, 3)
     int lmpDepth, lmpBase;         // late move pruning: depth <= 8, quietCount >= 3 + depth * depth
     int futDepth, futMargin;       // futility pruning: depth <= 6, staticEval + 120 * depth <= alpha
     int lmrDepth, lmrMoves;        // late move reductions: depth >= 3, legalMoves > 3
@@ -942,7 +943,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             }
             bool hasPieces = (g->byColor[us] & ~g->byType[PAWN] & ~g->byType[KING]) != 0;
             if (!f.pvNode && !f.inCheck && !f.root && !f.excl && f.depth >= p.nmpDepth && hasPieces && g->moveStack[f.ply - 1] != MOVE_NONE && f.staticEval >= f.beta) {
-                int R = p.nmpBase + f.depth / p.nmpDiv;
+                int R = p.nmpBase + f.depth / p.nmpDiv + (p.nmpEvalDiv ? min((f.staticEval - f.beta) / p.nmpEvalDiv, p.nmpEvalMax) : 0);
                 g->moveStack[f.ply] = MOVE_NONE;
                 g->doubleExt[f.ply + 1] = g->doubleExt[f.ply];
                 __syncwarp();

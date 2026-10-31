@@ -72,7 +72,7 @@ def reductions(base=0.75, div=2.25):
 
 
 # The Params struct of datagen.cu, and src/search.cpp's values.
-PARAMS = np.dtype([(name, "<i4") for name in ("rfpDepth", "rfpMargin", "nmpDepth", "nmpBase", "nmpDiv", "lmpDepth", "lmpBase",
+PARAMS = np.dtype([(name, "<i4") for name in ("rfpDepth", "rfpMargin", "nmpDepth", "nmpBase", "nmpDiv", "nmpEvalDiv", "nmpEvalMax", "lmpDepth", "lmpBase",
                                                 "futDepth", "futMargin", "lmrDepth", "lmrMoves", "histMax", "aspDepth",
                                                 "aspDelta", "qsSee", "seeDepth", "seeQuiet", "seeCapture", "iirDepth",
                                                 "singDepth", "singTTMargin", "singBeta", "negExt", "dextMargin",
@@ -83,7 +83,7 @@ PARAMS = np.dtype([(name, "<i4") for name in ("rfpDepth", "rfpMargin", "nmpDepth
 # src/search.cpp's values since PR #40 (SPSA), SEE pruning's since PR #45, and those of singular extensions
 # and IIR since PR #78: keep them equal, or the GPU search stops matching the engine (the parity check in
 # gpu/README.md catches it). singBeta is in 1/16: the singular beta is ttScore - singBeta * depth / 16.
-DEFAULTS = dict(rfpDepth=5, rfpMargin=77, nmpDepth=3, nmpBase=3, nmpDiv=4, lmpDepth=7, lmpBase=6, futDepth=6, futMargin=127,
+DEFAULTS = dict(rfpDepth=5, rfpMargin=77, nmpDepth=3, nmpBase=3, nmpDiv=4, nmpEvalDiv=0, nmpEvalMax=3, lmpDepth=7, lmpBase=6, futDepth=6, futMargin=127,
                 lmrDepth=3, lmrMoves=4, histMax=1239, aspDepth=4, aspDelta=22, qsSee=0, seeDepth=6, seeQuiet=60, seeCapture=30,
                 iirDepth=4, singDepth=8, singTTMargin=3, singBeta=16, negExt=0, dextMargin=20, dextLimit=0, contHist=1, lmpImproving=0,
                 rfpImproving=0, lmrImproving=0, histPruneDepth=0, histPruneMargin=0, qsDelta=0, histMul=1,
