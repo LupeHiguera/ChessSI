@@ -35,7 +35,7 @@ struct ReductionTable {
     ReductionTable() {
         for (int d = 1; d < 64; ++d)
             for (int n = 1; n < 64; ++n)
-                r[d][n] = int(0.82 + std::log(d) * std::log(n) / 1.72);
+                r[d][n] = int(0.88 + std::log(d) * std::log(n) / 1.58);
     }
 };
 const ReductionTable Reductions;
@@ -273,7 +273,7 @@ struct Searcher {
         int best = standPat;
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
-            if (!see_ge(m, 0)) // losing captures cannot raise the stand-pat score
+            if (!see_ge(m, -7)) // losing captures cannot raise the stand-pat score
                 continue;
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
@@ -340,7 +340,7 @@ struct Searcher {
             && pos.rule50() + depth < 100
             && std::abs(beta) < VALUE_MATE_IN_MAX_PLY
             && (pos.pieces(pos.side_to_move()) & ~(pos.pieces(PAWN) | pos.pieces(KING)))) {
-            if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 77 * depth >= beta)
+            if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 41 * depth >= beta)
                 // A static advantage cannot override stalemate.
                 return has_legal_move() ? staticEval : 0;
         }
@@ -350,9 +350,9 @@ struct Searcher {
         // and right after another null move.
         Color us = pos.side_to_move();
         bool hasPieces = pos.pieces(us) & ~pos.pieces(PAWN) & ~pos.pieces(KING);
-        if (!pvNode && !inCheck && !root && !excludedMove && depth >= 3 && hasPieces && moveStack[ply - 1] != MOVE_NONE
+        if (!pvNode && !inCheck && !root && !excludedMove && depth >= 4 && hasPieces && moveStack[ply - 1] != MOVE_NONE
             && staticEval >= beta) {
-            int R = 3 + depth / 4;
+            int R = 4 + depth / 4;
             moveStack[ply] = MOVE_NONE;
             pos.do_null_move();
             int score = -search(-beta, -beta + 1, depth - 1 - R, ply + 1);
@@ -367,7 +367,7 @@ struct Searcher {
         // poor, so search one ply shallower. Skipped in a singular search
         // (a move excluded): there the TT is not probed, so ttMove is always
         // none and the verification depth must stay as the caller set it.
-        if (!root && !excludedMove && depth >= 4 && ttMove == MOVE_NONE)
+        if (!root && !excludedMove && depth >= 5 && ttMove == MOVE_NONE)
             --depth;
 
         MoveList list;
@@ -391,29 +391,29 @@ struct Searcher {
             // Late move pruning: near the leaves, quiet moves this far down
             // the ordering almost never matter, so skip them once a move has
             // kept us out of a mate score.
-            if (!pvNode && !inCheck && quiet && depth <= 7 && best > -VALUE_MATE_IN_MAX_PLY
-                && quietCount >= 6 + depth * depth)
+            if (!pvNode && !inCheck && quiet && depth <= 8 && best > -VALUE_MATE_IN_MAX_PLY
+                && quietCount >= 4 + depth * depth)
                 continue;
 
             // Futility pruning: if even a generous margin over the static
             // eval cannot reach alpha, a quiet move will not either.
-            if (!pvNode && !inCheck && quiet && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
-                && staticEval + 127 * depth <= alpha)
+            if (!pvNode && !inCheck && quiet && depth <= 7 && best > -VALUE_MATE_IN_MAX_PLY
+                && staticEval + 133 * depth <= alpha)
                 continue;
 
             // SEE pruning: near the leaves, skip a move that loses more material in the exchange
             // on its target square than a depth-scaled margin (wider for captures).
-            if (!root && !inCheck && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
-                && !see_ge(m, quiet ? -60 * depth : -30 * depth * depth))
+            if (!root && !inCheck && depth <= 7 && best > -VALUE_MATE_IN_MAX_PLY
+                && !see_ge(m, quiet ? -56 * depth : -32 * depth * depth))
                 continue;
 
             // Singular extension: when a reduced search without the TT move cannot get near
             // its TT score, that move is the only good one here, so search it a ply deeper.
             // When even the reduced search beats beta, several moves do: cut (multi-cut).
             int extension = 0;
-            if (!root && m == ttMove && depth >= 8 && ttDepth >= depth - 3 && ttBound != BOUND_UPPER
+            if (!root && m == ttMove && depth >= 7 && ttDepth >= depth - 2 && ttBound != BOUND_UPPER
                 && std::abs(ttScore) < VALUE_MATE_IN_MAX_PLY && ply < 2 * rootDepth) {
-                int singularBeta = ttScore - depth;
+                int singularBeta = ttScore - 14 * depth / 16;
                 excluded[ply] = m;
                 int singularScore = search(singularBeta - 1, singularBeta, (depth - 1) / 2, ply);
                 excluded[ply] = MOVE_NONE;
@@ -440,7 +440,7 @@ struct Searcher {
                 // Late quiet moves are searched shallower first, and only
                 // re-searched at full depth if they beat alpha.
                 int r = 0;
-                if (depth >= 3 && legalMoves > 4 && quiet && !inCheck && !pos.in_check()) {
+                if (depth >= 3 && legalMoves > 5 && quiet && !inCheck && !pos.in_check()) {
                     r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
                     if (pvNode)
                         --r;
@@ -471,7 +471,7 @@ struct Searcher {
                                 killers[ply][1] = killers[ply][0];
                                 killers[ply][0] = m;
                             }
-                            int bonus = std::min(depth * depth, 1239);
+                            int bonus = std::min(depth * depth, 1242);
                             update_history(m, bonus);
                             for (int j = 0; j < quietCount; ++j)
                                 update_history(quietsTried[j], -bonus);
@@ -505,7 +505,7 @@ struct Searcher {
     // around the last score and widen whichever side fails until the score
     // lands inside it.
     int search_root(int depth, int prevScore) {
-        int delta = 22;
+        int delta = 23;
         int alpha = -VALUE_INF, beta = VALUE_INF;
         if (depth >= 4) {
             alpha = std::max(prevScore - delta, -VALUE_INF);
