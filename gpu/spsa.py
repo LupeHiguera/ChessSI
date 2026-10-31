@@ -42,6 +42,8 @@ SPACE = {
     "lmrDepth": (1, 8, 1), "lmrMoves": (0, 10, 1), "lmrBase": (-0.5, 2.5, 0.1), "lmrDiv": (1.0, 5.0, 0.15),
     "histMax": (200, 4000, 100), "aspDepth": (1, 12, 1), "aspDelta": (5, 100, 3), "qsSee": (-200, 200, 10),
     "seeDepth": (1, 12, 1), "seeQuiet": (10, 200, 6), "seeCapture": (5, 100, 3),
+    # A singular search runs at (depth - 1) / 2, which stays a full search for every singDepth from 4 up.
+    "iirDepth": (2, 10, 1), "singDepth": (4, 14, 1), "singTTMargin": (0, 8, 1), "singBeta": (4, 64, 3),
 }
 R_END, ALPHA, GAMMA = 0.002, 0.602, 0.101
 

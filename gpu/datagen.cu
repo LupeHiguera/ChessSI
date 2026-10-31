@@ -85,9 +85,12 @@ struct Sample { // one datagen line before formatting: the position, and White-r
 // calls waiting on it are in Game::frames.
 struct Frame {
     int state, alpha, beta, depth, ply;
-    int originalAlpha, best, legalMoves, quietCount, staticEval, n, i, r, childScore;
+    int originalAlpha, best, legalMoves, quietCount, staticEval, n, i, r, childScore, ttScore;
     u64 key;
     u16 ttMove, bestMove, m;
+    u16 excl; // the move a singular search leaves out (excluded[ply]); MOVE_NONE otherwise
+    signed char ttDepth, ext; // the TT entry's depth (-1 without one), and the singular extension of f.m
+    u8 ttBound;
     bool inCheck, pvNode, root, quiet;
 };
 
@@ -103,18 +106,22 @@ struct Params {
     int aspDepth, aspDelta;        // aspiration windows from depth 5, delta 25
     int qsSee;                     // quiescence skips captures that fail see_ge(m, 0)
     int seeDepth, seeQuiet, seeCapture; // SEE pruning: depth <= 6, quiets below -60 * depth, captures below -30 * depth^2
+    int iirDepth;                  // internal iterative reductions: depth >= 4 with no TT move
+    int singDepth, singTTMargin, singBeta; // singular extensions: depth >= 8, ttDepth >= depth - 3, beta ttScore - 16 * depth / 16
     u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
 };
 
-// Correction history (src/search.cpp): per side to move and pawn structure, in 1/16 cp.
+// Correction history (src/search.cpp): per side to move and pawn structure, and per side to move and
+// each colour's non-pawn pieces, in 1/16 cp.
 #define CORR_SIZE 16384
 #define CORR_LIMIT 1024
 // What one engine keeps from move to move, and Search::clear() empties: the TT with its generation, and
-// the main thread's correction history (int in the engine; its values stay within +-CORR_LIMIT). Each game
-// has one; in a match each side has its own, as two engines would.
+// the main thread's correction histories (int in the engine; their values stay within +-CORR_LIMIT). Each
+// game has one; in a match each side has its own, as two engines would.
 struct Tables {
     TTEntry tt[1 << TT_BITS];
     short corr[2][CORR_SIZE];
+    short npcorr[2][2][CORR_SIZE]; // [side to move][keyed colour][hash]
     unsigned gen, pad[3]; // TT.new_search() at each search; entries keep its low 8 bits, as the engine's uint8_t
 };
 
@@ -136,10 +143,12 @@ struct Game {
     u16 killers[MAX_PLY + 1][2];
     u16 moveStack[MAX_PLY + 1];
     int history[2][64][64];
-    Frame frames[MAX_PLY + 1];
-    u16 moves[MAX_PLY + 1][256];
-    short scores[MAX_PLY + 1][256]; // move order (see score_moves)
-    u16 quiets[MAX_PLY + 1][256];
+    // A singular search runs at its parent's ply while the parent waits, so each ply has two slots for
+    // the calls in flight and their moves: [ply] for ordinary calls, [MAX_PLY + 1 + ply] for singular ones.
+    Frame frames[2 * (MAX_PLY + 1)];
+    u16 moves[2 * (MAX_PLY + 1)][256];
+    short scores[2 * (MAX_PLY + 1)][256]; // move order (see score_moves)
+    u16 quiets[2 * (MAX_PLY + 1)][256];
     // Game loop (src/datagen.cpp)
     int winStreak, ply, done, nsamples;
     float result;
@@ -614,6 +623,7 @@ __device__ void clear_tables(Tables* tb) {
     z.key = 0; z.move = 0; z.score = 0; z.depth = 0; z.bound = 0; z.gen = 0; z.pad = 0;
     for (int i = lane_id(); i < (1 << TT_BITS); i += 32) tb->tt[i] = z;
     for (int i = lane_id(); i < 2 * CORR_SIZE; i += 32) (&tb->corr[0][0])[i] = 0;
+    for (int i = lane_id(); i < 4 * CORR_SIZE; i += 32) (&tb->npcorr[0][0][0])[i] = 0;
     if (lane_id() == 0) tb->gen = 0;
     __syncwarp();
 }
@@ -671,21 +681,39 @@ __device__ __forceinline__ int pawn_index(const Game* g) {
     h *= 0xBF58476D1CE4E5B9ULL;
     return (int)(h >> 50); // top 14 bits: 0 to CORR_SIZE - 1
 }
-// The network's eval plus what correction history has learned for these pawns.
+__device__ __forceinline__ int nonpawn_index(const Game* g, int c) {
+    u64 h = (g->byColor[c] & ~g->byType[PAWN]) * 0x9E3779B97F4A7C15ULL;
+    h ^= pcs(g, c, KNIGHT) * 0xD6E8FEB86659FD93ULL ^ pcs(g, c, BISHOP) * 0xC2B2AE3D27D4EB4FULL
+       ^ pcs(g, c, ROOK) * 0x165667B19E3779F9ULL ^ pcs(g, c, QUEEN) * 0x27D4EB2F165667C5ULL;
+    h ^= h >> 31;
+    h *= 0xBF58476D1CE4E5B9ULL;
+    h ^= h >> 29;
+    return (int)(h >> 50);
+}
+// The network's eval plus what correction history has learned for these pawns and non-pawn pieces.
 __device__ int corrected_eval(const Game* g, const Net& net, const short* acc, const Tables* tb) {
-    int e = evaluate(g, net, acc) + tb->corr[g->stm][pawn_index(g)] / 16;
+    int us = g->stm;
+    int nonPawn = tb->npcorr[us][0][nonpawn_index(g, 0)] + tb->npcorr[us][1][nonpawn_index(g, 1)];
+    int e = evaluate(g, net, acc) + (tb->corr[us][pawn_index(g)] + nonPawn / 2) / 16;
     return min(max(e, -VALUE_MATE_IN_MAX_PLY + 1), VALUE_MATE_IN_MAX_PLY - 1);
 }
-// Moves the entry toward the search result, more for deeper searches; the gravity term keeps it within
+// Moves the entries toward the search result, more for deeper searches; the gravity term keeps them within
 // +-CORR_LIMIT.
 __device__ void update_corrhist(const Game* g, Tables* tb, int diff, int depth) {
-    short* e = &tb->corr[g->stm][pawn_index(g)];
+    int us = g->stm;
+    short* e = &tb->corr[us][pawn_index(g)];
+    short* nw = &tb->npcorr[us][0][nonpawn_index(g, 0)];
+    short* nb = &tb->npcorr[us][1][nonpawn_index(g, 1)];
     __syncwarp();
-    int v = *e;
+    int v = *e, vw = *nw, vb = *nb;
     int bonus = min(max(diff * depth / 4, -CORR_LIMIT / 4), CORR_LIMIT / 4);
     v += bonus - v * abs(bonus) / CORR_LIMIT;
+    vw += bonus - vw * abs(bonus) / CORR_LIMIT;
+    vb += bonus - vb * abs(bonus) / CORR_LIMIT;
     __syncwarp();
     *e = (short)v;
+    *nw = (short)vw;
+    *nb = (short)vb;
     __syncwarp();
 }
 __device__ u16 pick_move(u16* list, short* scores, int n, int i) {
@@ -775,7 +803,11 @@ __device__ bool has_legal_move(Game* g, const Net& net, short* acc, int ply) {
 
 // The states of a call. A search call starts in S_ENTRY, a quiescence call in Q_ENTRY; the others
 // resume a call after the child named by the state returns.
-enum { S_ENTRY, S_NULL_DONE, S_MOVES, S_LOOP, S_FIRST_DONE, S_RED_DONE, S_FULL_DONE, S_PV_DONE, Q_ENTRY, Q_LOOP, Q_DONE };
+enum { S_ENTRY, S_NULL_DONE, S_MOVES, S_LOOP, S_SING_DONE, S_SEARCH_MOVE, S_FIRST_DONE, S_RED_DONE, S_FULL_DONE, S_PV_DONE,
+       Q_ENTRY, Q_LOOP, Q_DONE };
+
+// The slot of a call's moves, scores and quiets (see Game::moves).
+__device__ __forceinline__ int move_slot(const Frame& f) { return f.excl ? MAX_PLY + 1 + f.ply : f.ply; }
 
 __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int depth, int ply) {
     Frame f = {};
@@ -794,6 +826,18 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
         __syncwarp();                                     \
         g->frames[sp++] = f;                              \
         f = new_call(ENTRY, A, B, D, f.ply + 1);          \
+        continue;                                         \
+    }
+// Call search(A, B, D, ply) at this call's own ply with move EXCL left out (a singular search), and resume
+// this call in RESUME when it returns.
+#define CALL_EXCLUDING(RESUME, A, B, D, EXCL)            \
+    {                                                     \
+        u16 _excl = (EXCL);                               \
+        f.state = RESUME;                                 \
+        __syncwarp();                                     \
+        g->frames[sp++] = f;                              \
+        f = new_call(S_ENTRY, A, B, D, f.ply);            \
+        f.excl = _excl;                                   \
         continue;                                         \
     }
 // Return V from the running call.
@@ -840,23 +884,30 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 if (f.ply >= MAX_PLY - 1) RETURN(evaluate(g, net, acc))
             }
             f.key = g->states[g->nstates - 1].key;
-            PB(6) TTEntry e = *tt_entry(tb->tt, f.key); PE(6)
-            bool hit = e.key == f.key && e.bound != BOUND_NONE;
+            // A singular search (one move excluded) neither reads nor writes this node's TT entry.
+            bool hit = false;
+            TTEntry e = {};
+            if (!f.excl) {
+                PB(6) e = *tt_entry(tb->tt, f.key); PE(6)
+                hit = e.key == f.key && e.bound != BOUND_NONE;
+            }
             f.ttMove = hit ? e.move : MOVE_NONE;
-            if (hit && !f.pvNode && e.depth >= f.depth) {
-                int ttScore = score_from_tt(e.score, f.ply);
-                if (e.bound == BOUND_EXACT || (e.bound == BOUND_LOWER && ttScore >= f.beta) || (e.bound == BOUND_UPPER && ttScore <= f.alpha))
-                    RETURN(ttScore)
+            f.ttScore = hit ? score_from_tt(e.score, f.ply) : 0;
+            f.ttDepth = hit ? e.depth : -1;
+            f.ttBound = hit ? e.bound : BOUND_NONE;
+            if (hit && !f.pvNode && f.ttDepth >= f.depth) {
+                if (f.ttBound == BOUND_EXACT || (f.ttBound == BOUND_LOWER && f.ttScore >= f.beta) || (f.ttBound == BOUND_UPPER && f.ttScore <= f.alpha))
+                    RETURN(f.ttScore)
             }
             PB(5) f.staticEval = f.inCheck ? -VALUE_INF : corrected_eval(g, net, acc, tb); PE(5)
             int us = g->stm;
-            if (!f.root && !f.pvNode && !f.inCheck && f.depth <= p.rfpDepth && g->states[g->nstates - 1].rule50 + f.depth < 100
+            if (!f.root && !f.pvNode && !f.inCheck && !f.excl && f.depth <= p.rfpDepth && g->states[g->nstates - 1].rule50 + f.depth < 100
                 && abs(f.beta) < VALUE_MATE_IN_MAX_PLY && (g->byColor[us] & ~(g->byType[PAWN] | g->byType[KING]))) {
                 if (abs(f.staticEval) < VALUE_MATE_IN_MAX_PLY && f.staticEval - p.rfpMargin * f.depth >= f.beta)
                     RETURN(has_legal_move(g, net, acc, f.ply) ? f.staticEval : 0)
             }
             bool hasPieces = (g->byColor[us] & ~g->byType[PAWN] & ~g->byType[KING]) != 0;
-            if (!f.pvNode && !f.inCheck && !f.root && f.depth >= p.nmpDepth && hasPieces && g->moveStack[f.ply - 1] != MOVE_NONE && f.staticEval >= f.beta) {
+            if (!f.pvNode && !f.inCheck && !f.root && !f.excl && f.depth >= p.nmpDepth && hasPieces && g->moveStack[f.ply - 1] != MOVE_NONE && f.staticEval >= f.beta) {
                 int R = p.nmpBase + f.depth / p.nmpDiv;
                 g->moveStack[f.ply] = MOVE_NONE;
                 __syncwarp();
@@ -875,9 +926,13 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             continue;
         }
         case S_MOVES: {
-            PB(0) f.n = generate(g, g->moves[f.ply], false);
+            // Internal iterative reductions: with no TT move the ordering here is poor, so search one ply
+            // shallower. Not in a singular search, whose depth stays as its caller set it.
+            if (!f.root && !f.excl && f.depth >= p.iirDepth && f.ttMove == MOVE_NONE) --f.depth;
+            int slot = move_slot(f);
+            PB(0) f.n = generate(g, g->moves[slot], false);
             __syncwarp(); PE(0)
-            PB(1) score_moves(g, g->moves[f.ply], f.n, g->scores[f.ply], f.ttMove, f.ply); PE(1)
+            PB(1) score_moves(g, g->moves[slot], f.n, g->scores[slot], f.ttMove, f.ply); PE(1)
             f.originalAlpha = f.alpha;
             f.best = -VALUE_INF;
             f.legalMoves = f.quietCount = f.i = 0;
@@ -888,18 +943,29 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         case S_LOOP: {
             // Make the next legal move that is not pruned, then search it below: CALL can't leave this
             // loop, since its continue would continue the loop.
-            u16* list = g->moves[f.ply];
-            short* scores = g->scores[f.ply];
-            bool found = false;
+            int slot = move_slot(f);
+            u16* list = g->moves[slot];
+            short* scores = g->scores[slot];
+            bool found = false, singular = false;
             while (f.i < f.n) {
                 PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
                 ++f.i;
+                if (m == f.excl) continue;
                 bool quiet = is_quiet(g, m);
                 if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.lmpDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.quietCount >= p.lmpBase + f.depth * f.depth) continue;
                 if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.futDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.staticEval + p.futMargin * f.depth <= f.alpha) continue;
                 if (!f.root && !f.inCheck && f.depth <= p.seeDepth && f.best > -VALUE_MATE_IN_MAX_PLY) {
                     PB(7) bool seeOk = see_ge(g, m, quiet ? -p.seeQuiet * f.depth : -p.seeCapture * f.depth * f.depth); PE(7)
                     if (!seeOk) continue;
+                }
+                f.m = m;
+                f.quiet = quiet;
+                f.ext = 0;
+                // Singular extension: decided by a search of this node without the TT move (below).
+                if (!f.root && m == f.ttMove && f.depth >= p.singDepth && f.ttDepth >= f.depth - p.singTTMargin && f.ttBound != BOUND_UPPER
+                    && abs(f.ttScore) < VALUE_MATE_IN_MAX_PLY && f.ply < 2 * g->thinkDepth) {
+                    singular = true;
+                    break;
                 }
                 PB(3) bool legal = do_move(g, m, net, acc); PE(3)
                 if (!legal) {
@@ -909,35 +975,63 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 ++f.legalMoves;
                 g->moveStack[f.ply] = m;
                 __syncwarp();
-                f.m = m;
-                f.quiet = quiet;
                 found = true;
                 break;
             }
-            if (found) {
-                if (f.legalMoves == 1) CALL(S_FIRST_DONE, S_ENTRY, -f.beta, -f.alpha, f.depth - 1)
-                f.r = 0;
-                PB(8) bool givesCheck = f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && in_check(g); PE(8)
-                if (f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && !givesCheck) {
-                    int r = p.lmr[min(f.depth, 63)][min(f.legalMoves, 63)];
-                    if (f.pvNode) --r;
-                    f.r = max(0, min(r, f.depth - 2));
-                }
-                CALL(S_RED_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, f.depth - 1 - f.r)
+            if (singular) {
+                int singularBeta = f.ttScore - p.singBeta * f.depth / 16;
+                CALL_EXCLUDING(S_SING_DONE, singularBeta - 1, singularBeta, (f.depth - 1) / 2, f.m)
             }
-            if (f.legalMoves == 0) RETURN(f.inCheck ? -VALUE_MATE + f.ply : 0)
-            int bound = f.best >= f.beta ? BOUND_LOWER : f.alpha > f.originalAlpha ? BOUND_EXACT : BOUND_UPPER;
-            if (!f.inCheck && (f.bestMove == MOVE_NONE || is_quiet(g, f.bestMove)) && abs(f.best) < VALUE_MATE_IN_MAX_PLY
-                && !(bound == BOUND_LOWER && f.best <= f.staticEval) && !(bound == BOUND_UPPER && f.best >= f.staticEval))
-                update_corrhist(g, tb, f.best - f.staticEval, f.depth);
-            { PB(6) tt_store(tb, f.key, f.bestMove, score_to_tt(f.best, f.ply), f.depth, bound); PE(6) }
+            if (found) {
+                f.state = S_SEARCH_MOVE;
+                continue;
+            }
+            // With a move excluded, the excluded move was the only legal one.
+            if (f.legalMoves == 0) RETURN(f.excl ? f.alpha : f.inCheck ? -VALUE_MATE + f.ply : 0)
+            // A search with a move excluded is not this position's result, so neither the table nor the
+            // correction history learns from it.
+            if (!f.excl) {
+                int bound = f.best >= f.beta ? BOUND_LOWER : f.alpha > f.originalAlpha ? BOUND_EXACT : BOUND_UPPER;
+                if (!f.inCheck && (f.bestMove == MOVE_NONE || is_quiet(g, f.bestMove)) && abs(f.best) < VALUE_MATE_IN_MAX_PLY
+                    && !(bound == BOUND_LOWER && f.best <= f.staticEval) && !(bound == BOUND_UPPER && f.best >= f.staticEval))
+                    update_corrhist(g, tb, f.best - f.staticEval, f.depth);
+                PB(6) tt_store(tb, f.key, f.bestMove, score_to_tt(f.best, f.ply), f.depth, bound); PE(6)
+            }
             RETURN(f.best)
         }
+        case S_SING_DONE: { // the singular search (this node without f.m, same side to move) returned
+            int singularBeta = f.ttScore - p.singBeta * f.depth / 16;
+            if (g->stopped) RETURN(0)
+            if (f.childScore < singularBeta) f.ext = 1; // f.m is the only good move: search it a ply deeper
+            else if (singularBeta >= f.beta) RETURN(singularBeta) // several moves beat beta: multi-cut
+            PB(3) bool legal = do_move(g, f.m, net, acc); PE(3)
+            if (!legal) {
+                PB(4) undo_move(g, f.m); PE(4)
+                f.state = S_LOOP;
+                continue;
+            }
+            ++f.legalMoves;
+            g->moveStack[f.ply] = f.m;
+            __syncwarp();
+        }
+        // fall through
+        case S_SEARCH_MOVE: { // search the move just made, f.m
+            int newDepth = f.depth - 1 + f.ext;
+            if (f.legalMoves == 1) CALL(S_FIRST_DONE, S_ENTRY, -f.beta, -f.alpha, newDepth)
+            f.r = 0;
+            PB(8) bool givesCheck = f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && in_check(g); PE(8)
+            if (f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && !givesCheck) {
+                int r = p.lmr[min(f.depth, 63)][min(f.legalMoves, 63)];
+                if (f.pvNode) --r;
+                f.r = max(0, min(r, f.depth - 2));
+            }
+            CALL(S_RED_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, newDepth - f.r)
+        }
         case S_RED_DONE: // the reduced zero-window search returned
-            if (-f.childScore > f.alpha && f.r > 0) CALL(S_FULL_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, f.depth - 1)
+            if (-f.childScore > f.alpha && f.r > 0) CALL(S_FULL_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, f.depth - 1 + f.ext)
             // fall through: its score stands as the full-depth one
         case S_FULL_DONE: // the full-depth zero-window search returned
-            if (-f.childScore > f.alpha && -f.childScore < f.beta) CALL(S_PV_DONE, S_ENTRY, -f.beta, -f.alpha, f.depth - 1)
+            if (-f.childScore > f.alpha && -f.childScore < f.beta) CALL(S_PV_DONE, S_ENTRY, -f.beta, -f.alpha, f.depth - 1 + f.ext)
             // fall through
         case S_FIRST_DONE:
         case S_PV_DONE: {
@@ -967,7 +1061,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                             }
                             int bonus = min(f.depth * f.depth, p.histMax);
                             update_history(g, m, bonus);
-                            u16* quiets = g->quiets[f.ply];
+                            u16* quiets = g->quiets[move_slot(f)];
                             for (int j = 0; j < f.quietCount; ++j) update_history(g, quiets[j], -bonus);
                         }
                         f.i = f.n; // break
@@ -976,7 +1070,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 }
             }
             if (f.quiet) {
-                g->quiets[f.ply][f.quietCount++] = m;
+                g->quiets[move_slot(f)][f.quietCount++] = m;
                 __syncwarp();
             }
             continue;
@@ -989,17 +1083,17 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             PB(5) int standPat = corrected_eval(g, net, acc, tb); PE(5)
             if (f.ply >= MAX_PLY - 1 || standPat >= f.beta) RETURN(standPat)
             f.alpha = max(f.alpha, standPat);
-            PB(0) f.n = generate(g, g->moves[f.ply], true);
+            PB(0) f.n = generate(g, g->moves[move_slot(f)], true);
             __syncwarp(); PE(0)
-            PB(1) score_moves(g, g->moves[f.ply], f.n, g->scores[f.ply], MOVE_NONE, -1); PE(1)
+            PB(1) score_moves(g, g->moves[move_slot(f)], f.n, g->scores[move_slot(f)], MOVE_NONE, -1); PE(1)
             f.best = standPat;
             f.i = 0;
             f.state = Q_LOOP;
         }
         // fall through
         case Q_LOOP: {
-            u16* list = g->moves[f.ply];
-            short* scores = g->scores[f.ply];
+            u16* list = g->moves[move_slot(f)];
+            short* scores = g->scores[move_slot(f)];
             bool found = false;
             while (f.i < f.n) {
                 PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
@@ -1098,6 +1192,7 @@ __device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, 
             __syncwarp();
             g->cur = root;
             g->sp = 0;
+            g->thinkDepth = depth; // rootDepth: singular extensions stop at twice this ply
             __syncwarp();
             state = T_SEARCHING;
         }
