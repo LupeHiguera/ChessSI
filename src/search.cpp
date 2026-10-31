@@ -306,6 +306,11 @@ struct Searcher {
         int best = standPat;
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
+            // Delta pruning: skip a capture that cannot lift the stand-pat score to alpha even
+            // 200 cp above the captured piece's value. Promotions are kept.
+            if (move_type(m) != PROMOTION
+                && standPat + 200 + PieceValue[move_type(m) == EN_PASSANT ? PAWN : type_of(pos.piece_on(to_sq(m)))] <= alpha)
+                continue;
             if (!see_ge(m, 0)) // losing captures cannot raise the stand-pat score
                 continue;
             if (!pos.do_move(m)) {
