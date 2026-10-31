@@ -22,7 +22,8 @@ It writes the same lines as `chesssi datagen`: `<fen> | <score> | <result> | <ev
 with random legal plies, then plays at a fixed node count, and a finished game's slot is refilled at
 once. From the same start positions it writes byte-identical lines to `ref.cpp`, so its data is as good
 as the CPU's. The one difference is a 1 MB TT per game instead of 16 MB, which makes little difference at
-5,000 nodes.
+5,000 nodes. Each game's pawn correction history (64 KB) sits beside its TT, and both are cleared at the
+start of a game, as `Search::clear()` clears them in the engine.
 
 Design: one game per warp. All 32 lanes run the same scalar search on one copy of the game in global
 memory. Same-address reads are broadcast, and every shared update goes snapshot, `__syncwarp`, write,
@@ -33,7 +34,8 @@ every game, which keeps kernels well under the Windows GPU watchdog. For longer 
 caps the nodes a search runs per launch: it then pauses, with its state in the game, and carries on
 in the next launch, with the same result.
 
-Throughput with net10 at 5,000 nodes a move:
+Throughput with net10 at 5,000 nodes a move, measured before TT replacement, losing captures last, SEE
+pruning in the main search and correction history reached the GPU search:
 
 | GPU | Games in flight | Positions per second | Nodes per second |
 | --- | --- | --- | --- |
@@ -85,9 +87,9 @@ A 512-game match takes about two minutes on a 5060 Ti that is also generating da
 python gpu/spsa.py <net.nnue> <pairs> [nodes=50000] [games at once=1000] [seed=1] [book]
 ```
 
-The 17 constants that `src/search.cpp` writes inline are fields of `Params` in `datagen.cu`. They
+The 20 constants that `src/search.cpp` writes inline are fields of `Params` in `datagen.cu`. They
 cover the pruning margins and depths, the null-move reduction, the LMR table, the history bonus cap,
-the aspiration windows and the quiescence SEE threshold. A match can give each side its own set, per
+the aspiration windows, and the SEE thresholds in quiescence and in the main search. A match can give each side its own set, per
 game. `spsa.py` runs fishtest's SPSA with them. Each game pair plays one opening twice, theta + c*delta
 against theta - c*delta, and theta moves as each pair ends. A finished game's slot takes the next
 game at once. On an RTX 5080, 800 games at once at 50,000 nodes play about 5.8 pairs a second.
