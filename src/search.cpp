@@ -434,6 +434,12 @@ struct Searcher {
                 && staticEval + 127 * depth <= alpha)
                 continue;
 
+            // History pruning: near the leaves, skip a quiet move whose ordering score, its history
+            // plus its two continuation entries, is well below zero.
+            if (!pvNode && !inCheck && quiet && depth <= 3 && best > -VALUE_MATE_IN_MAX_PLY
+                && scores[i] < -16 * depth)
+                continue;
+
             // SEE pruning: near the leaves, skip a move that loses more material in the exchange
             // on its target square than a depth-scaled margin (wider for captures).
             if (!root && !inCheck && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
