@@ -107,6 +107,7 @@ struct Searcher {
     Move excluded[MAX_PLY + 1] = {};  // move a singular search leaves out at each ply
     int rootDepth = 0;
     Piece pieceStack[MAX_PLY + 1] = {}; // piece that played it
+    uint64_t rootNodes[64][64] = {};    // nodes searched below each root move, [from][to], all iterations
     int (*contHist)[ContHistStride] = nullptr; // the main thread's points to mainContHist
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
@@ -466,6 +467,7 @@ struct Searcher {
             ++legalMoves;
             moveStack[ply] = m;
             pieceStack[ply] = moved;
+            uint64_t nodesBefore = nodes;
 
             int newDepth = depth - 1 + extension;
             int score;
@@ -488,6 +490,8 @@ struct Searcher {
                     score = -search(-beta, -alpha, newDepth, ply + 1);
             }
             pos.undo_move(m);
+            if (root)
+                rootNodes[from_sq(m)][to_sq(m)] += nodes - nodesBefore;
             if (stopped)
                 return 0;
 
@@ -703,6 +707,12 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
             double scale = StabilityScale[stability];
             if (depth > 1) // a 100 cp drop doubles the time, a 100 cp rise halves it
                 scale *= std::exp2(std::clamp(prevScore - score, -100, 100) / 100.0);
+            // And by the share of all nodes spent below the best move (after Ethereal): 0.6 at
+            // 90%, 1.4 at 50%, 2.0 at 20%. A move that took most of the effort is rarely overturned.
+            if (depth >= 5) {
+                double share = double(s.rootNodes[from_sq(result.best)][to_sq(result.best)]) / double(std::max<uint64_t>(1, s.nodes));
+                scale *= std::max(0.5, 2.0 * (1.0 - share) + 0.4);
+            }
             s.softLimit = std::max<int64_t>(1, std::min(s.hardLimit, int64_t(double(s.baseSoft) * scale)));
         }
 
