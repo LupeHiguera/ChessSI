@@ -347,12 +347,13 @@ struct Searcher {
 
         // Null-move pruning: if passing the turn still fails high, a real move
         // almost surely would too. Skipped in check, without pieces (zugzwang)
-        // and right after another null move.
+        // and right after another null move. The further the static eval is
+        // above beta, the more the null-move search is reduced (up to 3 plies).
         Color us = pos.side_to_move();
         bool hasPieces = pos.pieces(us) & ~pos.pieces(PAWN) & ~pos.pieces(KING);
         if (!pvNode && !inCheck && !root && !excludedMove && depth >= 3 && hasPieces && moveStack[ply - 1] != MOVE_NONE
             && staticEval >= beta) {
-            int R = 3 + depth / 4;
+            int R = 3 + depth / 4 + std::min((staticEval - beta) / 200, 3);
             moveStack[ply] = MOVE_NONE;
             pos.do_null_move();
             int score = -search(-beta, -beta + 1, depth - 1 - R, ply + 1);
