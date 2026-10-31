@@ -7,6 +7,26 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net14-h256.nnue
+
+- **SHA-256:** `440ef1960ff97e575a9ce420ab18a1d3e312ed887dc48f45f15aa96f64cc17ec` (`net14-warm.nnue` in the
+  run logs and on issue #21)
+- **Data:** 402,300,178 unique positions from 4,805,383 games, all self-play and all from generation 9:
+  net12 at 5,000 nodes a move in `gpu/datagen.py` (8 random plies, a 1 MB table per game) at `f17c54e`
+  and `226d4b9`. All 321.8M lines of seed 502 (RTX 5060 Ti) and the first 140M lines of seed 501 (RTX
+  5080). None of net12's data.
+- **Training:** a warm start, not net12's recipe from scratch: net12's weights, then 16 epochs at
+  lr 3e-4 (cosine schedule) on this data. Trainer: `nnue/train.py` from PR #71 (`5f758cb`) with one
+  patch that lets a one-bucket network take `--init`, and the step-0 check on (the exported start
+  equals net12 on 1,000 positions; largest difference 0 cp). `train.py <24 pieces of 20M lines>
+  net14-warm.nnue --buckets 1 --init net12-h256.nnue --hidden 256 --epochs 16 --lr 0.0003 --seed 1
+  --cache-dir <dir> --aux-weight 1.0 --future-plies 4 --gpu-data-gb 0`. Validation loss 0.00724, not
+  comparable with net12's. 74 min on an RTX 5060 Ti after 53 min of loading; peak RSS 24.1 GB. Run by
+  Grok 4.7 (Cursor), 2026-10-29.
+- **Result:** replaced net12, +14.0 ± 6.9 Elo, SPRT [0, 5] at 10+0.1, H1 after 3,376 games (both
+  networks loaded in one binary built from `ed77fe7`, 9 concurrent). A GPU match at 20,000 nodes a move
+  gave +21.2 ± 11.2 (2,048 games).
+
 ## net12-h256.nnue
 
 - **SHA-256:** `d2a7b6cc3a067149d9804ca2daacc217eb5dcfef9bbf1ad7fa67aa159d7bef97`

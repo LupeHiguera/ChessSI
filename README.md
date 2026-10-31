@@ -14,17 +14,15 @@ started on 2026-10-22. Measured rating, on the CCRL Blitz scale:
 | 2026-10-22 | Classical search through late move reductions, PeSTO evaluation | 2440 ± 19 | 2,400 vs Stash 12-19 |
 | 2026-10-23 | net7 and the full pruning set | 3150 ± 26 | 959 vs Stash 19-36 |
 | 2026-10-23 | net8 and SEE pruning in quiescence | 3176 ± 29 | 600 vs Stash 27-36 |
-| 2026-10-24 | net10 and a 21% faster search | **3284 ± 21** | 1,200 vs Stash 27-36 |
+| 2026-10-24 | net10 and a 21% faster search | 3284 ± 21 | 1,200 vs Stash 27-36 |
+| 2026-10-30 | net14, singular extensions and internal iterative reductions | **3452 ± 24** | 1,200 vs Stash 27-36 |
 
 Gauntlets are played at 10+0.1 against Stash versions with known CCRL ratings, so the figure is
-approximate. Details are in [docs/IDEAS.md](docs/IDEAS.md).
+approximate. Details are in [docs/IDEAS.md](docs/IDEAS.md). The strongest opponent, Stash 36 (3375),
+scored 43% against ChessSI, so the next gauntlet needs stronger ones.
 
-Since that gauntlet, eight changes passed their SPRTs, worth +216 Elo in self-play together: net12
-(+32.1), net11 (+50.7), search constants tuned on the GPU (+40.4), losing captures last (+30.4), SEE
-pruning in the main search (+24.2), pawn correction history (+18.5), time management (+15.1) and TT
-replacement by depth and age (+5.0). Past gauntlets kept 55-81% of self-play gains against other
-engines, so the engine is estimated at **about 3430 (3400-3460)**, not yet measured: the next gauntlet
-needs opponents above 3400.
+Since that gauntlet, non-pawn correction history passed its SPRT (+16.7 in self-play), so the default
+build is somewhat stronger than the last measurement.
 
 Against the [original plan](docs/PLAN.md), which expected this level after six months to a year:
 
@@ -33,7 +31,7 @@ Against the [original plan](docs/PLAN.md), which expected this level after six m
 | 1 · Working engine, ~2000 | Weeks 1-2 | 2026-10-22: 2440, measured |
 | 2 · Classical engine, 2800-3000 | Months 1-2 | Its search work was done on 2026-10-22; the network replaced PeSTO on 2026-10-23, so this band was passed with NNUE |
 | 3 · Neural evaluation, 3200-3400 | Months 2-5 | 2026-10-23: 3150, measured; 2026-10-24: 3284, measured |
-| 4 · Refinement, 3400-3500+ | Months 6-12+ | 2026-10-27: about 3430, estimated |
+| 4 · Refinement, 3400-3500+ | Months 6-12+ | 2026-10-30: 3452, measured |
 | 5 · The final gap, Stockfish level | A year or more | Not started |
 
 The plan expected compute to set the pace from phase 3 on. The GPU tools below changed how much there
@@ -44,22 +42,26 @@ The engine:
 - **Moves:** magic-bitboard move generation, verified against known perft counts.
 - **Interface:** UCI, so it plays in any chess GUI. `Threads` runs Lazy SMP.
 - **Search:** iterative deepening, principal variation search with aspiration windows, a
-  transposition table (prefetched; entries replaced by depth and age), check extension, and
-  quiescence search with SEE pruning. The time limit adapts to how stable the best move is.
+  transposition table (prefetched; entries replaced by depth and age), check extension, singular
+  extensions with multi-cut, and quiescence search with SEE pruning. The time limit adapts to how
+  stable the best move is.
 - **Pruning and reductions:** null-move pruning, reverse futility pruning, futility pruning, late
-  move pruning, late move reductions and SEE pruning near the leaves, with constants tuned by SPSA.
+  move pruning, late move reductions, internal iterative reductions and SEE pruning near the leaves,
+  with constants tuned by SPSA.
 - **Move ordering:** killer moves, a history heuristic, and losing captures after the quiet moves.
-- **Evaluation:** NNUE, (768 → 256) × 2 → SCReLU → 1, compiled into the binary, plus pawn correction
-  history, which learns during a game how far the network is off for each pawn structure.
-  - The network is trained only on ChessSI's own games. The default, net12, saw 436.4M positions,
-    all from net11's self-play on the GPUs; the history is in [nets/README.md](nets/README.md).
+- **Evaluation:** NNUE, (768 → 256) × 2 → SCReLU → 1, compiled into the binary, plus correction
+  history, which learns during a game how far the network is off for each pawn structure and for each
+  side's non-pawn pieces.
+  - The network is trained only on ChessSI's own games. The default, net14, is net12 trained further
+    on 402.3M positions of net12's self-play on the GPUs; the history is in [nets/README.md](nets/README.md).
   - The output layer is vectorized by hand (AVX2 and AVX-VNNI).
   - PeSTO tables are the fallback.
-- **GPU tools:** a CUDA port of the search (`gpu/`), byte-identical to the CPU's, plays thousands of
-  games at once. It generates training data at about 13,000 positions a second on an RTX 5080, 1.6×
+- **GPU tools:** a CUDA port of an earlier version of the search (`gpu/`, byte-identical to that
+  version on the CPU; draft PR #74 brings it up to 2026-10-28's search) plays thousands of games at
+  once. It generates training data at about 13,000 positions a second on an RTX 5080, 1.6×
   the 13 CPU cores ([gpu/README.md](gpu/README.md)); it made all of net12's data. It also plays
   fixed-node matches between networks and tunes search constants by SPSA.
-- **Bench:** `69980` nodes.
+- **Bench:** `59755` nodes.
 
 Research so far:
 
