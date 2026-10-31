@@ -506,7 +506,7 @@ struct Searcher {
                                 killers[ply][1] = killers[ply][0];
                                 killers[ply][0] = m;
                             }
-                            int bonus = std::min(depth * depth, 1239);
+                            int bonus = std::min(16 * depth * depth, 1239);
                             update_history(ply, m, bonus);
                             for (int j = 0; j < quietCount; ++j)
                                 update_history(ply, quietsTried[j], -bonus);
