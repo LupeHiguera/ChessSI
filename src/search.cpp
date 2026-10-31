@@ -15,7 +15,8 @@
 
 // Baseline search: iterative deepening, principal variation search, a
 // transposition table, check extension, and captures-only quiescence search
-// with MVV-LVA ordering, killer moves, a history heuristic, null-move pruning,
+// with MVV-LVA ordering, killer moves, a history heuristic with continuation
+// history (one and two plies back), null-move pruning,
 // late move reductions, late move pruning, futility pruning, SEE pruning in
 // quiescence and aspiration windows. Other pruning is left out on purpose: each
 // is a separate experiment for the ideas log. With more than one thread, helper
@@ -50,6 +51,16 @@ int mainCorrHist[2][CorrHistSize];
 // Non-pawn correction history (Alexandria, Stockfish): the same idea keyed by one side's
 // non-pawn pieces (knights, bishops, rooks, queens and king), one table per keyed colour.
 int mainNonPawnCorrHist[2][2][CorrHistSize]; // [side to move][keyed colour][hash]
+
+// Continuation history: how a quiet move fared immediately after the move one ply back and the move
+// two plies back. Both distances share one table, indexed
+// [earlier piece * 64 + its target][moved piece * 64 + its target]. The main thread keeps it for
+// the game and halves it at each new search. Zeroing it on every `go` was the first try, and that
+// pre-screen failed: the table never held more than one search. Helper threads leave it unused
+// (about 2.4 MB each).
+constexpr int ContHistStride = 12 * 64;
+static_assert(NO_PIECE == 12, "continuation history is indexed by piece 0..11");
+int mainContHist[ContHistStride][ContHistStride];
 
 int pawn_index(const Position& pos) {
     uint64_t h = pos.pieces(WHITE, PAWN) * 0x9E3779B97F4A7C15ull ^ pos.pieces(BLACK, PAWN) * 0xC2B2AE3D27D4EB4Full;
@@ -95,6 +106,8 @@ struct Searcher {
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
     Move excluded[MAX_PLY + 1] = {};  // move a singular search leaves out at each ply
     int rootDepth = 0;
+    Piece pieceStack[MAX_PLY + 1] = {}; // piece that played it
+    int (*contHist)[ContHistStride] = nullptr; // the main thread's points to mainContHist
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
 
@@ -144,7 +157,8 @@ struct Searcher {
                 scores[i] = 100'000 + PieceValue[PAWN] * 10 - PAWN;
             else if (pos.piece_on(to_sq(m)) != NO_PIECE) {
                 // In the main search, captures that lose material by SEE go
-                // after the quiet moves (whose history scores are above -16,384).
+                // after the quiet moves. Quiet scores are history plus two
+                // continuation entries, each within +/-16,384, so above -49,152.
                 int mvvLva = PieceValue[type_of(pos.piece_on(to_sq(m)))] * 10 - type_of(pos.piece_on(from_sq(m)));
                 scores[i] = (ply >= 0 && !see_ge(m, 0) ? -100'000 : 100'000) + mvvLva;
             }
@@ -154,19 +168,38 @@ struct Searcher {
                 scores[i] = 80'000;
             else if (ply >= 0 && m == killers[ply][1])
                 scores[i] = 70'000;
-            else if (ply >= 0)
+            else if (ply >= 0) {
                 scores[i] = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
-            else
+                for (int back = 1; back <= 2; ++back)
+                    if (const int* c = cont_entry(ply, back, m))
+                        scores[i] += *c;
+            } else
                 scores[i] = 0;
         }
     }
 
-    // Moves the entry toward +/-MaxHistory so it never leaves the quiet band
-    // of the move ordering (below killers at 70,000).
-    void update_history(Move m, int bonus) {
+    // The continuation-history entry for quiet move m after the move `back`
+    // plies earlier, or null at the root, after a null move, or in a helper.
+    int* cont_entry(int ply, int back, Move m) {
+        if (!contHist || ply < back || moveStack[ply - back] == MOVE_NONE)
+            return nullptr;
+        return &contHist[pieceStack[ply - back] * 64 + to_sq(moveStack[ply - back])]
+                        [pos.piece_on(from_sq(m)) * 64 + to_sq(m)];
+    }
+
+    // Moves an entry toward +/-MaxHistory so the history and both continuation
+    // entries together stay in the quiet band of the move ordering (below
+    // killers at 70,000, and above losing captures).
+    static void gravity(int& h, int bonus) {
         constexpr int MaxHistory = 16384;
-        int& h = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
         h += bonus - h * std::abs(bonus) / MaxHistory;
+    }
+
+    void update_history(int ply, Move m, int bonus) {
+        gravity(history[pos.side_to_move()][from_sq(m)][to_sq(m)], bonus);
+        for (int back = 1; back <= 2; ++back)
+            if (int* c = cont_entry(ply, back, m))
+                gravity(*c, bonus);
     }
 
     // The network's eval plus what correction history has learned for these pawns.
@@ -425,12 +458,14 @@ struct Searcher {
                     return singularBeta;
             }
 
+            Piece moved = pos.piece_on(from_sq(m));
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
             }
             ++legalMoves;
             moveStack[ply] = m;
+            pieceStack[ply] = moved;
 
             int newDepth = depth - 1 + extension;
             int score;
@@ -472,9 +507,9 @@ struct Searcher {
                                 killers[ply][0] = m;
                             }
                             int bonus = std::min(depth * depth, 1239);
-                            update_history(m, bonus);
+                            update_history(ply, m, bonus);
                             for (int j = 0; j < quietCount; ++j)
-                                update_history(quietsTried[j], -bonus);
+                                update_history(ply, quietsTried[j], -bonus);
                         }
                         break;
                     }
@@ -592,6 +627,7 @@ struct Searcher {
 
 void Search::clear() {
     TT.clear();
+    std::fill(&mainContHist[0][0], &mainContHist[0][0] + ContHistStride * ContHistStride, 0);
     std::fill(&mainCorrHist[0][0], &mainCorrHist[0][0] + 2 * CorrHistSize, 0);
     std::fill(&mainNonPawnCorrHist[0][0][0], &mainNonPawnCorrHist[0][0][0] + 4 * CorrHistSize, 0);
 }
@@ -602,7 +638,11 @@ void Search::set_threads(int n) {
 
 SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbose) {
     TT.new_search();
+    for (auto& prev : mainContHist)
+        for (int& h : prev)
+            h /= 2;
     Searcher s(pos, limits);
+    s.contHist = mainContHist;
     s.corrHist = mainCorrHist;
     s.nonPawnCorrHist = mainNonPawnCorrHist;
     s.set_time_limits();
