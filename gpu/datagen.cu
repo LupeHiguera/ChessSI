@@ -112,6 +112,10 @@ struct Params {
     int dextMargin, dextLimit;     // extension 2 below singular beta - dextMargin, dextLimit times a path (off: limit 0)
     int contHist;                  // 1: continuation history in quiet-move order (#81; 0: PR #78)
     int lmpImproving, rfpImproving; // 1: LMP keeps half the quiets when not improving; RFP's margin a ply smaller when improving
+    int lmrImproving;              // 1: LMR reduces one ply more when not improving
+    int histPruneDepth, histPruneMargin; // history pruning: quiets scored below -margin * depth, depth <= (0: off)
+    int qsDelta;                   // delta pruning: quiescence skips captures that miss alpha by more than this over the victim (0: off)
+    int histMul;                   // history bonus min(histMul * depth * depth, histMax) (1: the engine)
     u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
 };
 
@@ -985,6 +989,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 bool quiet = is_quiet(g, m);
                 if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.lmpDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.quietCount >= (p.lmpBase + f.depth * f.depth) / (p.lmpImproving && !f.improving ? 2 : 1)) continue;
                 if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.futDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.staticEval + p.futMargin * f.depth <= f.alpha) continue;
+                if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.histPruneDepth && f.best > -VALUE_MATE_IN_MAX_PLY && scores[f.i - 1] < -p.histPruneMargin * f.depth) continue;
                 if (!f.root && !f.inCheck && f.depth <= p.seeDepth && f.best > -VALUE_MATE_IN_MAX_PLY) {
                     PB(7) bool seeOk = see_ge(g, m, quiet ? -p.seeQuiet * f.depth : -p.seeCapture * f.depth * f.depth); PE(7)
                     if (!seeOk) continue;
@@ -1062,6 +1067,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             PB(8) bool givesCheck = f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && in_check(g); PE(8)
             if (f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && !givesCheck) {
                 int r = p.lmr[min(f.depth, 63)][min(f.legalMoves, 63)];
+                if (p.lmrImproving && !f.improving) ++r;
                 if (f.pvNode) --r;
                 f.r = max(0, min(r, f.depth - 2));
             }
@@ -1099,7 +1105,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                                 g->killers[f.ply][0] = m;
                                 __syncwarp();
                             }
-                            int bonus = min(f.depth * f.depth, p.histMax);
+                            int bonus = min(p.histMul * f.depth * f.depth, p.histMax);
                             update_history(g, tb, p.contHist, f.ply, m, bonus);
                             u16* quiets = g->quiets[move_slot(f)];
                             for (int j = 0; j < f.quietCount; ++j) update_history(g, tb, p.contHist, f.ply, quiets[j], -bonus);
@@ -1123,6 +1129,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             PB(5) int standPat = corrected_eval(g, net, acc, tb); PE(5)
             if (f.ply >= MAX_PLY - 1 || standPat >= f.beta) RETURN(standPat)
             f.alpha = max(f.alpha, standPat);
+            f.staticEval = standPat; // for delta pruning
             PB(0) f.n = generate(g, g->moves[move_slot(f)], true);
             __syncwarp(); PE(0)
             PB(1) score_moves(g, tb, 0, g->moves[move_slot(f)], f.n, g->scores[move_slot(f)], MOVE_NONE, -1); PE(1)
@@ -1138,6 +1145,8 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             while (f.i < f.n) {
                 PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
                 ++f.i;
+                if (p.qsDelta && (m & (3 << 14)) != M_PROMOTION && f.staticEval + p.qsDelta
+                    + PIECE_VALUE[(m & (3 << 14)) == M_EN_PASSANT ? PAWN : type_of(g->board[(m >> 6) & 63])] <= f.alpha) continue;
                 PB(7) bool seeOk = see_ge(g, m, p.qsSee); PE(7)
                 if (!seeOk) continue;
                 PB(3) bool legal = do_move(g, m, net, acc); PE(3)
