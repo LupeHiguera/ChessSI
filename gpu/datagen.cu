@@ -117,6 +117,7 @@ struct Params {
     int histPruneDepth, histPruneMargin; // history pruning: quiets scored below -margin * depth, depth <= (0: off)
     int qsDelta;                   // delta pruning: quiescence skips captures that miss alpha by more than this over the victim (0: off)
     int histMul;                   // history bonus min(histMul * depth * depth, histMax) (1: the engine)
+    int probCutMargin, probCutDepth; // ProbCut against beta + margin from this depth (margin 0: off)
     u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
 };
 
@@ -837,7 +838,7 @@ __device__ bool has_legal_move(Game* g, const Net& net, short* acc, int ply) {
 // The states of a call. A search call starts in S_ENTRY, a quiescence call in Q_ENTRY; the others
 // resume a call after the child named by the state returns.
 enum { S_ENTRY, S_NULL_DONE, S_MOVES, S_LOOP, S_SING_DONE, S_SEARCH_MOVE, S_FIRST_DONE, S_RED_DONE, S_FULL_DONE, S_PV_DONE,
-       Q_ENTRY, Q_LOOP, Q_DONE };
+       Q_ENTRY, Q_LOOP, Q_DONE, S_GEN, S_PC_LOOP, S_PC_QS_DONE, S_PC_DONE };
 
 // The slot of a call's moves, scores and quiets (see Game::moves).
 __device__ __forceinline__ int move_slot(const Frame& f) { return f.excl ? MAX_PLY + 1 + f.ply : f.ply; }
@@ -965,6 +966,22 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             // Internal iterative reductions: with no TT move the ordering here is poor, so search one ply
             // shallower. Not in a singular search, whose depth stays as its caller set it.
             if (!f.root && !f.excl && f.depth >= p.iirDepth && f.ttMove == MOVE_NONE) --f.depth;
+            // ProbCut: each capture that does not lose material is searched against beta + probCutMargin, by
+            // quiescence and then 4 plies shallower; one that still beats it cuts (S_PC_LOOP and below). The
+            // captures use this call's move slot.
+            if (p.probCutMargin && !f.pvNode && !f.inCheck && !f.root && !f.excl && f.depth >= p.probCutDepth
+                && abs(f.beta) < VALUE_MATE_IN_MAX_PLY && !(f.ttDepth >= f.depth - 3 && f.ttScore < f.beta + p.probCutMargin)) {
+                int slot = move_slot(f);
+                PB(0) f.n = generate(g, g->moves[slot], true);
+                __syncwarp(); PE(0)
+                PB(1) score_moves(g, tb, 0, g->moves[slot], f.n, g->scores[slot], MOVE_NONE, -1); PE(1)
+                f.i = 0;
+                f.state = S_PC_LOOP;
+                continue;
+            }
+        }
+        // fall through
+        case S_GEN: {
             int slot = move_slot(f);
             PB(0) f.n = generate(g, g->moves[slot], false);
             __syncwarp(); PE(0)
@@ -1120,6 +1137,49 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 g->quiets[move_slot(f)][f.quietCount++] = m;
                 __syncwarp();
             }
+            continue;
+        }
+        case S_PC_LOOP: { // ProbCut: make the next capture that does not lose material, and screen it by quiescence
+            int slot = move_slot(f);
+            u16* list = g->moves[slot];
+            int* scores = g->scores[slot];
+            bool found = false;
+            while (f.i < f.n) {
+                PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
+                ++f.i;
+                PB(7) bool seeOk = see_ge(g, m, 0); PE(7)
+                if (!seeOk) continue;
+                u8 moved = g->board[m & 63];
+                PB(3) bool legal = do_move(g, m, net, acc); PE(3)
+                if (!legal) {
+                    PB(4) undo_move(g, m); PE(4)
+                    continue;
+                }
+                g->moveStack[f.ply] = m;
+                g->pieceStack[f.ply] = moved;
+                g->doubleExt[f.ply + 1] = g->doubleExt[f.ply];
+                __syncwarp();
+                f.m = m;
+                found = true;
+                break;
+            }
+            if (found) CALL(S_PC_QS_DONE, Q_ENTRY, -(f.beta + p.probCutMargin), -(f.beta + p.probCutMargin) + 1, 0)
+            f.state = S_GEN;
+            continue;
+        }
+        case S_PC_QS_DONE: // quiescence returned: a capture that beats beta + margin is searched 4 plies shallower
+            if (-f.childScore >= f.beta + p.probCutMargin)
+                CALL(S_PC_DONE, S_ENTRY, -(f.beta + p.probCutMargin), -(f.beta + p.probCutMargin) + 1, f.depth - 4)
+            // fall through: the quiescence score stands
+        case S_PC_DONE: {
+            int score = -f.childScore;
+            PB(4) undo_move(g, f.m); PE(4)
+            if (g->stopped) RETURN(0)
+            if (score >= f.beta + p.probCutMargin) {
+                PB(6) tt_store(tb, f.key, f.m, score_to_tt(score, f.ply), f.depth - 3, BOUND_LOWER); PE(6)
+                RETURN(score)
+            }
+            f.state = S_PC_LOOP;
             continue;
         }
         case Q_ENTRY: {
