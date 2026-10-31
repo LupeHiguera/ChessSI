@@ -1,5 +1,7 @@
 # Revisit old results: evidence quality, selective search and reusable supervision
 
+**Latest review:** [Pending changes and updated results](CHANGES_REVIEW_2026-10-30.md), 2026-10-30 Phoenix, includes recovered final net14/non-pawn results, source defects and three focused experiments. Earlier snapshots below retain their original dates.
+
 **Snapshot: 2026-10-30 UTC / 2026-10-29 Phoenix.** Accepted main: `ed77fe7cd8bf43a35f3dba6cca1cde886da4e7fd`, default net12. Codex coordinated three Astra ultra reviews of search failures, learning failures and search allocation. This extends the [100-idea portfolio](REPORT.md) and [deep follow-up](DEEP_FOLLOWUP.md). Existing ideas retain their attribution; new mechanisms below are hypotheses or adaptations, not claims of worldwide novelty.
 
 The most useful finding is that several old comparisons answered narrower questions than their summaries suggest. There are specific reasons to reconsider auxiliary-loss controls, the treatment of reduced-search failures, improving flags after correction history, and stale labels. Other heavily tested recipes have no convincing changed premise. Retesting everything would consume the same resources needed to investigate better mechanisms.

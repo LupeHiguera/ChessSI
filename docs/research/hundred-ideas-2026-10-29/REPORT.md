@@ -1,6 +1,8 @@
 # 100 ranked research ideas for ChessSI
 
-**Latest follow-up:** [Revisiting old results](REVISITING_FAILURES.md) audits auxiliary-loss controls, reduced-search penalties, correction drift, reusable labels and learned search allocation. Earlier snapshots below retain their original dates.
+**Latest review:** [Pending changes and updated results](CHANGES_REVIEW_2026-10-30.md), 2026-10-30 Phoenix, includes recovered final net14/non-pawn results, source defects and three focused experiments. Earlier snapshots below retain their original dates.
+
+**Earlier follow-up:** [Revisiting old results](REVISITING_FAILURES.md) audits auxiliary-loss controls, reduced-search penalties, correction drift, reusable labels and learned search allocation. Earlier snapshots below retain their original dates.
 
 **Later research:** [Deep follow-up](DEEP_FOLLOWUP.md) incorporates the capped qs-TT result, GPU teacher cost, bucket optimizer analysis and new controlled experiments. The snapshot below records the earlier review.
 
