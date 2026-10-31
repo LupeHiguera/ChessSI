@@ -108,6 +108,8 @@ struct Params {
     int seeDepth, seeQuiet, seeCapture; // SEE pruning: depth <= 6, quiets below -60 * depth, captures below -30 * depth^2
     int iirDepth;                  // internal iterative reductions: depth >= 4 with no TT move
     int singDepth, singTTMargin, singBeta; // singular extensions: depth >= 8, ttDepth >= depth - 3, beta ttScore - 16 * depth / 16
+    int negExt;                    // 1: a non-singular TT move whose TT score beats beta gets extension -1 (off in the engine)
+    int dextMargin, dextLimit;     // extension 2 below singular beta - dextMargin, dextLimit times a path (off: limit 0)
     u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
 };
 
@@ -142,6 +144,7 @@ struct Game {
     u16 thinkBest, pad17;
     u16 killers[MAX_PLY + 1][2];
     u16 moveStack[MAX_PLY + 1];
+    signed char doubleExt[MAX_PLY + 2]; // double extensions on the path to each ply
     int history[2][64][64];
     // A singular search runs at its parent's ply while the parent waits, so each ply has two slots for
     // the calls in flight and their moves: [ply] for ordinary calls, [MAX_PLY + 1 + ply] for singular ones.
@@ -910,6 +913,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             if (!f.pvNode && !f.inCheck && !f.root && !f.excl && f.depth >= p.nmpDepth && hasPieces && g->moveStack[f.ply - 1] != MOVE_NONE && f.staticEval >= f.beta) {
                 int R = p.nmpBase + f.depth / p.nmpDiv;
                 g->moveStack[f.ply] = MOVE_NONE;
+                g->doubleExt[f.ply + 1] = g->doubleExt[f.ply];
                 __syncwarp();
                 do_null_move(g);
                 CALL(S_NULL_DONE, S_ENTRY, -f.beta, -f.beta + 1, f.depth - 1 - R)
@@ -974,6 +978,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 }
                 ++f.legalMoves;
                 g->moveStack[f.ply] = m;
+                g->doubleExt[f.ply + 1] = g->doubleExt[f.ply] + (f.ext == 2);
                 __syncwarp();
                 found = true;
                 break;
@@ -1002,8 +1007,11 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         case S_SING_DONE: { // the singular search (this node without f.m, same side to move) returned
             int singularBeta = f.ttScore - p.singBeta * f.depth / 16;
             if (g->stopped) RETURN(0)
-            if (f.childScore < singularBeta) f.ext = 1; // f.m is the only good move: search it a ply deeper
+            // f.m is the only good move: search it a ply deeper (two when far below, dextLimit times a path)
+            if (f.childScore < singularBeta)
+                f.ext = !f.pvNode && f.childScore < singularBeta - p.dextMargin && g->doubleExt[f.ply] < p.dextLimit ? 2 : 1;
             else if (singularBeta >= f.beta) RETURN(singularBeta) // several moves beat beta: multi-cut
+            else if (p.negExt && f.ttScore >= f.beta) f.ext = -1; // others likely beat beta too: a ply shallower
             PB(3) bool legal = do_move(g, f.m, net, acc); PE(3)
             if (!legal) {
                 PB(4) undo_move(g, f.m); PE(4)
@@ -1012,6 +1020,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             }
             ++f.legalMoves;
             g->moveStack[f.ply] = f.m;
+            g->doubleExt[f.ply + 1] = g->doubleExt[f.ply] + (f.ext == 2);
             __syncwarp();
         }
         // fall through
@@ -1152,6 +1161,7 @@ __device__ void think_start(Game* g, Tables* tb, u64 nodeLimit) {
     for (int i = lane; i < 2 * 64 * 64; i += 32) (&g->history[0][0][0])[i] = 0;
     for (int i = lane; i < (MAX_PLY + 1) * 2; i += 32) (&g->killers[0][0])[i] = 0;
     for (int i = lane; i < MAX_PLY + 1; i += 32) g->moveStack[i] = 0;
+    for (int i = lane; i < MAX_PLY + 2; i += 32) g->doubleExt[i] = 0;
     int stm = g->stm;
     unsigned gen = tb->gen;
     __syncwarp();
