@@ -94,6 +94,7 @@ struct Searcher {
     int (*nonPawnCorrHist)[2][CorrHistSize] = ownNonPawnCorrHist; // main thread: mainNonPawnCorrHist
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
     Move excluded[MAX_PLY + 1] = {};  // move a singular search leaves out at each ply
+    int doubleExt[MAX_PLY + 2] = {};  // double extensions on the path to each ply
     int rootDepth = 0;
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
@@ -354,6 +355,7 @@ struct Searcher {
             && staticEval >= beta) {
             int R = 3 + depth / 4;
             moveStack[ply] = MOVE_NONE;
+            doubleExt[ply + 1] = doubleExt[ply];
             pos.do_null_move();
             int score = -search(-beta, -beta + 1, depth - 1 - R, ply + 1);
             pos.undo_null_move();
@@ -409,7 +411,9 @@ struct Searcher {
 
             // Singular extension: when a reduced search without the TT move cannot get near
             // its TT score, that move is the only good one here, so search it a ply deeper.
-            // When even the reduced search beats beta, several moves do: cut (multi-cut).
+            // When even the reduced search beats beta, several moves do: cut (multi-cut). Far below
+            // singular beta at a non-PV node, two plies deeper, at most six times on a path
+            // (double extensions, as in Stockfish).
             int extension = 0;
             if (!root && m == ttMove && depth >= 8 && ttDepth >= depth - 3 && ttBound != BOUND_UPPER
                 && std::abs(ttScore) < VALUE_MATE_IN_MAX_PLY && ply < 2 * rootDepth) {
@@ -420,7 +424,7 @@ struct Searcher {
                 if (stopped)
                     return 0;
                 if (singularScore < singularBeta)
-                    extension = 1;
+                    extension = !pvNode && singularScore < singularBeta - 20 && doubleExt[ply] < 6 ? 2 : 1;
                 else if (singularBeta >= beta)
                     return singularBeta;
             }
@@ -431,6 +435,7 @@ struct Searcher {
             }
             ++legalMoves;
             moveStack[ply] = m;
+            doubleExt[ply + 1] = doubleExt[ply] + (extension == 2);
 
             int newDepth = depth - 1 + extension;
             int score;
