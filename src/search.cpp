@@ -443,7 +443,9 @@ struct Searcher {
 
             // Singular extension: when a reduced search without the TT move cannot get near
             // its TT score, that move is the only good one here, so search it a ply deeper.
-            // When even the reduced search beats beta, several moves do: cut (multi-cut).
+            // When even the reduced search beats beta, several moves do: cut (multi-cut). When the
+            // move is not singular but its TT score beats beta, other moves likely do too, so it is
+            // searched a ply shallower (a negative extension, as in Stockfish).
             int extension = 0;
             if (!root && m == ttMove && depth >= 8 && ttDepth >= depth - 3 && ttBound != BOUND_UPPER
                 && std::abs(ttScore) < VALUE_MATE_IN_MAX_PLY && ply < 2 * rootDepth) {
@@ -457,6 +459,8 @@ struct Searcher {
                     extension = 1;
                 else if (singularBeta >= beta)
                     return singularBeta;
+                else if (ttScore >= beta)
+                    extension = -1;
             }
 
             Piece moved = pos.piece_on(from_sq(m));
