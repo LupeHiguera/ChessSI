@@ -511,6 +511,7 @@ each result here with the date, the commit and its bench.
 | 2026-10-23 | `cdfc298` (net7) | 264979 | Stash 19, 20.0.1, 21, 25, 27, 30, 31, 33, 34, 36 (CCRL Blitz 2474-3375) | 959 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 0-3) | **3150 ± 26** |
 | 2026-10-23 | `d2b1e25` (net8, SEE in quiescence) | 137954 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 600 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 6-9) | 3176 ± 29 |
 | 2026-10-24 | `7af0aae` (net10, speed series) | 158506 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 1,200 at 10+0.1, 8moves_v3 book, 12 concurrent (cores 0-12) | **3284 ± 21** |
+| 2026-10-31 | `da0d59c` (net14, continuation history, null move scaled by eval − beta; the tree of `main` at `dcb9226`) | 64462 | Stash 30, 31, 33, 34, 36, 37 (CCRL Blitz 3153-3417) | 1,200 at 10+0.1, 8moves_v3 book, 8 concurrent (cores 12-19, PC in use) | **3499 ± 23** |
 
 The 2026-10-22 gauntlet used a balanced book (`8moves_v3`), not the SPRT book: UHO openings give one
 side an edge, which stretches rating gaps. Run it with `scripts/gauntlet.sh`. The ± is statistical
@@ -541,3 +542,15 @@ net10 (+56.8): +133.6 in self-play became +108 against the same Stash 27-36 pool
 net8's (+65 became +36). Scores: Stash 27 80%, Stash 30 65%, Stash 31 66%, Stash 33 52%, Stash 34 48%,
 Stash 36 31%; performance 3238-3321 against each. It ran at 12 concurrent rather than 4, with twice
 the games. Only Stash 36 is now clearly stronger, so the next gauntlet needs opponents above 3400.
+
+The 2026-10-31 gauntlet rates `main` after the promotion of #78 and the merges of #81 and #82. The last
+gauntlet before it, 3452 ± 24 on 2026-10-30 (run by Grok, see README.md, not in this table), rated net14
+with singular extensions and IIR; since then non-pawn correction history (+16.7 in self-play),
+continuation history (+22.5) and the eval-scaled null move (+7.9) were added: +47.1 in self-play, +47
+here, though against a different pool. Stash 27 (91% last time) was dropped and Stash 37 added, built
+from its `v37.0` tag (bench 4,646,465, as in its release commit), at 3417 ± 11 from the CCRL Blitz list
+of 2026-10-31 (2,359 games); the other ratings are the ones used before. Scores: Stash 30 89%, Stash 31
+89%, Stash 33 82%, Stash 34 79%, Stash 36 64%, Stash 37 52%. Performance was 3429 against Stash 37 and
+3475 against Stash 36, but 3507-3571 against the four weaker ones: the compression at the extremes seen
+before, so the true figure is likely somewhat below 3499. The next gauntlet needs opponents above
+Stash, with known CCRL ratings.
