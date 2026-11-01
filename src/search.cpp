@@ -507,7 +507,10 @@ struct Searcher {
                                 killers[ply][1] = killers[ply][0];
                                 killers[ply][0] = m;
                             }
-                            int bonus = std::min(depth * depth, 1239);
+                            // Linear in depth and capped, as in Stockfish 15. The old depth² bonus
+                            // (100 at depth 10 against the 16,384 limit) never let gravity act, and
+                            // kept history too small for any threshold on it to matter.
+                            int bonus = std::min(300 * depth - 250, 1600);
                             update_history(ply, m, bonus);
                             for (int j = 0; j < quietCount; ++j)
                                 update_history(ply, quietsTried[j], -bonus);
