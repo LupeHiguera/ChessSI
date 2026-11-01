@@ -106,6 +106,13 @@ nodes per second, estimates a timed match. net19b-h512 against net14 (two seeds 
 | --- | --- | --- |
 | 20,000 : 20,000 | +70.2 ± 11.4 | +76.4 ± 11.1 |
 | 17,000 : 20,000 (CPU speed 2.43M : 2.86M nps) | +34.4 ± 11.3 | +39.9 ± 11.0 |
+| 100,000 : 100,000 | +78.7 ± 9.8 | |
+| 85,000 : 100,000 | +46.4 ± 10.3 | |
+
+The CPU SPRT of the same pair at 10+0.1 passed at +56.6 ± 14.1 (824 games). Equal nodes overrate the bigger
+network by 20-30 Elo; node odds come closer as the node count grows (+37 at 20,000, +46 at 100,000), within the
+error at 100,000. So screen networks of different sizes with node odds from measured CPU speed, at about 100,000
+nodes (1,024 pairs take about 16 minutes on a 5060 Ti).
 
 It plays each UHO opening with both colors. Games end as in our fastchess SPRTs: mate, stalemate,
 threefold repetition, fifty moves, insufficient material, or adjudication. It prints Elo from the game
