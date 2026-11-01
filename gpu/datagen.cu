@@ -117,6 +117,7 @@ struct Params {
     int histPruneDepth, histPruneMargin; // history pruning: quiets scored below -margin * depth, depth <= (0: off)
     int qsDelta;                   // delta pruning: quiescence skips captures that miss alpha by more than this over the victim (0: off)
     int histMul;                   // history bonus min(histMul * depth * depth, histMax) (1: the engine)
+    int histLin, histOff;          // if histLin: the bonus is min(histLin * depth - histOff, histMax) instead (histscale: 300, 250)
     u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
 };
 
@@ -1291,7 +1292,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                                 g->killers[f.ply][0] = m;
                                 __syncwarp();
                             }
-                            int bonus = min(p.histMul * f.depth * f.depth, p.histMax);
+                            int bonus = min(p.histLin ? p.histLin * f.depth - p.histOff : p.histMul * f.depth * f.depth, p.histMax);
                             update_history(g, tb, p.contHist, f.ply, m, bonus);
                             u16* quiets = g->quiets[move_slot(f)];
                             for (int j = 0; j < f.quietCount; ++j) update_history(g, tb, p.contHist, f.ply, quiets[j], -bonus);
