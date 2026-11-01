@@ -207,16 +207,38 @@ __device__ __forceinline__ u64 line_attacks(u64 occ, u64 mask, int s) {
 }
 __device__ __forceinline__ u64 file_mask(int s) { return (0x0101010101010101ULL << (s & 7)) ^ bit(s); }
 __device__ __forceinline__ u64 rank_mask(int s) { return (0xFFULL << (s & 56)) ^ bit(s); }
-__device__ __forceinline__ u64 diag_mask(int s) {
+__device__ __forceinline__ u64 diag_mask_calc(int s) {
     int d = (s >> 3) - (s & 7);
     u64 m = 0x8040201008040201ULL;
     return (d >= 0 ? m << (8 * d) : m >> (-8 * d)) ^ bit(s);
 }
-__device__ __forceinline__ u64 anti_mask(int s) {
+__device__ __forceinline__ u64 anti_mask_calc(int s) {
     int d = (s >> 3) + (s & 7) - 7;
     u64 m = 0x0102040810204080ULL;
     return (d >= 0 ? m << (8 * d) : m >> (-8 * d)) ^ bit(s);
 }
+// Single squares' attack sets and line masks: computed (ATTACK_CALC), or one load from tables that
+// attack_tables_init fills with the computed values (6 to 16 instructions each otherwise).
+__device__ __forceinline__ u64 knight_att(u64 b);
+__device__ __forceinline__ u64 king_att(u64 b);
+__device__ __forceinline__ u64 pawn_att_calc(int s, int c);
+__device__ __forceinline__ u64 line_mask_calc(int kind, int s);
+#ifdef ATTACK_CALC
+__device__ __forceinline__ u64 diag_mask(int s) { return diag_mask_calc(s); }
+__device__ __forceinline__ u64 anti_mask(int s) { return anti_mask_calc(s); }
+__device__ __forceinline__ u64 knight_sq(int s) { return knight_att(bit(s)); }
+__device__ __forceinline__ u64 king_att_sq(int s) { return king_att(bit(s)); }
+__device__ __forceinline__ u64 pawn_att(int s, int c) { return pawn_att_calc(s, c); }
+__device__ __forceinline__ u64 line_mask(int kind, int s) { return line_mask_calc(kind, s); }
+#else
+__device__ u64 T_KNIGHT[64], T_KING[64], T_PAWN[2][64], T_LINE[5][64]; // T_LINE[kind]: line_mask's kinds 1-4
+__device__ __forceinline__ u64 diag_mask(int s) { return __ldg(&T_LINE[3][s]); }
+__device__ __forceinline__ u64 anti_mask(int s) { return __ldg(&T_LINE[4][s]); }
+__device__ __forceinline__ u64 knight_sq(int s) { return __ldg(&T_KNIGHT[s]); }
+__device__ __forceinline__ u64 king_att_sq(int s) { return __ldg(&T_KING[s]); }
+__device__ __forceinline__ u64 pawn_att(int s, int c) { return __ldg(&T_PAWN[c][s]); }
+__device__ __forceinline__ u64 line_mask(int kind, int s) { return __ldg(&T_LINE[kind][s]); }
+#endif
 __device__ __forceinline__ u64 rook_att(int s, u64 occ) { return line_attacks(occ, file_mask(s), s) | line_attacks(occ, rank_mask(s), s); }
 __device__ __forceinline__ u64 bishop_att(int s, u64 occ) { return line_attacks(occ, diag_mask(s), s) | line_attacks(occ, anti_mask(s), s); }
 __device__ __forceinline__ u64 knight_att(u64 b) {
@@ -228,17 +250,17 @@ __device__ __forceinline__ u64 king_att(u64 b) {
     return lr | (row << 8) | (row >> 8);
 }
 // PawnAttacks[c][s] in src/bitboard: squares a pawn of color c on s attacks.
-__device__ __forceinline__ u64 pawn_att(int s, int c) {
+__device__ __forceinline__ u64 pawn_att_calc(int s, int c) {
     u64 b = bit(s);
     return c == 0 ? ((b << 9) & NOT_A) | ((b << 7) & NOT_H) : ((b >> 7) & NOT_A) | ((b >> 9) & NOT_H);
 }
 __device__ __forceinline__ u64 attacks_bb(int pt, int s, u64 occ) {
     switch (pt) {
-        case KNIGHT: return knight_att(bit(s));
+        case KNIGHT: return knight_sq(s);
         case BISHOP: return bishop_att(s, occ);
         case ROOK: return rook_att(s, occ);
         case QUEEN: return bishop_att(s, occ) | rook_att(s, occ);
-        default: return king_att(bit(s));
+        default: return king_att_sq(s);
     }
 }
 
@@ -256,8 +278,8 @@ __device__ __forceinline__ int castling_mask(int s) {
 
 __device__ bool attacked(const Game* g, int s, int by) {
     u64 occ = occupied(g);
-    return (pawn_att(s, by ^ 1) & pcs(g, by, PAWN)) || (knight_att(bit(s)) & pcs(g, by, KNIGHT))
-        || (king_att(bit(s)) & pcs(g, by, KING))
+    return (pawn_att(s, by ^ 1) & pcs(g, by, PAWN)) || (knight_sq(s) & pcs(g, by, KNIGHT))
+        || (king_att_sq(s) & pcs(g, by, KING))
         || (bishop_att(s, occ) & (pcs(g, by, BISHOP) | pcs(g, by, QUEEN)))
         || (rook_att(s, occ) & (pcs(g, by, ROOK) | pcs(g, by, QUEEN)));
 }
@@ -268,8 +290,20 @@ __device__ __forceinline__ int line_kind(int a, int b) {
     int df = (a & 7) - (b & 7), dr = (a >> 3) - (b >> 3);
     return df == 0 ? 1 : dr == 0 ? 2 : df == dr ? 3 : df == -dr ? 4 : 0;
 }
-__device__ __forceinline__ u64 line_mask(int kind, int s) {
-    return kind == 1 ? file_mask(s) : kind == 2 ? rank_mask(s) : kind == 3 ? diag_mask(s) : anti_mask(s);
+__device__ __forceinline__ u64 line_mask_calc(int kind, int s) {
+    return kind == 1 ? file_mask(s) : kind == 2 ? rank_mask(s) : kind == 3 ? diag_mask_calc(s) : anti_mask_calc(s);
+}
+// Fills the attack tables (one block of 64 threads, a square each); empty with ATTACK_CALC.
+extern "C" __global__ void attack_tables_init() {
+#ifndef ATTACK_CALC
+    int s = threadIdx.x;
+    T_KNIGHT[s] = knight_att(bit(s));
+    T_KING[s] = king_att(bit(s));
+    T_PAWN[0][s] = pawn_att_calc(s, 0);
+    T_PAWN[1][s] = pawn_att_calc(s, 1);
+    T_LINE[0][s] = 0;
+    for (int kind = 1; kind <= 4; ++kind) T_LINE[kind][s] = line_mask_calc(kind, s);
+#endif
 }
 // Color c's sliders that move along lines of this kind.
 __device__ __forceinline__ u64 line_sliders(const Game* g, int c, int kind) {
@@ -298,8 +332,8 @@ __device__ bool legal(const Game* g, u16 m, bool inCheck) {
         enemy &= ~bit(capSq);
     }
     int s = from == k ? to : k;
-    return !((pawn_att(s, us) & enemy & g->byType[PAWN]) || (knight_att(bit(s)) & enemy & g->byType[KNIGHT])
-          || (king_att(bit(s)) & enemy & g->byType[KING])
+    return !((pawn_att(s, us) & enemy & g->byType[PAWN]) || (knight_sq(s) & enemy & g->byType[KNIGHT])
+          || (king_att_sq(s) & enemy & g->byType[KING])
           || (bishop_att(s, occ) & enemy & (g->byType[BISHOP] | g->byType[QUEEN]))
           || (rook_att(s, occ) & enemy & (g->byType[ROOK] | g->byType[QUEEN])));
 }
@@ -314,7 +348,7 @@ __device__ bool gives_check(const Game* g, u16 m) {
     if (pt == PAWN) {
         if (pawn_att(to, mover) & bit(k)) return true;
     } else if (pt == KNIGHT) {
-        if (knight_att(bit(to)) & bit(k)) return true;
+        if (knight_sq(to) & bit(k)) return true;
     } else if (pt != KING) {
         int kind = line_kind(to, k);
         if (kind && (pt == QUEEN || (pt == ROOK) == (kind <= 2)) && (line_attacks(occ, line_mask(kind, k), k) & bit(to)))
@@ -368,6 +402,11 @@ struct Delta {
     int n;
     int piece[4], sq[4];
 };
+// net.ftw holds 768 rows of feature weights and then the same rows negated (feature_rows in datagen.py): a removed
+// feature (slots 0 and 2) adds its negated row, one 16x2 add per word where a subtraction takes three on sm_120.
+#ifndef NO_NEG_ROWS
+#define OFF_ROW(k) ((k) % 2 ? 0 : 768)
+#endif
 __device__ void apply_delta(const Net& net, const short* from, short* to, const Delta& d) {
     int base = LANE_BASE;
 #ifndef JOINT_DELTA
@@ -381,10 +420,17 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
             uint4 v = load8(from + persp * H + UOFF(c)), w[4];
 #pragma unroll
             for (int k = 0; k < 4; ++k)
+#ifdef NO_NEG_ROWS
                 if (k < d.n) w[k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + UOFF(c));
 #pragma unroll
             for (int k = 0; k < 4; ++k)
                 if (k < d.n) v = k % 2 ? add8(v, w[k]) : sub8(v, w[k]);
+#else
+                if (k < d.n) w[k] = load8(net.ftw + (size_t)(feat(persp, d.piece[k], d.sq[k]) + OFF_ROW(k)) * H + UOFF(c));
+#pragma unroll
+            for (int k = 0; k < 4; ++k)
+                if (k < d.n) v = add8(v, w[k]);
+#endif
             store8(to + persp * H + UOFF(c), v);
         }
     }
@@ -409,6 +455,36 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
     }
 #endif
 }
+// dp2a: the two 16-bit halves of a, as signed values, times two bytes of b, as unsigned ones (bytes 0 and 1 for lo,
+// 2 and 3 for hi), plus c. One instruction (IDP.2A) on the GPUs we use.
+__device__ __forceinline__ int dp2a_lo(unsigned a, unsigned b, int c) {
+    int d;
+    asm("dp2a.lo.s32.u32 %0, %1, %2, %3;" : "=r"(d) : "r"(a), "r"(b), "r"(c));
+    return d;
+}
+__device__ __forceinline__ int dp2a_hi(unsigned a, unsigned b, int c) {
+    int d;
+    asm("dp2a.hi.s32.u32 %0, %1, %2, %3;" : "=r"(d) : "r"(a), "r"(b), "r"(c));
+    return d;
+}
+// Both halves of a, as signed 16-bit values, clamped to [0, QA]: min.relu.s16x2 is min(a, QA) with negative results
+// set to 0, one instruction (VIMNMX.S16x2.RELU) on sm_90 and later.
+__device__ __forceinline__ unsigned clamp2(unsigned a) {
+    unsigned d;
+    asm("min.relu.s16x2 %0, %1, %2;" : "=r"(d) : "r"(a), "r"(QA * 0x10001u));
+    return d;
+}
+// SCReLU of two units, one 32-bit word of accumulator a and of output weights w: part + (short)(v * w) * v for each
+// half, v = clamp(a, 0, QA). With QA < 256 each v is a byte of the clamped word (bytes 1 and 3 are zero), so dp2a
+// multiplies by it directly: 6 instructions a pair instead of 13 (SCALAR_EVAL).
+static_assert(QA < 256, "screlu2 needs each clamped unit to fit a byte");
+__device__ __forceinline__ int screlu2(unsigned a, unsigned w, int part) {
+    unsigned v = clamp2(a);                                 // bytes v0, 0, v1, 0
+    unsigned p0 = v * w;                                    // low half (short)(v0 * w0); the high half is never read
+    unsigned p1 = (unsigned)dp2a_hi(w, v << 8, 0);          // w0 * 0 + w1 * v1: low half (short)(v1 * w1)
+    part = dp2a_lo(p0, v, part);                            // + (short)(v0 * w0) * v0 + (high half) * 0
+    return dp2a_hi(p1, v, part);                            // + (short)(v1 * w1) * v1 + (high half) * 0
+}
 // NNUE::evaluate: the side to move's view first, SCReLU, int16 v * w times v, truncating divisions.
 __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
     const short* a = acc_slot((short*)acc, g->accTop);
@@ -418,11 +494,16 @@ __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
         for (int c = 0; c < UNITS; c += 8) {
             uint4 av = load8(a + persp * H + UOFF(c)), wv = load8(net.outw + half * H + UOFF(c));
             unsigned aw[4] = {av.x, av.y, av.z, av.w}, ww[4] = {wv.x, wv.y, wv.z, wv.w};
+#ifdef SCALAR_EVAL
             for (int j = 0; j < 8; ++j) { // unit j of the group: half j % 2 of word j / 2
                 int v = min(max((int)(short)(aw[j / 2] >> (16 * (j % 2))), 0), QA);
                 int vw = (short)(v * (short)(ww[j / 2] >> (16 * (j % 2))));
                 part += vw * v;
             }
+#else
+#pragma unroll
+            for (int j = 0; j < 4; ++j) part = screlu2(aw[j], ww[j], part);
+#endif
         }
     }
     // part = hi * 65536 + lo with lo in [0, 65535]: each half's total fits an int, and the sum is exact.
@@ -433,11 +514,16 @@ __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
     return (int)(sum * EVAL_SCALE / (QA * QB));
 }
 
-// Board edits on local copies of the bitboards. All lanes take the same snapshot after a
-// __syncwarp(), compute the same result, and only then write it, so no lane can see another's
-// half-done update (the lanes of a warp are not guaranteed to run in lockstep). The copies are only
-// ever indexed by constants (the loops unroll): an index known only at run time would put them in
-// local memory, a copy per lane.
+// Board edits. do_move and undo_move read the position with every lane, and after a __syncwarp() one lane toggles
+// the moved pieces in place (xor_piece: a type word and a color word each), so no lane can see a half-done update
+// (the lanes of a warp are not guaranteed to run in lockstep) and the next __syncwarp() publishes it.
+__device__ __forceinline__ void xor_piece(Game* g, int p, u64 mask) {
+    g->byType[type_of(p)] ^= mask;
+    g->byColor[color_of(p)] ^= mask;
+}
+// BOARD_COPY, the former way: every lane copies all eight words into registers after a __syncwarp(), toggles them
+// there and stores them back. The copies are only ever indexed by constants (the loops unroll): an index known only
+// at run time would put them in local memory, a copy per lane.
 struct Board {
     u64 bt[6], bc[2];
 };
@@ -503,8 +589,10 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
     StateInfo st = g->states[n - 1];
     int from = m & 63, to = (m >> 6) & 63, type = m & (3 << 14);
     int pc = g->board[from];
+#ifdef BOARD_COPY
     Board b;
     b_load(g, b);
+#endif
     st.captured = NO_PIECE;
     ++st.rule50;
     ++st.pliesFromNull;
@@ -523,8 +611,10 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
         rookFrom = kingside ? from + 3 : from - 4;
         rookTo = kingside ? from + 1 : from - 1;
         rook = g->board[rookFrom];
+#ifdef BOARD_COPY
         b_xor(b, pc, bit(from) | bit(to));
         b_xor(b, rook, bit(rookFrom) | bit(rookTo));
+#endif
         d.piece[2] = rook; d.sq[2] = rookFrom;
         d.piece[3] = rook; d.sq[3] = rookTo;
         d.n = 4;
@@ -533,25 +623,35 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
         if (type == M_EN_PASSANT) capSq = us == 0 ? to - 8 : to + 8;
         int captured = g->board[capSq];
         if (captured != NO_PIECE) {
+#ifdef BOARD_COPY
             b_xor(b, captured, bit(capSq));
+#endif
             d.piece[2] = captured; d.sq[2] = capSq;
             d.n = 3;
             st.key ^= Z_PSQ[captured][capSq];
             st.captured = captured;
             st.rule50 = 0;
         }
+#ifdef BOARD_COPY
         b_xor(b, pc, bit(from) | bit(to));
+#endif
         st.key ^= Z_PSQ[pc][from] ^ Z_PSQ[pc][to];
         if (type_of(pc) == PAWN) {
             st.rule50 = 0;
             if (type == M_PROMOTION) {
                 arriving = us * 6 + ((m >> 12) & 3) + KNIGHT; // the pawn arrives as the new piece
+#ifdef BOARD_COPY
                 b_xor(b, pc, bit(to));
                 b_xor(b, arriving, bit(to));
+#endif
                 st.key ^= Z_PSQ[pc][to] ^ Z_PSQ[arriving][to];
             } else if (to - from == 16 || from - to == 16) {
                 int ep = (from + to) / 2;
+#ifdef BOARD_COPY
                 if (pawn_att(ep, us) & (them ? b.bc[1] : b.bc[0]) & b.bt[PAWN]) {
+#else
+                if (pawn_att(ep, us) & g->byColor[them] & g->byType[PAWN]) { // the enemy's pawns, which this move keeps
+#endif
                     st.ep = ep;
                     st.key ^= Z_EP[ep & 7];
                 }
@@ -566,7 +666,24 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
     }
     st.key ^= Z_SIDE[0];
     __syncwarp();
+#ifdef BOARD_COPY
     b_store(g, b);
+#else
+    if (lane_id() == 0) {
+        if (rook != NO_PIECE) {
+            xor_piece(g, pc, bit(from) | bit(to));
+            xor_piece(g, rook, bit(rookFrom) | bit(rookTo));
+        } else {
+            if (st.captured != NO_PIECE) xor_piece(g, st.captured, bit(capSq));
+            if (arriving != pc) { // a promotion: the pawn leaves, the new piece arrives
+                xor_piece(g, pc, bit(from));
+                xor_piece(g, arriving, bit(to));
+            } else {
+                xor_piece(g, pc, bit(from) | bit(to));
+            }
+        }
+    }
+#endif
     g->board[from] = NO_PIECE;
     if (rook != NO_PIECE) {
         g->board[rookFrom] = NO_PIECE;
@@ -597,30 +714,57 @@ __device__ void undo_move(Game* g, u16 m) {
     int n = g->nstates, top = g->accTop, us = g->stm ^ 1, fm = g->fullmove;
     int from = m & 63, to = (m >> 6) & 63, type = m & (3 << 14);
     int captured = g->states[n - 1].captured;
+#ifdef BOARD_COPY
     Board b;
     b_load(g, b);
+#endif
     int moved = g->board[to], back = moved, capSq = to, rookFrom = SQ_NONE, rookTo = SQ_NONE, rook = NO_PIECE;
     if (type == M_CASTLING) {
         bool kingside = to > from;
         rookFrom = kingside ? from + 3 : from - 4;
         rookTo = kingside ? from + 1 : from - 1;
         rook = g->board[rookTo];
+#ifdef BOARD_COPY
         b_xor(b, moved, bit(to) | bit(from));
         b_xor(b, rook, bit(rookTo) | bit(rookFrom));
+#endif
     } else {
         if (type == M_PROMOTION) {
             back = us * 6 + PAWN; // the new piece goes, a pawn returns
+#ifdef BOARD_COPY
             b_xor(b, moved, bit(to));
             b_xor(b, back, bit(to));
+#endif
         }
+#ifdef BOARD_COPY
         b_xor(b, back, bit(to) | bit(from));
+#endif
         if (captured != NO_PIECE) {
             if (type == M_EN_PASSANT) capSq = us == 0 ? to - 8 : to + 8;
+#ifdef BOARD_COPY
             b_xor(b, captured, bit(capSq));
+#endif
         }
     }
     __syncwarp();
+#ifdef BOARD_COPY
     b_store(g, b);
+#else
+    if (lane_id() == 0) {
+        if (rook != NO_PIECE) {
+            xor_piece(g, moved, bit(to) | bit(from));
+            xor_piece(g, rook, bit(rookTo) | bit(rookFrom));
+        } else {
+            if (back != moved) { // a promotion: the new piece goes, the pawn returns
+                xor_piece(g, moved, bit(to));
+                xor_piece(g, back, bit(from));
+            } else {
+                xor_piece(g, moved, bit(to) | bit(from));
+            }
+            if (captured != NO_PIECE) xor_piece(g, captured, bit(capSq));
+        }
+    }
+#endif
     g->board[to] = NO_PIECE;
     if (rook != NO_PIECE) {
         g->board[rookTo] = NO_PIECE;
@@ -748,7 +892,7 @@ __device__ int generate(Game* g, u16* list, bool noisy) {
         if (pt >= 0) {
             for (; rank; --rank) mine &= mine - 1;
             from = lsb(mine);
-            att = pt == KNIGHT ? knight_att(bit(from)) : pt == KING ? king_att(bit(from)) : 0;
+            att = pt == KNIGHT ? knight_sq(from) : pt == KING ? king_att_sq(from) : 0;
             if (pt == BISHOP || pt == QUEEN) att |= bishop_att(from, occ);
             if (pt == ROOK || pt == QUEEN) att |= rook_att(from, occ);
             att &= targets;
@@ -952,7 +1096,7 @@ __device__ bool see_ge(const Game* g, u16 m, int threshold) {
     u64 occ = occupied(g) ^ bit(from) ^ bit(to);
     u64 bishops = g->byType[BISHOP] | g->byType[QUEEN], rooks = g->byType[ROOK] | g->byType[QUEEN];
     u64 attackers = (pawn_att(to, 1) & pcs(g, 0, PAWN)) | (pawn_att(to, 0) & pcs(g, 1, PAWN))
-                  | (knight_att(bit(to)) & g->byType[KNIGHT]) | (king_att(bit(to)) & g->byType[KING])
+                  | (knight_sq(to) & g->byType[KNIGHT]) | (king_att_sq(to) & g->byType[KING])
                   | (bishop_att(to, occ) & bishops) | (rook_att(to, occ) & rooks);
     int stm = color_of(g->board[from]);
     bool result = true;
@@ -998,7 +1142,7 @@ __device__ bool has_legal_move(Game* g, const Net& net, short* acc, int ply) {
                 targets = (pawn_att(s, us) & g->byColor[us ^ 1]) | (g->board[push] == NO_PIECE ? bit(push) : 0);
                 break;
             }
-            case KNIGHT: targets = knight_att(bit(s)) & ~own; break;
+            case KNIGHT: targets = knight_sq(s) & ~own; break;
             case BISHOP: targets = bishop_att(s, occ) & ~own; break;
             case ROOK: targets = rook_att(s, occ) & ~own; break;
             default: targets = (bishop_att(s, occ) | rook_att(s, occ)) & ~own; break;

@@ -72,15 +72,26 @@ head -n 4000000 dg10/gpu1-1002.txt | awk 'NR % 37 == 0' | head -103680 | cut -d'
 python gpu/bench.py gpu <net.nnue> bench-positions.txt auto 5000
 ```
 
-| Change | 3,456 games at once |
-| --- | --- |
-| da0d59c's search (singular extensions, IIR, continuation history, eval-scaled null move), 1,728 at once | 17.30 s |
-| NNUE update one perspective at a time (spills 104 -> 16 bytes), 3,456 at once (capacity `auto`) | 16.46 s |
-| Legality tested before `do_move`; a child's check status from its parent's move | 15.48 s |
-| `generate` writes each bitboard of targets with every lane at once (`add_set`) | 13.51 s |
-| Each piece's targets in its own lane; move picking and the eval sum as single warp reductions | **12.92 s** |
+| Change | 256 units (net14) | 512 (net19b) | 768 (net20) |
+| --- | --- | --- | --- |
+| da0d59c's search (singular extensions, IIR, continuation history, eval-scaled null move), 1,728 at once | 17.30 s | | |
+| NNUE update one perspective at a time (spills 104 -> 16 bytes), 3,456 at once (capacity `auto`) | 16.46 s | | |
+| Legality tested before `do_move`; a child's check status from its parent's move | 15.48 s | | |
+| `generate` writes each bitboard of targets with every lane at once (`add_set`) | 13.51 s | | |
+| Each piece's targets in its own lane; move picking and the eval sum as single warp reductions | 12.92 s | 14.71 s | 15.29 s |
+| Single squares' attack sets and line masks from tables | 11.36 s | 12.84 s | 13.70 s |
+| SCReLU two units at a time (`min.relu.s16x2`, `dp2a`); negated feature rows, so the NNUE update only adds | 11.27 s | 12.25 s | 13.15 s |
+| `do_move` and `undo_move` edit the bitboards in place from one lane | 11.12 s | 11.99 s | 12.85 s |
+| 128 registers: 16 warps an SM instead of 12 | **9.98 s** | **11.03 s** | **11.96 s** |
 
-Tried and dropped, all exact: prefetching the child's TT entry and history rows (4-11% slower), a
+Each of the last four rows' changes was also timed alone against an opt-out define in the same tree
+(`ATTACK_CALC`, `SCALAR_EVAL`, `NO_NEG_ROWS`, `BOARD_COPY`; the commit messages have the numbers), and each
+plays the same games as `ref.cpp` at 256, 512, 768 and 1024 units. The 512- and 768-unit columns use net19b's and
+net20's own scores (MD5 `eee9dfdd7980` and `39ad81be3739`). `claude-work/2026-11-01/sass.py` and `liveregs.py`
+(SASS from NVRTC, and the source lines where the most registers are live) found the last four.
+
+Tried and dropped, all exact: the network's weights through `__ldg` (0.5-0.8% slower), 128 registers before the
+attack tables and the in-place board edits (3-7% slower: 348 bytes of spills), prefetching the child's TT entry and history rows (4-11% slower), a
 16-byte-aligned frame (+3%), lane-parallel pawn captures (+2%), and several games per warp (`GPU_GS`, branch
 `claude/gpu-multigame`: 10 to 21% fewer searches a second). Also dropped: computing quiescence's SEE test in
 `score_moves`, one move per lane, and keeping it in a spare bit of the move's score, plus skipping SEE pruning's

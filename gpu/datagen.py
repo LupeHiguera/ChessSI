@@ -113,6 +113,12 @@ def load_net(path):
     return h, ftw, ftb, outw, outb
 
 
+def feature_rows(ftw):
+    """The feature weights as the kernel reads them, on the GPU: the 768 rows, then the same rows negated (apply_delta
+    adds a removed feature's negated row; int16 negation wraps as the subtraction it replaces does)."""
+    return cp.asarray(np.concatenate([ftw, -ftw]))
+
+
 def compact(fen):
     f = fen.split()
     out = np.zeros(START_BYTES, np.uint8)
@@ -206,20 +212,22 @@ def auto_capacity(resident, game_bytes, free_bytes):
     return max(resident, min(AUTO_WAVES * resident, fit))
 
 
-def build_module(h):
-    """datagen.cu compiled for networks of h hidden units, with its Zobrist keys loaded."""
+def build_module(h, kernel="datagen_step"):
+    """datagen.cu compiled for networks of h hidden units, with its Zobrist keys loaded, for running `kernel`."""
     src = open(os.path.join(HERE, "datagen.cu")).read()
     options = ("--std=c++17", f"-DH={h}", f"-DTT_BITS={TT_BITS}")
     # Compile-time variants of datagen.cu for measuring, as -D flags (e.g. "-DSPLIT_DELTA -DNO_PREFETCH").
     options += tuple(os.environ.get("GPU_DEFINES", "").split())
-    # Registers per thread: the search wants 176, which fits two 4-warp blocks per SM; capped at 168,
-    # three fit, and that measured fastest (GPU_MAXRREG overrides; 0 leaves it to the compiler).
-    maxrreg = int(os.environ.get("GPU_MAXRREG") or 168)
+    # Registers per thread (GPU_MAXRREG overrides; 0 leaves it to the compiler). Datagen and scoring get 128, which
+    # fits four 4-warp blocks per SM (16 warps) where 168 fit three: 7-10% faster on the RTX 5060 Ti despite 164 bytes
+    # of spills (gpu/bench.py). Matches keep 168: match_step spills 450 bytes at 128, and that is unmeasured.
+    maxrreg = int(os.environ.get("GPU_MAXRREG") or (168 if kernel.startswith("match") else 128))
     if maxrreg:
         options += (f"--maxrregcount={maxrreg}",)
     mod = cp.RawModule(code=src, options=options)
     for name, arr in zip(("Z_PSQ", "Z_CASTLING", "Z_EP", "Z_SIDE"), zobrist()):
         cp.ndarray(arr.shape, arr.dtype, mod.get_global(name))[...] = cp.asarray(arr)
+    mod.get_function("attack_tables_init")((1,), (64,), ())  # single squares' attack sets, from the device's own code
     return mod
 
 
@@ -234,7 +242,7 @@ class GpuDatagen:
     def __init__(self, net_path, capacity, kernel="datagen_step"):
         """capacity: games in flight, or "<k>w" for k full waves of `kernel` (match_step for matches and SPSA)."""
         self.h, ftw, ftb, outw, self.outb = load_net(net_path)
-        self.mod = build_module(self.h)
+        self.mod = build_module(self.h, kernel)
         self.game_bytes, sample_bytes, tt_bytes, params_bytes, self.tables_bytes = module_sizes(self.mod)
         assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16 and params_bytes == PARAMS.itemsize
         # The search's constants: src/search.cpp's, or GPU_PARAMS (JSON, as gpu/spsa.py prints them).
@@ -243,7 +251,7 @@ class GpuDatagen:
         # same result in any number of launches. Unlimited by default: 5,000-node searches are short.
         self.budget = np.uint64(int(os.environ.get("GPU_BUDGET", 1 << 62)))
         cp.cuda.runtime.deviceSetLimit(0, 1024)  # cudaLimitStackSize, the default: the search needs about 200 bytes
-        self.ftw, self.ftb, self.outw = cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw)
+        self.ftw, self.ftb, self.outw = feature_rows(ftw), cp.asarray(ftb), cp.asarray(outw)
         self.resident = resident_warps(self.mod.get_function(kernel))
         kind, value = parse_capacity(capacity)
         # One game: its Game, its Tables (TT, correction and continuation history), its accumulators.

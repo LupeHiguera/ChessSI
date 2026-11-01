@@ -26,7 +26,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from datagen import MAX_PLY, GpuDatagen, build_module, compact, load_net, make_params, module_sizes, wait  # noqa: E402
+from datagen import MAX_PLY, GpuDatagen, build_module, compact, feature_rows, load_net, make_params, module_sizes, wait  # noqa: E402
 
 
 
@@ -77,7 +77,7 @@ class Sides:
             raise SystemExit(f"{n} games need {need / 2**30:.1f} GiB more GPU memory, {free / 2**30:.1f} GiB free: play fewer "
                              f"pairs at once (several seeds), or gpu/sprt.py, which refills a fixed number of slots")
         self.a = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb))
-        self.b = (cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw), np.int32(outb))
+        self.b = (feature_rows(ftw), cp.asarray(ftb), cp.asarray(outw), np.int32(outb))
         self.params_b = dg.params  # GPU_PARAMS, read by GpuDatagen
         if "GPU_PARAMS_B" in os.environ:
             self.params_b = cp.asarray(make_params(json.loads(os.environ["GPU_PARAMS_B"])).view(np.uint8))
@@ -86,7 +86,7 @@ class Sides:
                   for name in ("match_init", "match_setup", "match_step", "match_side", "match_results")}
         self.split = hb != dg.h or self.nodes_a != self.nodes_b or os.environ.get("GPU_MATCH_SPLIT") == "1"
         if self.split:
-            mod_b = dg.mod if hb == dg.h else build_module(hb)
+            mod_b = dg.mod if hb == dg.h else build_module(hb, "match_side")
             assert module_sizes(mod_b) == module_sizes(dg.mod), "both builds must lay out a game the same way"
             self.side_b = mod_b.get_function("match_side")
             self.accs_b = cp.zeros(n * (MAX_PLY + 2) * 2 * hb, cp.int16)
