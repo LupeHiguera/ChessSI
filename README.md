@@ -6,7 +6,7 @@ what each AI model can actually do in research.
 
 ## Status
 
-Phase 4 of 5 (refinement: tuning, more data and bigger networks), less than a week after the project
+Phase 4 of 5 (refinement: tuning, more data and bigger networks), ten days after the project
 started on 2026-10-22. Measured rating, on the CCRL Blitz scale:
 
 | Date | Engine | Rating | Games |
@@ -15,14 +15,14 @@ started on 2026-10-22. Measured rating, on the CCRL Blitz scale:
 | 2026-10-23 | net7 and the full pruning set | 3150 ± 26 | 959 vs Stash 19-36 |
 | 2026-10-23 | net8 and SEE pruning in quiescence | 3176 ± 29 | 600 vs Stash 27-36 |
 | 2026-10-24 | net10 and a 21% faster search | 3284 ± 21 | 1,200 vs Stash 27-36 |
-| 2026-10-30 | net14, singular extensions and internal iterative reductions | **3452 ± 24** | 1,200 vs Stash 27-36 |
+| 2026-10-30 | net14, singular extensions and internal iterative reductions | 3452 ± 24 | 1,200 vs Stash 27-36 |
+| 2026-10-31 | Non-pawn correction history, continuation history, a null-move reduction that grows with eval − beta | **3499 ± 23** | 1,200 vs Stash 30-37 |
 
 Gauntlets are played at 10+0.1 against Stash versions with known CCRL ratings, so the figure is
-approximate. Details are in [docs/IDEAS.md](docs/IDEAS.md). The strongest opponent, Stash 36 (3375),
-scored 43% against ChessSI, so the next gauntlet needs stronger ones.
-
-Since that gauntlet, non-pawn correction history passed its SPRT (+16.7 in self-play), so the default
-build is somewhat stronger than the last measurement.
+approximate. Details are in [docs/IDEAS.md](docs/IDEAS.md). The strongest opponent, Stash 37 (3417),
+scored 48% against ChessSI. Performance was 3429 against Stash 37 and 3475 against Stash 36, but
+3507-3571 against the four weaker ones, so the combined figure is probably a little high; opponents
+stronger than Stash would pin it down.
 
 Against the [original plan](docs/PLAN.md), which expected this level after six months to a year:
 
@@ -31,7 +31,7 @@ Against the [original plan](docs/PLAN.md), which expected this level after six m
 | 1 · Working engine, ~2000 | Weeks 1-2 | 2026-10-22: 2440, measured |
 | 2 · Classical engine, 2800-3000 | Months 1-2 | Its search work was done on 2026-10-22; the network replaced PeSTO on 2026-10-23, so this band was passed with NNUE |
 | 3 · Neural evaluation, 3200-3400 | Months 2-5 | 2026-10-23: 3150, measured; 2026-10-24: 3284, measured |
-| 4 · Refinement, 3400-3500+ | Months 6-12+ | 2026-10-30: 3452, measured |
+| 4 · Refinement, 3400-3500+ | Months 6-12+ | 2026-10-30: 3452, measured; 2026-10-31: 3499, measured |
 | 5 · The final gap, Stockfish level | A year or more | Not started |
 
 The plan expected compute to set the pace from phase 3 on. The GPU tools below changed how much there
@@ -45,10 +45,12 @@ The engine:
   transposition table (prefetched; entries replaced by depth and age), check extension, singular
   extensions with multi-cut, and quiescence search with SEE pruning. The time limit adapts to how
   stable the best move is.
-- **Pruning and reductions:** null-move pruning, reverse futility pruning, futility pruning, late
+- **Pruning and reductions:** null-move pruning (reduced more the further the eval is above beta),
+  reverse futility pruning, futility pruning, late
   move pruning, late move reductions, internal iterative reductions and SEE pruning near the leaves,
   with constants tuned by SPSA.
-- **Move ordering:** killer moves, a history heuristic, and losing captures after the quiet moves.
+- **Move ordering:** killer moves, a history heuristic with continuation history (how a move fared
+  after the previous move and the one before), and losing captures after the quiet moves.
 - **Evaluation:** NNUE, (768 → 256) × 2 → SCReLU → 1, compiled into the binary, plus correction
   history, which learns during a game how far the network is off for each pawn structure and for each
   side's non-pawn pieces.
@@ -61,7 +63,7 @@ The engine:
   once. It generates training data at about 13,000 positions a second on an RTX 5080, 1.6×
   the 13 CPU cores ([gpu/README.md](gpu/README.md)); it made all of net12's data. It also plays
   fixed-node matches between networks and tunes search constants by SPSA.
-- **Bench:** `59755` nodes.
+- **Bench:** `64462` nodes.
 
 Research so far:
 
