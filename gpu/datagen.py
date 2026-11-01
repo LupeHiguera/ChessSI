@@ -246,11 +246,16 @@ class GpuDatagen:
         self.ftw, self.ftb, self.outw = cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw)
         self.resident = resident_warps(self.mod.get_function(kernel))
         kind, value = parse_capacity(capacity)
-        if kind == "auto":  # one game: its Game, its Tables (TT, correction and continuation history), its accumulators
-            per_game = self.game_bytes + self.tables_bytes + (MAX_PLY + 2) * 2 * self.h * 2
-            capacity = auto_capacity(self.resident, per_game, cp.cuda.runtime.memGetInfo()[0])
+        # One game: its Game, its Tables (TT, correction and continuation history), its accumulators.
+        per_game = self.game_bytes + self.tables_bytes + (MAX_PLY + 2) * 2 * self.h * 2
+        free = cp.cuda.runtime.memGetInfo()[0]
+        if kind == "auto":
+            capacity = auto_capacity(self.resident, per_game, free)
         else:
             capacity = value * self.resident if kind == "waves" else value
+            if capacity * per_game > 0.95 * free:  # past free memory the driver pages out to system RAM: a crawl
+                raise SystemExit(f"{capacity} games need {capacity * per_game / 2**30:.1f} GiB of GPU memory, "
+                                 f"{free / 2**30:.1f} GiB free: use fewer games at once")
         if capacity > self.resident and capacity % self.resident:
             lo, hi = capacity // self.resident * self.resident, -(-capacity // self.resident) * self.resident
             print(f"# capacity {capacity} is {capacity / self.resident:.2f} waves of {self.resident} resident warps: the "

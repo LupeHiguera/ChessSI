@@ -10,7 +10,7 @@ is needed. The engine itself is unchanged.
 | `nnue.cu`, `nnue_check.py` | NNUE evaluation, one warp per position. Bit-exact with the engine on 100,000 positions |
 | `datagen.cu`, `datagen.py` | Self-play data generation: an exact port of `src/search.cpp`, the move order of `src/movegen.cpp`, the Zobrist keys and the datagen game loop |
 | `ref.cpp` | CPU reference: `Datagen::play_game` from given positions with a 1 MB TT, to check `datagen.py` line for line |
-| `match.py` | Fixed-node matches between two networks of the same size, both sides on the GPU |
+| `match.py` | Fixed-node matches between two networks, both sides on the GPU, of one size or two, with optional node odds |
 | `sprt.py` | The same games as an SPRT: pairs streamed through the GPU until the LLR crosses a bound |
 | `bench.py` | Deterministic search throughput (fixed positions, cold searches, GPU time); its score MD5 checks exactness |
 
@@ -20,7 +20,9 @@ is needed. The engine itself is unchanged.
 python gpu/datagen.py run <net.nnue> <out.txt> <games> [nodes=5000] [capacity=1024] [seed=1] [random plies=8]
 ```
 
-It writes the same lines as `chesssi datagen`: `<fen> | <score> | <result> | <eval>`. Every game opens
+It writes the same lines as `chesssi datagen`: `<fen> | <score> | <result> | <eval>`. The kernel is compiled for
+the network's hidden size, any multiple of 256: with net19b-h512 and with seeded synthetic 768- and 1024-unit
+networks it plays the same 200 games as `ref.cpp` built with each (`claude-work/2026-11-01/parity-h.sh`). Every game opens
 with random legal plies, then plays at a fixed node count, and a finished game's slot is refilled at
 once. From the same start positions it writes byte-identical lines to `ref.cpp`, so its data is as good
 as the CPU's. The one difference is a 1 MB TT per game instead of 16 MB, which makes little difference at
@@ -89,8 +91,21 @@ at 20%.
 ## Matches
 
 ```
-python gpu/match.py <netA.nnue> <netB.nnue> <pairs> [nodes=20000] [seed=1] [book]
+python gpu/match.py <netA.nnue> <netB.nnue> <pairs> [nodes=20000 or <A>:<B>] [seed=1] [book]
 ```
+
+All pairs play at once, so a 16 GB card holds about 1,024 pairs (two sets of tables per game); play more
+as several seeds. Networks of different sizes play through `match_side`: one kernel build per hidden size,
+each playing the plies its side is to move, on the same games (`GPU_MATCH_SPLIT=1` forces that path for one
+size, and gives the same games as `match_step`, game by game). `nodes` as `<A>:<B>` gives node odds: a bigger
+network searches fewer nodes in the same time, so giving it fewer here, in the ratio of the two networks' CPU
+nodes per second, estimates a timed match. net19b-h512 against net14 (two seeds of 1,024 pairs each, about
+3 minutes each on a 5060 Ti):
+
+| Nodes (net19b : net14) | Seed 1 | Seed 2 |
+| --- | --- | --- |
+| 20,000 : 20,000 | +70.2 ± 11.4 | +76.4 ± 11.1 |
+| 17,000 : 20,000 (CPU speed 2.43M : 2.86M nps) | +34.4 ± 11.3 | +39.9 ± 11.0 |
 
 It plays each UHO opening with both colors. Games end as in our fastchess SPRTs: mate, stalemate,
 threefold repetition, fifty moves, insufficient material, or adjudication. It prints Elo from the game

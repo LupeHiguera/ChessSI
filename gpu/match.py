@@ -69,6 +69,13 @@ class Sides:
         self.n = n = dg.capacity
         self.nodes_a, self.nodes_b = (np.uint64(x) for x in parse_nodes(nodes))
         hb, ftw, ftb, outw, outb = load_net(net_b)
+        # Still to allocate: B's tables, and B's accumulators if the sides are split. Past free memory the driver
+        # pages GPU memory out to system RAM, and a match crawls instead of failing.
+        need = n * (dg.tables_bytes + (MAX_PLY + 2) * 2 * hb * 2)
+        free = cp.cuda.runtime.memGetInfo()[0]
+        if need > 0.95 * free:
+            raise SystemExit(f"{n} games need {need / 2**30:.1f} GiB more GPU memory, {free / 2**30:.1f} GiB free: play fewer "
+                             f"pairs at once (several seeds), or gpu/sprt.py, which refills a fixed number of slots")
         self.a = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb))
         self.b = (cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw), np.int32(outb))
         self.params_b = dg.params  # GPU_PARAMS, read by GpuDatagen
