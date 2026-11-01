@@ -165,7 +165,9 @@ const int16_t* Position::accumulator() const {
 
 // Pushes the next ply's accumulator: the current one with the move's piece changes applied. Does
 // nothing without accumulators (no network, or one loaded after set(): evaluate refreshes then).
-void Position::push_accumulator(const NNUE::Delta& delta) {
+// With apply false (a move do_move rejects) it only reserves the slot, which undo_move pops: the
+// caller undoes such a move before anything reads its accumulator.
+void Position::push_accumulator(const NNUE::Delta& delta, bool apply) {
     if (!accGeneration)
         return;
     size_t n = 2 * size_t(accHidden);
@@ -173,7 +175,8 @@ void Position::push_accumulator(const NNUE::Delta& delta) {
         accStack.resize(2 * accStack.size()); // deeper than ever before; rare
     int16_t* acc = accStack.data() + accTop;
     accTop += n;
-    NNUE::apply(acc - n, acc, delta);
+    if (apply)
+        NNUE::apply(acc - n, acc, delta);
 }
 
 std::string Position::fen() const {
@@ -313,8 +316,11 @@ bool Position::do_move(Move m) {
     // The search probes this position's TT entry next; start loading it while the accumulator
     // update runs.
     TT.prefetch(st.key);
-    push_accumulator(delta);
-    return !attacked(king_square(us), them);
+    // Legality first: about 23% of updates were for moves rejected here, most of them while in
+    // check (docs/research/rejected-nnue-2026-10-25).
+    bool legal = !attacked(king_square(us), them);
+    push_accumulator(delta, legal);
+    return legal;
 }
 
 void Position::undo_move(Move m) {

@@ -62,7 +62,7 @@ private:
     void remove_piece(Square s);
     void move_piece(Square from, Square to);
     uint64_t compute_key() const;
-    void push_accumulator(const NNUE::Delta& delta);
+    void push_accumulator(const NNUE::Delta& delta, bool apply = true);
 
     // One NNUE accumulator per ply, 2 * accHidden values each, for network accGeneration (0: none).
     // The first accTop values are in use. The buffer only grows, so moves never resize it (a resize
