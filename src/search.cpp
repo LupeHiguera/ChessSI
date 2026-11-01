@@ -435,6 +435,17 @@ struct Searcher {
                 && staticEval + 127 * depth <= alpha)
                 continue;
 
+            // History pruning: near the leaves, skip a quiet move whose history and continuation
+            // entries say it has kept failing here, once a move has kept us out of a mate score.
+            if (!pvNode && !inCheck && quiet && depth <= 4 && best > -VALUE_MATE_IN_MAX_PLY) {
+                int stat = history[us][from_sq(m)][to_sq(m)];
+                for (int back = 1; back <= 2; ++back)
+                    if (const int* c = cont_entry(ply, back, m))
+                        stat += *c;
+                if (stat < -3000 * depth)
+                    continue;
+            }
+
             // SEE pruning: near the leaves, skip a move that loses more material in the exchange
             // on its target square than a depth-scaled margin (wider for captures).
             if (!root && !inCheck && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
