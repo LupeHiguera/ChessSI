@@ -682,6 +682,16 @@ __device__ __forceinline__ void add_promotions(u16* list, int& n, int from, int 
         add(list, n, from, to, M_PROMOTION, BISHOP);
     }
 }
+// Appends a move to each square of `to`, in square order, from `from` (or, when from < 0, from the square
+// `delta` behind): lane l writes the moves to squares l and l + 32, each after the targets below it.
+__device__ __forceinline__ void add_set(u16* list, int& n, u64 to, int from, int delta) {
+    int lane = lane_id();
+    unsigned lo = (unsigned)to, hi = (unsigned)(to >> 32), below = (1u << lane) - 1;
+    int nlo = __popc(lo);
+    if ((lo >> lane) & 1) list[n + __popc(lo & below)] = (u16)((from < 0 ? lane - delta : from) | (lane << 6));
+    if ((hi >> lane) & 1) list[n + nlo + __popc(hi & below)] = (u16)((from < 0 ? lane + 32 - delta : from) | ((lane + 32) << 6));
+    n += nlo + __popc(hi);
+}
 __device__ int generate(Game* g, u16* list, bool noisy) {
     int us = g->stm, them = us ^ 1, n = 0;
     u64 pawns = pcs(g, us, PAWN), empty = ~occupied(g), enemies = g->byColor[them];
@@ -690,8 +700,13 @@ __device__ int generate(Game* g, u16* list, bool noisy) {
 #define PUSH(b) (us == 0 ? (b) << 8 : (b) >> 8)
     if (!noisy) {
         u64 single = PUSH(pawns & ~seventh) & empty, twice = PUSH(single & third) & empty;
+#ifndef SERIAL_GEN
+        add_set(list, n, single, -1, up);
+        add_set(list, n, twice, -1, 2 * up);
+#else
         for (; single; single &= single - 1) { int to = lsb(single); add(list, n, to - up, to, 0, KNIGHT); }
         for (; twice; twice &= twice - 1) { int to = lsb(twice); add(list, n, to - 2 * up, to, 0, KNIGHT); }
+#endif
     }
     for (u64 b = PUSH(pawns & seventh) & empty; b; b &= b - 1) { int to = lsb(b); add_promotions(list, n, to - up, to, noisy); }
 #undef PUSH
@@ -710,7 +725,11 @@ __device__ int generate(Game* g, u16* list, bool noisy) {
     for (int pt = KNIGHT; pt <= KING; ++pt)
         for (u64 b = pcs(g, us, pt); b; b &= b - 1) {
             int from = lsb(b);
+#ifndef SERIAL_GEN
+            add_set(list, n, attacks_bb(pt, from, occ) & targets, from, 0);
+#else
             for (u64 a = attacks_bb(pt, from, occ) & targets; a; a &= a - 1) add(list, n, from, lsb(a), 0, KNIGHT);
+#endif
         }
     if (!noisy) {
         int base = us == 0 ? 0 : 56, king = base + 4, rights = g->states[g->nstates - 1].castling;
