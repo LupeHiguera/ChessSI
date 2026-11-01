@@ -1,6 +1,6 @@
 """Self-play data generation on the GPU (issue #31, stage 2), with gpu/datagen.cu.
 
-    python gpu/datagen.py run <net.nnue> <out.txt> <games> [nodes=5000] [capacity=4w] [seed=1] [random plies=8]
+    python gpu/datagen.py run <net.nnue> <out.txt> <games> [nodes=5000] [capacity=auto] [seed=1] [random plies=8]
 
 capacity is the games in flight, or "<k>w" for k full waves of what the GPU runs at once (see resident_warps).
     python gpu/datagen.py <net.nnue> <file of start FENs> <nodes> [-v]
@@ -188,9 +188,22 @@ def resident_warps(kernel, block=128):
 
 
 def parse_capacity(text):
-    """A capacity argument: a number of games, or "<k>w" for k full waves (see resident_warps)."""
+    """A capacity argument: a number of games, "<k>w" for k full waves (see resident_warps), or "auto"."""
     text = str(text)
+    if text == "auto":
+        return ("auto", 0)
     return ("waves", int(text[:-1])) if text.endswith("w") else ("games", int(text))
+
+
+AUTO_WAVES, AUTO_MEMORY = 8, 0.8
+
+
+def auto_capacity(resident, game_bytes, free_bytes):
+    """The most games in flight, in whole waves of `resident`, up to AUTO_WAVES waves, that fit in AUTO_MEMORY of
+    the free GPU memory. More games in flight measured faster on the RTX 5060 Ti (3,456 games: 6,301 searches/s;
+    1,728: 6,084), so this fills what the card holds."""
+    fit = int(free_bytes * AUTO_MEMORY) // game_bytes // resident * resident
+    return max(resident, min(AUTO_WAVES * resident, fit))
 
 
 class GpuDatagen:
@@ -222,7 +235,11 @@ class GpuDatagen:
         self.ftw, self.ftb, self.outw = cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw)
         self.resident = resident_warps(self.mod.get_function(kernel))
         kind, value = parse_capacity(capacity)
-        capacity = value * self.resident if kind == "waves" else value
+        if kind == "auto":  # one game: its Game, its Tables (TT, correction and continuation history), its accumulators
+            per_game = self.game_bytes + self.tables_bytes + (MAX_PLY + 2) * 2 * self.h * 2
+            capacity = auto_capacity(self.resident, per_game, cp.cuda.runtime.memGetInfo()[0])
+        else:
+            capacity = value * self.resident if kind == "waves" else value
         if capacity > self.resident and capacity % self.resident:
             lo, hi = capacity // self.resident * self.resident, -(-capacity // self.resident) * self.resident
             print(f"# capacity {capacity} is {capacity / self.resident:.2f} waves of {self.resident} resident warps: the "
@@ -380,17 +397,17 @@ def rescore(dg, in_path, out_path, nodes, report_lines=1_000_000):
 
 
 def main():
-    if sys.argv[1] == "rescore":  # rescore <net> <in.txt> <out.txt> [nodes=20000] [capacity=4w]
+    if sys.argv[1] == "rescore":  # rescore <net> <in.txt> <out.txt> [nodes=20000] [capacity=auto]
         net, src, dst = sys.argv[2], sys.argv[3], sys.argv[4]
         nodes = int(sys.argv[5]) if len(sys.argv) > 5 else 20000
-        capacity = sys.argv[6] if len(sys.argv) > 6 else "4w"
+        capacity = sys.argv[6] if len(sys.argv) > 6 else "auto"
         n = rescore(GpuDatagen(net, capacity), src, dst, nodes)
         print(f"# rescored {n} positions at {nodes} nodes", file=sys.stderr)
         return
-    if sys.argv[1] == "run":  # run <net> <out.txt> <games> [nodes=5000] [capacity=4w] [seed=1] [random plies=8]
+    if sys.argv[1] == "run":  # run <net> <out.txt> <games> [nodes=5000] [capacity=auto] [seed=1] [random plies=8]
         net, out, games = sys.argv[2], sys.argv[3], int(sys.argv[4])
         rest = sys.argv[5:9]
-        nodes, capacity, seed, plies = (rest + ["5000", "4w", "1", "8"][len(rest):])[:4]
+        nodes, capacity, seed, plies = (rest + ["5000", "auto", "1", "8"][len(rest):])[:4]
         dg = GpuDatagen(net, capacity)
         print(f"# capacity {dg.capacity}: {dg.capacity / dg.resident:.2f} waves of {dg.resident} resident warps",
               file=sys.stderr, flush=True)

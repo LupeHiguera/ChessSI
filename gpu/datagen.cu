@@ -302,9 +302,11 @@ struct Delta {
 };
 __device__ void apply_delta(const Net& net, const short* from, short* to, const Delta& d) {
     int base = lane_id() * UNITS;
-#ifdef SPLIT_DELTA
+#ifndef JOINT_DELTA
     // One perspective at a time: half the loads in flight (20 registers instead of 40 at the search's
-    // busiest point), at the cost of a second wait for the weight rows.
+    // busiest point), at the cost of a second wait for the weight rows. Measured on the RTX 5060 Ti
+    // (claude-work/2026-10-31/gpu-bench.py, 103,680 searches): spills 104 -> 16 B and 1.5% faster than
+    // JOINT_DELTA, the former way below that loads both perspectives' rows at once.
     for (int c = 0; c < UNITS; c += 8) {
 #pragma unroll 1
         for (int persp = 0; persp < 2; ++persp) {
@@ -392,8 +394,9 @@ __device__ __forceinline__ void b_store(Game* g, const Board& b) {
     g->byColor[1] = b.bc[1];
 }
 
-// Prefetching (no value changes, only when data arrives). PREFETCH_L1 asks for L1 instead of L2; NO_PREFETCH
-// leaves it out, for measuring.
+// Prefetching (no value changes, only when data arrives), off unless PREFETCH is defined: measured on the
+// RTX 5060 Ti it made the search 4-11% slower (15 lines a node, most never read before they are evicted).
+// PREFETCH_L1 asks for L1 instead of L2.
 __device__ __forceinline__ void prefetch_line(const void* p) {
 #ifdef PREFETCH_L1
     asm volatile("prefetch.global.L1 [%0];" ::"l"(p));
@@ -507,7 +510,7 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
     g->fullmove = fm + (us == 1);
     g->accTop = top + 1;
     __syncwarp();
-#ifndef NO_PREFETCH
+#ifdef PREFETCH
     if (prefetch != PF_NONE) prefetch_child(g, tb, st.key, pc, to, prefetch);
 #endif
     // Legal first: the caller undoes an illegal move at once, and nothing ever reads its
