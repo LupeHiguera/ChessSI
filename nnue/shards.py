@@ -4,6 +4,7 @@
     ./shards <dir> <name> <data.txt> [max lines] [positions per shard]    # one data file -> <name>-NNNNN
     python shards.py finalize <dir> [--future-plies 4]   # per_file's targets for every shard in <dir>
     python shards.py dedup <dir> [--bits 36]              # keep masks: each position's first occurrence
+    python shards.py scatter <dir> <out dir>              # kept rows into shards that each sample all the data
     python shards.py check <dir> <name> <data.txt> <cache dir>   # shards equal train.py's cache of that file
 
 A shard is one column file per field, little-endian, no header: .occ (u64) and .pcs (u8 x 16), the board
@@ -102,6 +103,70 @@ def dedup(d, bits):
           f"final false-positive rate about {kept / (1 << bits):.2%} (2^{bits} bits)")
 
 
+TRAIN_COLS = ("occ", "pcs", "white", "scores", "results", "future")
+
+
+def append(stem, col, a):
+    with open(f"{stem}.{col}", "ab") as f:
+        np.ascontiguousarray(a, dtype=COLS[col][0]).tofile(f)
+
+
+def scatter(src, dst, seed, buckets, per_val=8_000_000):
+    """Every kept training row of src, sent to one of `buckets` shards in dst at random, so each shard is a
+    uniform sample of all the data rather than a run of consecutive games from one file. train.py shuffles
+    only within --group shards at a time; on shards in file order that puts a game's positions about
+    len/group times closer together than a full shuffle, and the network tracks the games in its window.
+    Validation rows are copied in order to dst/held-NNNNN (held.manifest sorts before train.manifest, so
+    train.py's validation set stays the first --val-max of them). Only the columns train.py reads are
+    written."""
+    items = shard_list(src)
+    if os.path.exists(dst) and os.listdir(dst):
+        raise SystemExit(f"{dst} is not empty")
+    os.makedirs(dst, exist_ok=True)
+    with open(os.path.join(src, "FUTURE_PLIES")) as f, open(os.path.join(dst, "FUTURE_PLIES"), "w") as g:
+        g.write(f.read())
+    nb = buckets or len(items)
+    counts = np.zeros(nb, dtype=np.int64)
+    held_n = [0]  # rows per held shard
+    t0 = time.time()
+    for k, (stem, n) in enumerate(items):
+        keep = read(stem, "keep", n).astype(bool)
+        isval = read(stem, "isval", n).astype(bool)
+        cols = {c: read(stem, c, n) for c in TRAIN_COLS}
+        tr = np.flatnonzero(keep & ~isval)
+        b = np.random.default_rng([seed, k]).integers(0, nb, len(tr))
+        order = np.argsort(b, kind="stable")
+        tr, b = tr[order], b[order]
+        bounds = np.searchsorted(b, np.arange(nb + 1))
+        for c in TRAIN_COLS:
+            a = cols[c][tr]
+            for j in np.flatnonzero(np.diff(bounds)):
+                append(os.path.join(dst, f"train-{j:05d}"), c, a[bounds[j]:bounds[j + 1]])
+        counts += np.diff(bounds)
+        va = np.flatnonzero(keep & isval)
+        while len(va):
+            room = per_val - held_n[-1]
+            if room == 0:
+                held_n.append(0)
+                continue
+            part, va = va[:room], va[room:]
+            for c in TRAIN_COLS:
+                append(os.path.join(dst, f"held-{len(held_n) - 1:05d}"), c, cols[c][part])
+            held_n[-1] += len(part)
+        if k % 20 == 19 or k == len(items) - 1:
+            print(f"  scatter: {k + 1}/{len(items)} shards, {time.time() - t0:.0f}s", flush=True)
+    for name, ns, val in (("train", counts, 0), ("held", held_n, 1)):
+        with open(os.path.join(dst, f"{name}.manifest"), "w") as f:
+            for j, m in enumerate(ns):
+                if m:
+                    stem = os.path.join(dst, f"{name}-{j:05d}")
+                    write(stem, "isval", np.full(m, val, dtype=np.uint8))
+                    write(stem, "keep", np.ones(m, dtype=np.uint8))
+                    f.write(f"{name}-{j:05d} {m}\n")
+    print(f"scattered {int(counts.sum())} training positions into {int(np.count_nonzero(counts))} shards "
+          f"({counts.min()}-{counts.max()} each) and {sum(held_n)} validation positions in {time.time() - t0:.0f}s")
+
+
 def check(d, name, data_file, cache_dir):
     """The shards of one data file against train.load_file's cached arrays for it."""
     cached = train.load_file(data_file, cache_dir, frozen=True)
@@ -138,6 +203,11 @@ def main():
     u = sub.add_parser("dedup")
     u.add_argument("dir")
     u.add_argument("--bits", type=int, default=36)
+    s = sub.add_parser("scatter")
+    s.add_argument("src")
+    s.add_argument("dst")
+    s.add_argument("--seed", type=int, default=1)
+    s.add_argument("--buckets", type=int, default=0, help="output shards (default: as many as src has)")
     c = sub.add_parser("check")
     c.add_argument("dir")
     c.add_argument("name")
@@ -148,6 +218,8 @@ def main():
         finalize(args.dir, args.future_plies, args.force)
     elif args.cmd == "dedup":
         dedup(args.dir, args.bits)
+    elif args.cmd == "scatter":
+        scatter(args.src, args.dst, args.seed, args.buckets)
     else:
         raise SystemExit(0 if check(args.dir, args.name, args.data, args.cache_dir) else 1)
 

@@ -5,7 +5,10 @@
     python train.py --shards <dir> <out.nnue> [same options] [--group 8] [--val-max N] [--resume]
 
 With --shards, positions stream from binary shards on disk (made by shards.cpp and shards.py), so the
-data can be far larger than RAM; see train_streaming.
+data can be far larger than RAM; see train_streaming. Train on shards that went through `shards.py
+scatter`: on shards in file order, the --group shuffle keeps each game's positions close together, and
+validation loss came out 0.0003 worse than in-memory training on the same data (0.00918 vs 0.00886 after
+one epoch); scattered, 0.00891.
 
 Network: (768 -> H) x 2 perspectives -> SCReLU -> 1, the usual first NNUE. Input features are
 (piece colour relative to the perspective, piece type, square), with squares mirrored vertically for
