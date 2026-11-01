@@ -16,13 +16,17 @@ started on 2026-10-22. Measured rating, on the CCRL Blitz scale:
 | 2026-10-23 | net8 and SEE pruning in quiescence | 3176 ± 29 | 600 vs Stash 27-36 |
 | 2026-10-24 | net10 and a 21% faster search | 3284 ± 21 | 1,200 vs Stash 27-36 |
 | 2026-10-30 | net14, singular extensions and internal iterative reductions | 3452 ± 24 | 1,200 vs Stash 27-36 |
-| 2026-10-31 | Non-pawn correction history, continuation history, a null-move reduction that grows with eval − beta | **3499 ± 23** | 1,200 vs Stash 30-37 |
+| 2026-10-31 | Non-pawn correction history, continuation history, a null-move reduction that grows with eval − beta | 3499 ± 23 | 1,200 vs Stash 30-37 at 10+0.1 |
+| 2026-11-01 | The same engine, under CCRL-style conditions | **3420 ± 21** | 1,260 vs seven engines rated 3375-3720 |
 
-Gauntlets are played at 10+0.1 against Stash versions with known CCRL ratings, so the figure is
-approximate. Details are in [docs/IDEAS.md](docs/IDEAS.md). The strongest opponent, Stash 37 (3417),
-scored 48% against ChessSI. Performance was 3429 against Stash 37 and 3475 against Stash 36, but
-3507-3571 against the four weaker ones, so the combined figure is probably a little high; opponents
-stronger than Stash would pin it down.
+Until 2026-10-31, gauntlets were played at 10+0.1 against Stash versions with known CCRL ratings, the
+strongest of them 3417, so the figures were extrapolations. The 2026-11-01 gauntlet copies CCRL Blitz's
+conditions as far as one PC can: 2'+1" scaled to this machine by CCRL's Stockfish 10 benchmark (80.7 s
++ 0.67 s here), Hash 128, and single-CPU opponents with CCRL ratings above and below ChessSI (Stash 36
+and 37, Stockfish 10, Viridithas 10, Koivisto 9, Stormphrax 6, Halogen 16). It is an estimate under
+those conditions, not a CCRL rating: CCRL also gives its engines endgame tablebases, which ChessSI does
+not use. At the longer time control ChessSI rates 79 points lower than at 10+0.1. Details are in
+[docs/IDEAS.md](docs/IDEAS.md).
 
 Against the [original plan](docs/PLAN.md), which expected this level after six months to a year:
 
@@ -31,7 +35,7 @@ Against the [original plan](docs/PLAN.md), which expected this level after six m
 | 1 · Working engine, ~2000 | Weeks 1-2 | 2026-10-22: 2440, measured |
 | 2 · Classical engine, 2800-3000 | Months 1-2 | Its search work was done on 2026-10-22; the network replaced PeSTO on 2026-10-23, so this band was passed with NNUE |
 | 3 · Neural evaluation, 3200-3400 | Months 2-5 | 2026-10-23: 3150, measured; 2026-10-24: 3284, measured |
-| 4 · Refinement, 3400-3500+ | Months 6-12+ | 2026-10-30: 3452, measured; 2026-10-31: 3499, measured |
+| 4 · Refinement, 3400-3500+ | Months 6-12+ | 2026-10-30: 3452, measured; 2026-10-31: 3499, measured; 2026-11-01: 3420 under CCRL-style conditions |
 | 5 · The final gap, Stockfish level | A year or more | Not started |
 
 The plan expected compute to set the pace from phase 3 on. The GPU tools below changed how much there

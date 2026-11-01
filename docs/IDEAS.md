@@ -512,6 +512,20 @@ each result here with the date, the commit and its bench.
 | 2026-10-23 | `d2b1e25` (net8, SEE in quiescence) | 137954 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 600 at 10+0.1, 8moves_v3 book, 4 concurrent (cores 6-9) | 3176 ± 29 |
 | 2026-10-24 | `7af0aae` (net10, speed series) | 158506 | Stash 27, 30, 31, 33, 34, 36 (CCRL Blitz 3049-3375) | 1,200 at 10+0.1, 8moves_v3 book, 12 concurrent (cores 0-12) | **3284 ± 21** |
 | 2026-10-31 | `da0d59c` (net14, continuation history, null move scaled by eval − beta; the tree of `main` at `dcb9226`) | 64462 | Stash 30, 31, 33, 34, 36, 37 (CCRL Blitz 3153-3417) | 1,200 at 10+0.1, 8moves_v3 book, 8 concurrent (cores 12-19, PC in use) | **3499 ± 23** |
+| 2026-11-01 | `8912405` (the same engine as `da0d59c`) | 64462 | CCRL-style: Stash 36, 37, Stockfish 10, Viridithas 10.0.0, Koivisto 9.0, Stormphrax 6.0.0, Halogen 16.0.0 (single-CPU CCRL Blitz 3375-3720, 2026-10-31 list) | 1,260 at **80.71+0.673** (CCRL's 2'+1" on an i7-4770k, scaled by a Stockfish 10 bench), Hash 128, 8moves_v3 book, no tablebases, 12 concurrent (cores 8-19) | **3420 ± 21** |
+
+**The CCRL-style gauntlet (2026-11-01).** CCRL Blitz plays 2'+1" on an i7-4770k and scales each tester's
+time control by a Stockfish 10 `bench` (3,939,338 nodes in 2,054 ms on the reference machine, per the
+CCRL Blitz conditions thread on TalkChess). Here 12 simultaneous benches on the gauntlet's cores took a
+median 1,381 ms (all within 1,367-1,395), a factor of 0.6726, so 2'+1" became 80.71+0.673. Hash 128 as
+on CCRL, generic balanced book, no pondering. ChessSI scored 56.9% against Stash 36, 51.1% against
+Stash 37, 34.4% against Stockfish 10, 40.8% against Viridithas 10.0.0, and 18.3%, 14.4% and 16.1% against
+Koivisto 9.0, Stormphrax 6.0.0 and Halogen 16.0.0, with no wins in 540 games against those three (30%
+draws). The rating is 79 points below the 10+0.1 gauntlet of the same engine: at about 5× the thinking
+time, and against stronger, more varied opponents, ChessSI does relatively worse. Two differences from
+CCRL remain: CCRL gives 4-6 piece tablebases to engines that use them (the opponents here had none,
+which flatters ChessSI a little), and its testers' machines differ. This is an estimate under those
+conditions, not a CCRL rating.
 
 The 2026-10-22 gauntlet used a balanced book (`8moves_v3`), not the SPRT book: UHO openings give one
 side an edge, which stretches rating gaps. Run it with `scripts/gauntlet.sh`. The ± is statistical
