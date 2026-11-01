@@ -420,8 +420,10 @@ __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
             }
         }
     }
-    long long sum = part;
-    for (int off = 16; off; off >>= 1) sum += __shfl_xor_sync(0xffffffffu, sum, off);
+    // part = hi * 65536 + lo with lo in [0, 65535]: each half's total fits an int, and the sum is exact.
+    int hiSum = __reduce_add_sync(0xffffffffu, part >> 16);
+    unsigned loSum = __reduce_add_sync(0xffffffffu, (unsigned)(part & 0xFFFF));
+    long long sum = ((long long)hiSum << 16) + loSum;
     sum = sum / QA + net.outb;
     return (int)(sum * EVAL_SCALE / (QA * QB));
 }
@@ -722,15 +724,40 @@ __device__ int generate(Game* g, u16* list, bool noisy) {
     if (ep != SQ_NONE)
         for (u64 a = pawn_att(ep, them) & pawns; a; a &= a - 1) add(list, n, lsb(a), ep, M_EN_PASSANT, KNIGHT);
     u64 occ = occupied(g), targets = noisy ? g->byColor[them] : ~g->byColor[us];
+#ifndef SERIAL_GEN
+    {
+        // Lane l: the l-th piece in generation order and its targets (at most 16 pieces).
+        int lane = lane_id(), rank = lane, pt = -1, count = 0;
+        u64 mine = 0;
+        for (int t = KNIGHT; t <= KING; ++t) {
+            u64 bt = pcs(g, us, t);
+            int c = __popcll(bt);
+            if (pt < 0) {
+                if (rank < c) { pt = t; mine = bt; }
+                else rank -= c;
+            }
+            count += c;
+        }
+        u64 att = 0;
+        int from = 0;
+        if (pt >= 0) {
+            for (; rank; --rank) mine &= mine - 1;
+            from = lsb(mine);
+            att = pt == KNIGHT ? knight_att(bit(from)) : pt == KING ? king_att(bit(from)) : 0;
+            if (pt == BISHOP || pt == QUEEN) att |= bishop_att(from, occ);
+            if (pt == ROOK || pt == QUEEN) att |= rook_att(from, occ);
+            att &= targets;
+        }
+        for (int j = 0; j < count; ++j)
+            add_set(list, n, __shfl_sync(0xffffffffu, att, j), __shfl_sync(0xffffffffu, from, j), 0);
+    }
+#else
     for (int pt = KNIGHT; pt <= KING; ++pt)
         for (u64 b = pcs(g, us, pt); b; b &= b - 1) {
             int from = lsb(b);
-#ifndef SERIAL_GEN
-            add_set(list, n, attacks_bb(pt, from, occ) & targets, from, 0);
-#else
             for (u64 a = attacks_bb(pt, from, occ) & targets; a; a &= a - 1) add(list, n, from, lsb(a), 0, KNIGHT);
-#endif
         }
+#endif
     if (!noisy) {
         int base = us == 0 ? 0 : 56, king = base + 4, rights = g->states[g->nstates - 1].castling;
         if ((rights & (us == 0 ? WHITE_OO | WHITE_OOO : BLACK_OO | BLACK_OOO)) && !in_check(g)) {
@@ -895,15 +922,13 @@ __device__ void update_corrhist(const Game* g, Tables* tb, int diff, int depth) 
 }
 __device__ u16 pick_move(u16* list, int* scores, int n, int i) {
     __syncwarp();
-    int bestS = -2147483647 - 1, bestJ = n;
-    for (int j = i + lane_id(); j < n; j += 32) {
-        int sj = scores[j];
-        if (sj > bestS) { bestS = sj; bestJ = j; } // a lane's first maximum: its indices only grow
-    }
-    for (int off = 16; off; off >>= 1) {
-        int s2 = __shfl_xor_sync(0xffffffffu, bestS, off), j2 = __shfl_xor_sync(0xffffffffu, bestJ, off);
-        if (s2 > bestS || (s2 == bestS && j2 < bestJ)) { bestS = s2; bestJ = j2; }
-    }
+    // Scores lie within +-2^21 (TT move 1,000,000; history and continuation entries within +-16,384 each) and
+    // indices below 256, so (score + 2^22) << 8 | (255 - index) fits 32 bits, and its maximum is the best score
+    // at its first index.
+    unsigned key = 0;
+    for (int j = i + lane_id(); j < n; j += 32) key = max(key, ((unsigned)(scores[j] + (1 << 22)) << 8) | (unsigned)(255 - j));
+    key = __reduce_max_sync(0xffffffffu, key);
+    int bestS = (int)(key >> 8) - (1 << 22), bestJ = 255 - (int)(key & 255);
     u16 mi = list[i], mb = list[bestJ];
     int si = scores[i];
     __syncwarp();
