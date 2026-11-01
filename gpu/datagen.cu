@@ -1786,20 +1786,15 @@ extern "C" __global__ void match_setup(const int* slots, int k, Tables* tablesA,
     clear_tables(tablesB + slots[w]);
 }
 
-extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, const short* ftbA, const short* outwA, int outbA,
-                                      const short* ftwB, const short* ftbB, const short* outwB, int outbB,
-                                      const Params* pa, const Params* pb, int perGame,
-                                      short* accs, Tables* tablesA, Tables* tablesB, unsigned long long nodes,
-                                      unsigned long long budget) {
-    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
-    if (w >= n) return;
-    Game* g = games + w;
-    if (g->matchResult >= 0) return;
-    short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
+// Whether network A is to move in g: at the root of the search under way, or in the position if none is.
+__device__ __forceinline__ bool a_to_move(const Game* g) {
+    return (g->thinkState == T_IDLE ? g->stm : g->rootStm) == g->aColor;
+}
+
+// One kernel launch's share of game g's current ply, for the side to move: its network, constants and tables.
+__device__ void match_ply(Game* g, const Net& net, const Params& p, short* acc, Tables* tb, unsigned long long nodes,
+                          unsigned long long budget) {
     bool idle = g->thinkState == T_IDLE; // otherwise a search is under way, in some position of its tree
-    bool aToMove = (idle ? g->stm : g->rootStm) == g->aColor;
-    Net net = aToMove ? Net{ftwA, ftbA, outwA, outbA} : Net{ftwB, ftbB, outwB, outbB};
-    Tables* tb = (aToMove ? tablesA : tablesB) + w;
     int result = -1;
     if (idle) { // a new ply
         if (first_legal_move(g, net, acc, 0) == MOVE_NONE) result = in_check(g) ? (g->stm == 0 ? 0 : 2) : 1;
@@ -1817,7 +1812,7 @@ extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, con
         __syncwarp();
         think_start(g, tb, nodes);
     }
-    if (!think_run(g, net, (aToMove ? pa : pb)[perGame ? w : 0], acc, tb, budget)) return;
+    if (!think_run(g, net, p, acc, tb, budget)) return;
     int score = g->thinkScore;
     u16 best = g->thinkBest;
     int whiteScore = g->stm == 0 ? score : -score;
@@ -1842,6 +1837,35 @@ extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, con
     g->accTop = 0;
     g->ply = pl + 1;
     __syncwarp();
+}
+
+// A ply of every game, for whichever side is to move.
+extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, const short* ftbA, const short* outwA, int outbA,
+                                      const short* ftwB, const short* ftbB, const short* outwB, int outbB,
+                                      const Params* pa, const Params* pb, int perGame,
+                                      short* accs, Tables* tablesA, Tables* tablesB, unsigned long long nodes,
+                                      unsigned long long budget) {
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    if (w >= n) return;
+    Game* g = games + w;
+    if (g->matchResult >= 0) return;
+    bool aToMove = a_to_move(g);
+    Net net = aToMove ? Net{ftwA, ftbA, outwA, outbA} : Net{ftwB, ftbB, outwB, outbB};
+    match_ply(g, net, (aToMove ? pa : pb)[perGame ? w : 0], accs + (size_t)w * ACC_SLOTS * 2 * H,
+              (aToMove ? tablesA : tablesB) + w, nodes, budget);
+}
+
+// A ply of the games where `side` (0: A, 1: B) is to move, with that side's network, constants, accumulators,
+// tables and node count; the others wait. Run once per side, from a build of each side's hidden size, it plays
+// what match_step plays.
+extern "C" __global__ void match_side(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
+                                      const Params* p, int perGame, short* accs, Tables* tables, int side,
+                                      unsigned long long nodes, unsigned long long budget) {
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    if (w >= n) return;
+    Game* g = games + w;
+    if (g->matchResult >= 0 || a_to_move(g) != (side == 0)) return;
+    match_ply(g, Net{ftw, ftb, outw, outb}, p[perGame ? w : 0], accs + (size_t)w * ACC_SLOTS * 2 * H, tables + w, nodes, budget);
 }
 
 extern "C" __global__ void match_results(const Game* games, int n, int* out) {

@@ -206,25 +206,36 @@ def auto_capacity(resident, game_bytes, free_bytes):
     return max(resident, min(AUTO_WAVES * resident, fit))
 
 
+def build_module(h):
+    """datagen.cu compiled for networks of h hidden units, with its Zobrist keys loaded."""
+    src = open(os.path.join(HERE, "datagen.cu")).read()
+    options = ("--std=c++17", f"-DH={h}", f"-DTT_BITS={TT_BITS}")
+    # Compile-time variants of datagen.cu for measuring, as -D flags (e.g. "-DSPLIT_DELTA -DNO_PREFETCH").
+    options += tuple(os.environ.get("GPU_DEFINES", "").split())
+    # Registers per thread: the search wants 176, which fits two 4-warp blocks per SM; capped at 168,
+    # three fit, and that measured fastest (GPU_MAXRREG overrides; 0 leaves it to the compiler).
+    maxrreg = int(os.environ.get("GPU_MAXRREG") or 168)
+    if maxrreg:
+        options += (f"--maxrregcount={maxrreg}",)
+    mod = cp.RawModule(code=src, options=options)
+    for name, arr in zip(("Z_PSQ", "Z_CASTLING", "Z_EP", "Z_SIDE"), zobrist()):
+        cp.ndarray(arr.shape, arr.dtype, mod.get_global(name))[...] = cp.asarray(arr)
+    return mod
+
+
+def module_sizes(mod):
+    """Bytes of a Game, a Sample, a TT entry, Params and a game's Tables in this build (none depends on H)."""
+    sizes = cp.zeros(5, cp.int32)
+    mod.get_function("datagen_sizes")((1,), (1,), (sizes,))
+    return tuple(int(x) for x in sizes.get())
+
+
 class GpuDatagen:
     def __init__(self, net_path, capacity, kernel="datagen_step"):
         """capacity: games in flight, or "<k>w" for k full waves of `kernel` (match_step for matches and SPSA)."""
         self.h, ftw, ftb, outw, self.outb = load_net(net_path)
-        src = open(os.path.join(HERE, "datagen.cu")).read()
-        options = ("--std=c++17", f"-DH={self.h}", f"-DTT_BITS={TT_BITS}")
-        # Compile-time variants of datagen.cu for measuring, as -D flags (e.g. "-DSPLIT_DELTA -DNO_PREFETCH").
-        options += tuple(os.environ.get("GPU_DEFINES", "").split())
-        # Registers per thread: the search wants 176, which fits two 4-warp blocks per SM; capped at 168,
-        # three fit, and that measured fastest (GPU_MAXRREG overrides; 0 leaves it to the compiler).
-        maxrreg = int(os.environ.get("GPU_MAXRREG") or 168)
-        if maxrreg:
-            options += (f"--maxrregcount={maxrreg}",)
-        self.mod = cp.RawModule(code=src, options=options)
-        for name, arr in zip(("Z_PSQ", "Z_CASTLING", "Z_EP", "Z_SIDE"), zobrist()):
-            cp.ndarray(arr.shape, arr.dtype, self.mod.get_global(name))[...] = cp.asarray(arr)
-        sizes = cp.zeros(5, cp.int32)
-        self.mod.get_function("datagen_sizes")((1,), (1,), (sizes,))
-        self.game_bytes, sample_bytes, tt_bytes, params_bytes, self.tables_bytes = (int(x) for x in sizes.get())
+        self.mod = build_module(self.h)
+        self.game_bytes, sample_bytes, tt_bytes, params_bytes, self.tables_bytes = module_sizes(self.mod)
         assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16 and params_bytes == PARAMS.itemsize
         # The search's constants: src/search.cpp's, or GPU_PARAMS (JSON, as gpu/spsa.py prints them).
         self.params = cp.asarray(make_params(json.loads(os.environ.get("GPU_PARAMS", "{}"))).view(np.uint8))

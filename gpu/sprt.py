@@ -5,8 +5,8 @@ through the GPU until the log-likelihood ratio crosses a bound.
                        [games at once=2w] [seed=1] [book=books/UHO_Lichess_4852_v1.epd]
 
 A is the change: network A with the search constants GPU_PARAMS (JSON, as gpu/spsa.py prints them); B is the
-base: network B with GPU_PARAMS_B (A's if unset). A change the kernel switches through Params is tested by
-setting the switch for A only. Both networks need the same hidden size.
+base: network B with GPU_PARAMS_B (A's if unset). nodes may be "<A>:<B>" for node odds, as in gpu/match.py, which
+also lets networks of different sizes play (one kernel build per side).
 
 Each opening is played twice, A with White and then with Black. A finished game's slot takes the next game at
 once, so the GPU stays full. The test is a GSPRT on the pair scores (pentanomial, as gpu/match.py), alpha =
@@ -18,7 +18,6 @@ Fixed nodes leave speed out: a change that makes the search slower per node is n
 GPU_BUDGET (default 20,000 here) caps the nodes per launch to keep launches under the Windows watchdog.
 """
 import collections
-import json
 import math
 import os
 import random
@@ -31,8 +30,8 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 os.environ.setdefault("GPU_BUDGET", "20000")  # read by GpuDatagen
-from datagen import GpuDatagen, compact, load_net, make_params, wait  # noqa: E402
-from match import pentanomial_stats  # noqa: E402
+from datagen import compact  # noqa: E402
+from match import Sides, pentanomial_stats  # noqa: E402
 
 ALPHA = BETA = 0.05
 LOWER, UPPER = math.log(BETA / (1 - ALPHA)), math.log((1 - BETA) / ALPHA)
@@ -41,27 +40,18 @@ LOWER, UPPER = math.log(BETA / (1 - ALPHA)), math.log((1 - BETA) / ALPHA)
 def main():
     a = sys.argv[1:]
     net_a, net_b = a[0], a[1]
-    nodes = int(a[2]) if len(a) > 2 else 50000
+    nodes = a[2] if len(a) > 2 else "50000"
     elo0 = float(a[3]) if len(a) > 3 else 0.0
     elo1 = float(a[4]) if len(a) > 4 else 5.0
     max_pairs = int(a[5]) if len(a) > 5 else 20000
     capacity = a[6] if len(a) > 6 else "2w"
     seed = int(a[7]) if len(a) > 7 else 1
     book = a[8] if len(a) > 8 else os.path.join(HERE, "..", "books", "UHO_Lichess_4852_v1.epd")
-    assert load_net(net_a)[0] == load_net(net_b)[0], "both networks need the same hidden size"
     lines = [l.strip() for l in open(book) if l.strip()]
     rng = random.Random(seed)
 
-    dg = GpuDatagen(net_a, capacity, kernel="match_step")
-    n = dg.capacity
-    _, ftw, ftb, outw, outb = load_net(net_b)
-    net_bb = (cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw), np.int32(outb))
-    net_aa = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb))
-    params_b = dg.params  # GPU_PARAMS, read by GpuDatagen
-    if "GPU_PARAMS_B" in os.environ:
-        params_b = cp.asarray(make_params(json.loads(os.environ["GPU_PARAMS_B"])).view(np.uint8))
-    tables_b = cp.zeros(n * dg.tables_bytes, cp.uint8)  # side B's TTs and correction histories
-    k = {name: dg.mod.get_function(name) for name in ("match_init", "match_setup", "match_step", "match_results")}
+    sides = Sides(net_a, net_b, capacity, nodes)
+    n = sides.n
 
     queue = collections.deque()  # games waiting for a slot: (pair, A's color, opening)
     slot_game = [None] * n       # (pair, A's color) of the game in each slot, None when idle
@@ -88,12 +78,8 @@ def main():
             colors.append(color)
         if not used:
             return
-        m = len(used)
-        slots_gpu = cp.asarray(np.array(used, np.int32))
-        k["match_init"](((m + 127) // 128,), (128,), (dg.games, slots_gpu, np.int32(m),
-                                                      cp.asarray(np.stack([compact(f) for f in fens])),
-                                                      cp.asarray(np.array(colors, np.int32))))
-        k["match_setup"](((m + 3) // 4,), (128,), (slots_gpu, np.int32(m), dg.tables, tables_b))
+        sides.start(cp.asarray(np.array(used, np.int32)), cp.asarray(np.stack([compact(f) for f in fens])),
+                    cp.asarray(np.array(colors, np.int32)))
 
     def report(final=False):
         elo, half, llr = pentanomial_stats(scores, elo0, elo1) if len(scores) > 1 else (0.0, float("nan"), 0.0)
@@ -106,7 +92,7 @@ def main():
         return llr
 
     print(f"GPU SPRT [{elo0:g}, {elo1:g}]: {os.path.basename(net_a)} (A, GPU_PARAMS) vs {os.path.basename(net_b)} "
-          f"(B, GPU_PARAMS_B) at {nodes} nodes a move, {n} games at once, at most {max_pairs} pairs, seed {seed}",
+          f"(B, GPU_PARAMS_B), {sides.describe()}, {n} games at once, at most {max_pairs} pairs, seed {seed}",
           flush=True)
     print(f"A: {os.environ.get('GPU_PARAMS', '{}')}  B: {os.environ.get('GPU_PARAMS_B', os.environ.get('GPU_PARAMS', '{}'))}",
           flush=True)
@@ -115,9 +101,8 @@ def main():
     res = cp.full(n, -1, cp.int32)
     verdict = "max pairs"
     while any(g is not None for g in slot_game):
-        k["match_step"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net_aa + net_bb
-                        + (dg.params, params_b, np.int32(0), dg.accs, dg.tables, tables_b, np.uint64(nodes), dg.budget))
-        k["match_results"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), res))
+        sides.step()
+        sides.results(res)
         wait()
         r = res.get()  # 0 Black won, 1 draw, 2 White won
         free = [s for s in range(n) if slot_game[s] is not None and r[s] >= 0]
