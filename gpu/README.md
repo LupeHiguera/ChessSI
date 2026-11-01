@@ -38,13 +38,16 @@ every game, which keeps kernels well under the Windows GPU watchdog. For longer 
 caps the nodes a search runs per launch: it then pauses, with its state in the game, and carries on
 in the next launch, with the same result.
 
-Throughput with net10 at 5,000 nodes a move, measured before TT replacement, losing captures last, SEE
-pruning in the main search and correction history reached the GPU search:
+Throughput at 5,000 nodes a move with 8 random plies (`datagen.py run`, the rate after 8 minutes). The
+first rows are net10 with the search before TT replacement, losing captures last, SEE pruning and correction
+history reached the GPU:
 
 | GPU | Games in flight | Positions per second | Nodes per second |
 | --- | --- | --- | --- |
 | RTX 5080 | 3,072 | about 13,000 | 91M |
-| RTX 5060 Ti (first, recursive search; not re-measured) | 1,536 | about 3,400 | 24M |
+| RTX 5060 Ti (first, recursive search) | 1,536 | about 3,400 | 24M |
+| RTX 5060 Ti, 2026-11-01: main's search, net14 (256 units) | 3,456 (`auto`) | 6,450 | 44.5M |
+| RTX 5060 Ti, 2026-11-01: main's search, net19b (512 units) | 3,456 (`auto`) | 5,630 | 38.6M |
 | ChessSI on 13 CPU cores, for comparison | | about 8,300 | 39M |
 
 How the 5080 got from about 5,900 to about 13,000 positions per second, each step byte-identical:
