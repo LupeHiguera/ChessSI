@@ -513,11 +513,16 @@ __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
     return (int)(sum * EVAL_SCALE / (QA * QB));
 }
 
-// Board edits on local copies of the bitboards. All lanes take the same snapshot after a
-// __syncwarp(), compute the same result, and only then write it, so no lane can see another's
-// half-done update (the lanes of a warp are not guaranteed to run in lockstep). The copies are only
-// ever indexed by constants (the loops unroll): an index known only at run time would put them in
-// local memory, a copy per lane.
+// Board edits. do_move and undo_move read the position with every lane, and after a __syncwarp() one lane toggles
+// the moved pieces in place (xor_piece: a type word and a color word each), so no lane can see a half-done update
+// (the lanes of a warp are not guaranteed to run in lockstep) and the next __syncwarp() publishes it.
+__device__ __forceinline__ void xor_piece(Game* g, int p, u64 mask) {
+    g->byType[type_of(p)] ^= mask;
+    g->byColor[color_of(p)] ^= mask;
+}
+// BOARD_COPY, the former way: every lane copies all eight words into registers after a __syncwarp(), toggles them
+// there and stores them back. The copies are only ever indexed by constants (the loops unroll): an index known only
+// at run time would put them in local memory, a copy per lane.
 struct Board {
     u64 bt[6], bc[2];
 };
@@ -583,8 +588,10 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
     StateInfo st = g->states[n - 1];
     int from = m & 63, to = (m >> 6) & 63, type = m & (3 << 14);
     int pc = g->board[from];
+#ifdef BOARD_COPY
     Board b;
     b_load(g, b);
+#endif
     st.captured = NO_PIECE;
     ++st.rule50;
     ++st.pliesFromNull;
@@ -603,8 +610,10 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
         rookFrom = kingside ? from + 3 : from - 4;
         rookTo = kingside ? from + 1 : from - 1;
         rook = g->board[rookFrom];
+#ifdef BOARD_COPY
         b_xor(b, pc, bit(from) | bit(to));
         b_xor(b, rook, bit(rookFrom) | bit(rookTo));
+#endif
         d.piece[2] = rook; d.sq[2] = rookFrom;
         d.piece[3] = rook; d.sq[3] = rookTo;
         d.n = 4;
@@ -613,25 +622,35 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
         if (type == M_EN_PASSANT) capSq = us == 0 ? to - 8 : to + 8;
         int captured = g->board[capSq];
         if (captured != NO_PIECE) {
+#ifdef BOARD_COPY
             b_xor(b, captured, bit(capSq));
+#endif
             d.piece[2] = captured; d.sq[2] = capSq;
             d.n = 3;
             st.key ^= Z_PSQ[captured][capSq];
             st.captured = captured;
             st.rule50 = 0;
         }
+#ifdef BOARD_COPY
         b_xor(b, pc, bit(from) | bit(to));
+#endif
         st.key ^= Z_PSQ[pc][from] ^ Z_PSQ[pc][to];
         if (type_of(pc) == PAWN) {
             st.rule50 = 0;
             if (type == M_PROMOTION) {
                 arriving = us * 6 + ((m >> 12) & 3) + KNIGHT; // the pawn arrives as the new piece
+#ifdef BOARD_COPY
                 b_xor(b, pc, bit(to));
                 b_xor(b, arriving, bit(to));
+#endif
                 st.key ^= Z_PSQ[pc][to] ^ Z_PSQ[arriving][to];
             } else if (to - from == 16 || from - to == 16) {
                 int ep = (from + to) / 2;
+#ifdef BOARD_COPY
                 if (pawn_att(ep, us) & (them ? b.bc[1] : b.bc[0]) & b.bt[PAWN]) {
+#else
+                if (pawn_att(ep, us) & g->byColor[them] & g->byType[PAWN]) { // the enemy's pawns, which this move keeps
+#endif
                     st.ep = ep;
                     st.key ^= Z_EP[ep & 7];
                 }
@@ -646,7 +665,24 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
     }
     st.key ^= Z_SIDE[0];
     __syncwarp();
+#ifdef BOARD_COPY
     b_store(g, b);
+#else
+    if (lane_id() == 0) {
+        if (rook != NO_PIECE) {
+            xor_piece(g, pc, bit(from) | bit(to));
+            xor_piece(g, rook, bit(rookFrom) | bit(rookTo));
+        } else {
+            if (st.captured != NO_PIECE) xor_piece(g, st.captured, bit(capSq));
+            if (arriving != pc) { // a promotion: the pawn leaves, the new piece arrives
+                xor_piece(g, pc, bit(from));
+                xor_piece(g, arriving, bit(to));
+            } else {
+                xor_piece(g, pc, bit(from) | bit(to));
+            }
+        }
+    }
+#endif
     g->board[from] = NO_PIECE;
     if (rook != NO_PIECE) {
         g->board[rookFrom] = NO_PIECE;
@@ -677,30 +713,57 @@ __device__ void undo_move(Game* g, u16 m) {
     int n = g->nstates, top = g->accTop, us = g->stm ^ 1, fm = g->fullmove;
     int from = m & 63, to = (m >> 6) & 63, type = m & (3 << 14);
     int captured = g->states[n - 1].captured;
+#ifdef BOARD_COPY
     Board b;
     b_load(g, b);
+#endif
     int moved = g->board[to], back = moved, capSq = to, rookFrom = SQ_NONE, rookTo = SQ_NONE, rook = NO_PIECE;
     if (type == M_CASTLING) {
         bool kingside = to > from;
         rookFrom = kingside ? from + 3 : from - 4;
         rookTo = kingside ? from + 1 : from - 1;
         rook = g->board[rookTo];
+#ifdef BOARD_COPY
         b_xor(b, moved, bit(to) | bit(from));
         b_xor(b, rook, bit(rookTo) | bit(rookFrom));
+#endif
     } else {
         if (type == M_PROMOTION) {
             back = us * 6 + PAWN; // the new piece goes, a pawn returns
+#ifdef BOARD_COPY
             b_xor(b, moved, bit(to));
             b_xor(b, back, bit(to));
+#endif
         }
+#ifdef BOARD_COPY
         b_xor(b, back, bit(to) | bit(from));
+#endif
         if (captured != NO_PIECE) {
             if (type == M_EN_PASSANT) capSq = us == 0 ? to - 8 : to + 8;
+#ifdef BOARD_COPY
             b_xor(b, captured, bit(capSq));
+#endif
         }
     }
     __syncwarp();
+#ifdef BOARD_COPY
     b_store(g, b);
+#else
+    if (lane_id() == 0) {
+        if (rook != NO_PIECE) {
+            xor_piece(g, moved, bit(to) | bit(from));
+            xor_piece(g, rook, bit(rookTo) | bit(rookFrom));
+        } else {
+            if (back != moved) { // a promotion: the new piece goes, the pawn returns
+                xor_piece(g, moved, bit(to));
+                xor_piece(g, back, bit(from));
+            } else {
+                xor_piece(g, moved, bit(to) | bit(from));
+            }
+            if (captured != NO_PIECE) xor_piece(g, captured, bit(capSq));
+        }
+    }
+#endif
     g->board[to] = NO_PIECE;
     if (rook != NO_PIECE) {
         g->board[rookTo] = NO_PIECE;
