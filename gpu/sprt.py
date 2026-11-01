@@ -30,7 +30,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 os.environ.setdefault("GPU_BUDGET", "20000")  # read by GpuDatagen
-from datagen import compact  # noqa: E402
+from datagen import compact, wait  # noqa: E402
 from match import Sides, pentanomial_stats  # noqa: E402
 
 ALPHA = BETA = 0.05
