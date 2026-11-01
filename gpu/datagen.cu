@@ -103,7 +103,7 @@ struct Params {
     int lmpDepth, lmpBase;         // late move pruning: depth <= 8, quietCount >= 3 + depth * depth
     int futDepth, futMargin;       // futility pruning: depth <= 6, staticEval + 120 * depth <= alpha
     int lmrDepth, lmrMoves;        // late move reductions: depth >= 3, legalMoves > 3
-    int histMax;                   // history bonus min(depth * depth, 1200)
+    int histMax;                   // history bonus cap (1600 since PR #88)
     int aspDepth, aspDelta;        // aspiration windows from depth 5, delta 25
     int qsSee;                     // quiescence skips captures that fail see_ge(m, 0)
     int seeDepth, seeQuiet, seeCapture; // SEE pruning: depth <= 6, quiets below -60 * depth, captures below -30 * depth^2
@@ -117,7 +117,7 @@ struct Params {
     int histPruneDepth, histPruneMargin; // history pruning: quiets scored below -margin * depth, depth <= (0: off)
     int qsDelta;                   // delta pruning: quiescence skips captures that miss alpha by more than this over the victim (0: off)
     int histMul;                   // history bonus min(histMul * depth * depth, histMax) (1: the engine)
-    int histLin, histOff;          // if histLin: the bonus is min(histLin * depth - histOff, histMax) instead (histscale: 300, 250)
+    int histLin, histOff;          // if histLin: the bonus is min(histLin * depth - histOff, histMax) instead (PR #88: 300, 250)
     u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
 };
 
