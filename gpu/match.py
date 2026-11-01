@@ -73,7 +73,7 @@ def main():
     k = {name: dg.mod.get_function(name) for name in ("match_init", "match_setup", "match_step", "match_results")}
     start = cp.asarray(np.stack([compact(openings[i // 2]) for i in range(n)]))
     a_color = cp.asarray(np.array([i % 2 for i in range(n)], np.int32))  # A has White in even games
-    threads, warps = ((n + 127) // 128,), ((n + 3) // 4,)
+    threads, warps = ((n + 127) // 128,), dg.blocks(n)
     slots = cp.arange(n, dtype=cp.int32)
     k["match_init"](threads, (128,), (dg.games, slots, np.int32(n), start, a_color))
     k["match_setup"](warps, (128,), (slots, np.int32(n), dg.tables, tables_b))

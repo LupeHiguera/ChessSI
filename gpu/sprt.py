@@ -93,7 +93,7 @@ def main():
         k["match_init"](((m + 127) // 128,), (128,), (dg.games, slots_gpu, np.int32(m),
                                                       cp.asarray(np.stack([compact(f) for f in fens])),
                                                       cp.asarray(np.array(colors, np.int32))))
-        k["match_setup"](((m + 3) // 4,), (128,), (slots_gpu, np.int32(m), dg.tables, tables_b))
+        k["match_setup"](dg.blocks(m), (128,), (slots_gpu, np.int32(m), dg.tables, tables_b))
 
     def report(final=False):
         elo, half, llr = pentanomial_stats(scores, elo0, elo1) if len(scores) > 1 else (0.0, float("nan"), 0.0)
@@ -115,7 +115,7 @@ def main():
     res = cp.full(n, -1, cp.int32)
     verdict = "max pairs"
     while any(g is not None for g in slot_game):
-        k["match_step"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net_aa + net_bb
+        k["match_step"](dg.blocks(n), (128,), (dg.games, np.int32(n)) + net_aa + net_bb
                         + (dg.params, params_b, np.int32(0), dg.accs, dg.tables, tables_b, np.uint64(nodes), dg.budget))
         k["match_results"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), res))
         wait()

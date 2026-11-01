@@ -201,6 +201,9 @@ class GpuDatagen:
         options = ("--std=c++17", f"-DH={self.h}", f"-DTT_BITS={TT_BITS}")
         # Compile-time variants of datagen.cu for measuring, as -D flags (e.g. "-DSPLIT_DELTA -DNO_PREFETCH").
         options += tuple(os.environ.get("GPU_DEFINES", "").split())
+        # Lanes per game (gpu/datagen.cu's GS): 32 is one game per warp, 16, 8 or 4 put 2, 4 or 8 in each.
+        self.gs = int(os.environ.get("GPU_GS", 32))
+        options += (f"-DGS={self.gs}",)
         # Registers per thread: the search wants 176, which fits two 4-warp blocks per SM; capped at 168,
         # three fit, and that measured fastest (GPU_MAXRREG overrides; 0 leaves it to the compiler).
         maxrreg = int(os.environ.get("GPU_MAXRREG") or 168)
@@ -220,7 +223,7 @@ class GpuDatagen:
         self.budget = np.uint64(int(os.environ.get("GPU_BUDGET", 1 << 62)))
         cp.cuda.runtime.deviceSetLimit(0, 1024)  # cudaLimitStackSize, the default: the search needs about 200 bytes
         self.ftw, self.ftb, self.outw = cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw)
-        self.resident = resident_warps(self.mod.get_function(kernel))
+        self.resident = resident_warps(self.mod.get_function(kernel)) * 32 // self.gs  # games, not warps
         kind, value = parse_capacity(capacity)
         capacity = value * self.resident if kind == "waves" else value
         if capacity > self.resident and capacity % self.resident:
@@ -235,11 +238,15 @@ class GpuDatagen:
         self.k = {n: self.mod.get_function(n) for n in ("datagen_init", "datagen_setup", "datagen_step", "datagen_collect",
                                                          "datagen_done", "datagen_opening", "datagen_collect_slots", "score_step")}
 
+    def blocks(self, n):
+        """The grid for a kernel that runs n games, GS lanes each, in blocks of 128 threads."""
+        return ((n * self.gs + 127) // 128,)
+
     def play(self, fens, nodes, verbose=False, out=sys.stdout):
         n = len(fens)
         assert n <= self.capacity
         start = cp.asarray(np.stack([compact(f) for f in fens]))
-        threads, warps = ((n + 127) // 128,), ((n + 3) // 4,)
+        threads, warps = ((n + 127) // 128,), self.blocks(n)
         net = (self.ftw, self.ftb, self.outw, np.int32(self.outb))
         self.k["datagen_init"](threads, (128,), (self.games, np.int32(n), start))
         self.k["datagen_setup"](warps, (128,), (self.games, np.int32(n)) + net + (self.accs, self.tables))
@@ -289,7 +296,7 @@ class GpuDatagen:
             k = len(slots)
             ids = cp.arange(next_id, next_id + k, dtype=cp.uint64)
             next_id += k
-            self.k["datagen_opening"](((k + 3) // 4,), (128,), (self.games, cp.asarray(slots, cp.int32), np.int32(k), start, ids,
+            self.k["datagen_opening"](self.blocks(k), (128,), (self.games, cp.asarray(slots, cp.int32), np.int32(k), start, ids,
                                       np.uint64(seed), np.int32(random_plies)) + net + (self.accs, self.tables))
 
         reset(np.arange(cap, dtype=np.int32))
@@ -315,7 +322,7 @@ class GpuDatagen:
         t0 = last = time.perf_counter()
         with open(out_path, "a") as out:
             while active.any():
-                self.k["datagen_step"](((cap + 3) // 4,), (128,), (self.games, np.int32(cap)) + net
+                self.k["datagen_step"](self.blocks(cap), (128,), (self.games, np.int32(cap)) + net
                                        + (self.params, self.accs, self.tables, np.uint64(nodes), self.budget))
                 if collected is not None:  # format and write on the CPU while the step runs
                     write(out, *collected)
@@ -363,9 +370,9 @@ def rescore(dg, in_path, out_path, nodes, report_lines=1_000_000):
             n = len(lines)
             start = cp.asarray(np.stack([compact(l.split(" | ")[0]) for l in lines]))
             dg.k["datagen_init"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), start))
-            dg.k["datagen_setup"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net + (dg.accs, dg.tables))
+            dg.k["datagen_setup"](dg.blocks(n), (128,), (dg.games, np.int32(n)) + net + (dg.accs, dg.tables))
             while True:
-                dg.k["score_step"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net
+                dg.k["score_step"](dg.blocks(n), (128,), (dg.games, np.int32(n)) + net
                                    + (dg.params, dg.accs, dg.tables, np.uint64(nodes), dg.budget, scores))
                 dg.k["datagen_done"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), done))
                 wait()

@@ -121,7 +121,7 @@ def main():
         positions = cp.asarray(np.stack([compact(f) for f in fens]))
         k["match_init"](((m + 127) // 128,), (128,), (dg.games, slots_gpu, np.int32(m), positions,
                                                       cp.asarray(np.array(colors, np.int32))))
-        k["match_setup"](((m + 3) // 4,), (128,), (slots_gpu, np.int32(m), dg.tables, tables_b))
+        k["match_setup"](dg.blocks(m), (128,), (slots_gpu, np.int32(m), dg.tables, tables_b))
 
     print(f"SPSA of {len(SPACE)} constants: {total} pairs at {nodes} nodes a move, {n} games at once, "
           f"{os.path.basename(net_path)}, seed {seed}", flush=True)
@@ -131,7 +131,7 @@ def main():
     t0 = last = time.perf_counter()
     steps = 0
     while any(g is not None for g in slot_game):
-        k["match_step"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net + net
+        k["match_step"](dg.blocks(n), (128,), (dg.games, np.int32(n)) + net + net
                         + (pa_gpu, pb_gpu, np.int32(1), dg.accs, dg.tables, tables_b, np.uint64(nodes), dg.budget))
         k["match_results"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), res))
         wait()

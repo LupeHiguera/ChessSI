@@ -3,9 +3,11 @@
 // undo_move with the same Zobrist keys (src/position.cpp), and the game loop of src/datagen.cpp.
 // The aim is the same output as the CPU for the same start positions, checked with gpu/ref.cpp.
 //
-// One game per warp. All 32 lanes run the same scalar code in lockstep on one copy of the game in
-// global memory (same-address reads are broadcast and same-value writes merge), except the NNUE work:
-// each lane owns H / 32 hidden units of both perspectives. Every launch plays one ply of every game,
+// One game per GS lanes (GS = 32: one game per warp; 16, 8 or 4: 2, 4 or 8 games per warp). A game's lanes
+// run the same scalar code on one copy of the game in global memory (same-address reads are broadcast and
+// same-value writes merge), except the NNUE work: each lane owns H / GS hidden units of both perspectives.
+// Lanes of other games in the warp run their own searches: where their paths differ the warp interleaves
+// them, so one game's wait for memory can be covered by another's work. Syncs and shuffles stay within a game. Every launch plays one ply of every game,
 // which keeps kernels well under the Windows GPU watchdog. Compiled at run time with NVRTC.
 //
 // The search is not recursive: a recursive call saves every lane's registers at each level, 32 copies
@@ -29,7 +31,11 @@ typedef unsigned char u8;
 #ifndef H
 #define H 256
 #endif
-#define UNITS (H / 32)
+#ifndef GS
+#define GS 32 // lanes per game
+#endif
+static_assert(GS == 4 || GS == 8 || GS == 16 || GS == 32, "GS: lanes per game, 4 to 32");
+#define UNITS (H / GS)
 #define QA 255
 #define QB 64
 #define EVAL_SCALE 400
@@ -57,7 +63,7 @@ __constant__ u64 Z_SIDE[1];
 enum { P_GEN, P_SCORE, P_PICK, P_DO, P_UNDO, P_EVAL, P_TT, P_SEE, P_CHECK, P_DRAW, P_STEP, P_COUNT };
 #ifdef PROFILE
 #define PB(id) long long _pb##id = clock64();
-#define PE(id) if ((threadIdx.x & 31) == 0) g->prof[id] += clock64() - _pb##id;
+#define PE(id) if (lane_id() == 0) g->prof[id] += clock64() - _pb##id;
 #else
 #define PB(id)
 #define PE(id)
@@ -194,7 +200,14 @@ struct Net {
 
 __device__ __forceinline__ u64 bit(int s) { return 1ULL << s; }
 __device__ __forceinline__ int lsb(u64 b) { return __ffsll((long long)b) - 1; }
-__device__ __forceinline__ int lane_id() { return threadIdx.x & 31; }
+__device__ __forceinline__ int lane_id() { return threadIdx.x & (GS - 1); } // within this lane's game
+// The lanes of this lane's game, as a mask of the warp.
+__device__ __forceinline__ unsigned gmask() {
+    return GS == 32 ? 0xffffffffu : ((1u << (GS & 31)) - 1) << (threadIdx.x & 31 & ~(GS - 1));
+}
+__device__ __forceinline__ void gsync() { __syncwarp(gmask()); }
+// The game of this lane, in a launch of one game per GS lanes.
+__device__ __forceinline__ int game_id() { return (blockIdx.x * blockDim.x + threadIdx.x) / GS; }
 
 // Attacks: hyperbola quintessence with a full bit reversal for sliders, shifts for the rest.
 __device__ __forceinline__ u64 line_attacks(u64 occ, u64 mask, int s) {
@@ -305,6 +318,7 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
 #ifdef SPLIT_DELTA
     // One perspective at a time: half the loads in flight (20 registers instead of 40 at the search's
     // busiest point), at the cost of a second wait for the weight rows.
+#pragma unroll 1
     for (int c = 0; c < UNITS; c += 8) {
 #pragma unroll 1
         for (int persp = 0; persp < 2; ++persp) {
@@ -319,6 +333,7 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
         }
     }
 #else
+#pragma unroll 1
     for (int c = 0; c < UNITS; c += 8) {
         // Every load first, both perspectives and all (up to 4) features, so their latencies overlap.
         uint4 v[2], w[2][4];
@@ -356,13 +371,13 @@ __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
         }
     }
     long long sum = part;
-    for (int off = 16; off; off >>= 1) sum += __shfl_xor_sync(0xffffffffu, sum, off);
+    for (int off = GS / 2; off; off >>= 1) sum += __shfl_xor_sync(gmask(), sum, off);
     sum = sum / QA + net.outb;
     return (int)(sum * EVAL_SCALE / (QA * QB));
 }
 
 // Board edits on local copies of the bitboards. All lanes take the same snapshot after a
-// __syncwarp(), compute the same result, and only then write it, so no lane can see another's
+// gsync(), compute the same result, and only then write it, so no lane can see another's
 // half-done update (the lanes of a warp are not guaranteed to run in lockstep). The copies are only
 // ever indexed by constants (the loops unroll): an index known only at run time would put them in
 // local memory, a copy per lane.
@@ -424,7 +439,7 @@ __device__ __forceinline__ void prefetch_child(const Game* g, Tables* tb, u64 ke
 // Position::do_move: plays a pseudo-legal move and returns whether it was legal. With tb and a prefetch kind,
 // it also prefetches what the child will look up first (prefetch_child).
 __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb = nullptr, int prefetch = PF_NONE) {
-    __syncwarp();
+    gsync();
     int n = g->nstates, top = g->accTop, us = g->stm, them = us ^ 1, fm = g->fullmove;
     StateInfo st = g->states[n - 1];
     int from = m & 63, to = (m >> 6) & 63, type = m & (3 << 14);
@@ -491,7 +506,7 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
         st.castling = castling;
     }
     st.key ^= Z_SIDE[0];
-    __syncwarp();
+    gsync();
     b_store(g, b);
     g->board[from] = NO_PIECE;
     if (rook != NO_PIECE) {
@@ -506,7 +521,7 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
     g->stm = them;
     g->fullmove = fm + (us == 1);
     g->accTop = top + 1;
-    __syncwarp();
+    gsync();
 #ifndef NO_PREFETCH
     if (prefetch != PF_NONE) prefetch_child(g, tb, st.key, pc, to, prefetch);
 #endif
@@ -514,12 +529,12 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
     // accumulator, so it is only computed for legal ones (about a quarter of updates are not).
     bool legal = !attacked(g, king_sq(g, us), them);
     if (legal) apply_delta(net, acc_slot(acc, top), acc_slot(acc, top + 1), d);
-    __syncwarp();
+    gsync();
     return legal;
 }
 
 __device__ void undo_move(Game* g, u16 m) {
-    __syncwarp();
+    gsync();
     int n = g->nstates, top = g->accTop, us = g->stm ^ 1, fm = g->fullmove;
     int from = m & 63, to = (m >> 6) & 63, type = m & (3 << 14);
     int captured = g->states[n - 1].captured;
@@ -545,7 +560,7 @@ __device__ void undo_move(Game* g, u16 m) {
             b_xor(b, captured, bit(capSq));
         }
     }
-    __syncwarp();
+    gsync();
     b_store(g, b);
     g->board[to] = NO_PIECE;
     if (rook != NO_PIECE) {
@@ -559,11 +574,11 @@ __device__ void undo_move(Game* g, u16 m) {
     g->fullmove = fm - (us == 1);
     g->accTop = top - 1;
     g->nstates = n - 1;
-    __syncwarp();
+    gsync();
 }
 
 __device__ void do_null_move(Game* g) {
-    __syncwarp();
+    gsync();
     int n = g->nstates, us = g->stm;
     StateInfo st = g->states[n - 1];
     st.captured = NO_PIECE;
@@ -574,33 +589,33 @@ __device__ void do_null_move(Game* g) {
         st.ep = SQ_NONE;
     }
     st.key ^= Z_SIDE[0];
-    __syncwarp();
+    gsync();
     g->states[n] = st;
     g->nstates = n + 1;
     g->stm = us ^ 1;
-    __syncwarp();
+    gsync();
 }
 __device__ void undo_null_move(Game* g) {
-    __syncwarp();
+    gsync();
     int n = g->nstates, us = g->stm;
-    __syncwarp();
+    gsync();
     g->stm = us ^ 1;
     g->nstates = n - 1;
-    __syncwarp();
+    gsync();
 }
 
 
 __device__ bool is_draw(Game* g) {
-    __syncwarp();
+    gsync();
     int n = g->nstates;
     const StateInfo& st = g->states[n - 1];
     if (st.rule50 >= 100) return true;
     u64 key = st.key;
     int lookback = min(min(st.rule50, st.pliesFromNull), n - 1);
     bool found = false;
-    for (int i = 4 + 2 * lane_id(); i <= lookback; i += 64) // lane l checks plies 4 + 2l, 4 + 2l + 64, ...
+    for (int i = 4 + 2 * lane_id(); i <= lookback; i += 2 * GS) // lane l checks plies 4 + 2l, 4 + 2l + 2 GS, ...
         if (g->states[n - 1 - i].key == key) found = true;
-    return __any_sync(0xffffffffu, found);
+    return __any_sync(gmask(), found);
 }
 
 // ---- Move generation (src/movegen.cpp order) ----
@@ -669,7 +684,7 @@ __device__ __forceinline__ int score_from_tt(int s, int ply) {
 }
 __device__ void tt_store(Tables* tb, u64 key, u16 move, int score, int depth, int bound) {
     TTEntry* e = tt_entry(tb->tt, key);
-    __syncwarp();
+    gsync();
     TTEntry old = *e;
     u8 gen = (u8)tb->gen;
     // A deeper result for another position, written during this search, stays (every lane agrees).
@@ -677,22 +692,22 @@ __device__ void tt_store(Tables* tb, u64 key, u16 move, int score, int depth, in
     if (move == MOVE_NONE && old.key == key) move = old.move;
     TTEntry n;
     n.key = key; n.move = move; n.score = (short)score; n.depth = (signed char)depth; n.bound = (u8)bound; n.gen = gen; n.pad = 0;
-    __syncwarp();
+    gsync();
     *e = n;
-    __syncwarp();
+    gsync();
 }
 // Search::clear(): an empty TT and correction history.
 __device__ void clear_tables(Tables* tb) {
     TTEntry z;
     z.key = 0; z.move = 0; z.score = 0; z.depth = 0; z.bound = 0; z.gen = 0; z.pad = 0;
-    for (int i = lane_id(); i < (1 << TT_BITS); i += 32) tb->tt[i] = z;
-    for (int i = lane_id(); i < 2 * CORR_SIZE; i += 32) (&tb->corr[0][0])[i] = 0;
-    for (int i = lane_id(); i < 4 * CORR_SIZE; i += 32) (&tb->npcorr[0][0][0])[i] = 0;
+    for (int i = lane_id(); i < (1 << TT_BITS); i += GS) tb->tt[i] = z;
+    for (int i = lane_id(); i < 2 * CORR_SIZE; i += GS) (&tb->corr[0][0])[i] = 0;
+    for (int i = lane_id(); i < 4 * CORR_SIZE; i += GS) (&tb->npcorr[0][0][0])[i] = 0;
     int4* ch = reinterpret_cast<int4*>(&tb->conthist[0][0]);
-    for (int i = lane_id(); i < CH_BLOCKS; i += 32) ch[i] = make_int4(0, 0, 0, 0);
-    for (int i = lane_id(); i < CH_WORDS; i += 32) tb->chMask[i] = 0;
+    for (int i = lane_id(); i < CH_BLOCKS; i += GS) ch[i] = make_int4(0, 0, 0, 0);
+    for (int i = lane_id(); i < CH_WORDS; i += GS) tb->chMask[i] = 0;
     if (lane_id() == 0) tb->gen = 0;
-    __syncwarp();
+    gsync();
 }
 
 // ---- Search (src/search.cpp) ----
@@ -716,8 +731,8 @@ __device__ __forceinline__ short* cont_entry(Game* g, Tables* tb, int on, int pl
 // that lose material by SEE go below every quiet move), a queen promotion, the two killers, then quiet moves
 // by history plus their two continuation entries (each within +-16384).
 __device__ void score_moves(Game* g, Tables* tb, int contHist, const u16* list, int n, int* scores, u16 ttMove, int ply) {
-    __syncwarp();
-    for (int i = lane_id(); i < n; i += 32) { // every lane scores every 32nd move
+    gsync();
+    for (int i = lane_id(); i < n; i += GS) { // every lane scores every GS-th move
         u16 m = list[i];
         int from = m & 63, to = (m >> 6) & 63, t = m & (3 << 14), s;
         if (m == ttMove) s = 1000000;
@@ -737,7 +752,7 @@ __device__ void score_moves(Game* g, Tables* tb, int contHist, const u16* list, 
         else s = 0;
         scores[i] = s;
     }
-    __syncwarp();
+    gsync();
 }
 // Marks the block of continuation-history entry c as possibly non-zero (see Tables::chMask). Every lane
 // reads the same word, then writes the same value.
@@ -745,9 +760,9 @@ __device__ __forceinline__ void mark_cont(Tables* tb, const short* c) {
     int block = (int)(c - &tb->conthist[0][0]) >> 3;
     unsigned* w = &tb->chMask[block >> 5];
     unsigned v = *w | (1u << (block & 31));
-    __syncwarp();
+    gsync();
     *w = v;
-    __syncwarp();
+    gsync();
 }
 // Gravity moves history and both continuation entries toward +-16384 by the same bonus.
 __device__ void update_history(Game* g, Tables* tb, int contHist, int ply, u16 m, int bonus) {
@@ -758,11 +773,11 @@ __device__ void update_history(Game* g, Tables* tb, int contHist, int ply, u16 m
     v += bonus - v * abs(bonus) / 16384;
     v1 += bonus - v1 * abs(bonus) / 16384;
     v2 += bonus - v2 * abs(bonus) / 16384;
-    __syncwarp();
+    gsync();
     h = v;
     if (c1) *c1 = (short)v1;
     if (c2) *c2 = (short)v2;
-    __syncwarp();
+    gsync();
     if (c1) mark_cont(tb, c1);
     if (c2) mark_cont(tb, c2);
 }
@@ -795,35 +810,35 @@ __device__ void update_corrhist(const Game* g, Tables* tb, int diff, int depth) 
     short* e = &tb->corr[us][pawn_index(g)];
     short* nw = &tb->npcorr[us][0][nonpawn_index(g, 0)];
     short* nb = &tb->npcorr[us][1][nonpawn_index(g, 1)];
-    __syncwarp();
+    gsync();
     int v = *e, vw = *nw, vb = *nb;
     int bonus = min(max(diff * depth / 4, -CORR_LIMIT / 4), CORR_LIMIT / 4);
     v += bonus - v * abs(bonus) / CORR_LIMIT;
     vw += bonus - vw * abs(bonus) / CORR_LIMIT;
     vb += bonus - vb * abs(bonus) / CORR_LIMIT;
-    __syncwarp();
+    gsync();
     *e = (short)v;
     *nw = (short)vw;
     *nb = (short)vb;
-    __syncwarp();
+    gsync();
 }
 __device__ u16 pick_move(u16* list, int* scores, int n, int i) {
-    __syncwarp();
+    gsync();
     int bestS = -2147483647 - 1, bestJ = n;
-    for (int j = i + lane_id(); j < n; j += 32) {
+    for (int j = i + lane_id(); j < n; j += GS) {
         int sj = scores[j];
         if (sj > bestS) { bestS = sj; bestJ = j; } // a lane's first maximum: its indices only grow
     }
-    for (int off = 16; off; off >>= 1) {
-        int s2 = __shfl_xor_sync(0xffffffffu, bestS, off), j2 = __shfl_xor_sync(0xffffffffu, bestJ, off);
+    for (int off = GS / 2; off; off >>= 1) {
+        int s2 = __shfl_xor_sync(gmask(), bestS, off), j2 = __shfl_xor_sync(gmask(), bestJ, off);
         if (s2 > bestS || (s2 == bestS && j2 < bestJ)) { bestS = s2; bestJ = j2; }
     }
     u16 mi = list[i], mb = list[bestJ];
     int si = scores[i];
-    __syncwarp();
+    gsync();
     list[i] = mb; list[bestJ] = mi;
     scores[i] = bestS; scores[bestJ] = si;
-    __syncwarp();
+    gsync();
     return mb;
 }
 __device__ bool see_ge(const Game* g, u16 m, int threshold) {
@@ -859,7 +874,7 @@ __device__ bool see_ge(const Game* g, u16 m, int threshold) {
 __device__ u16 first_legal_move(Game* g, const Net& net, short* acc, int ply) {
     u16* list = g->moves[ply];
     int n = generate(g, list, false);
-    __syncwarp();
+    gsync();
     for (int i = 0; i < n; ++i) {
         u16 m = list[i];
         bool legal = do_move(g, m, net, acc);
@@ -914,7 +929,7 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
 #define CALL(RESUME, ENTRY, A, B, D)                     \
     {                                                     \
         f.state = RESUME;                                 \
-        __syncwarp();                                     \
+        gsync();                                     \
         g->frames[sp++] = f;                              \
         f = new_call(ENTRY, A, B, D, f.ply + 1);          \
         continue;                                         \
@@ -925,7 +940,7 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
     {                                                     \
         u16 _excl = (EXCL);                               \
         f.state = RESUME;                                 \
-        __syncwarp();                                     \
+        gsync();                                     \
         g->frames[sp++] = f;                              \
         f = new_call(S_ENTRY, A, B, D, f.ply);            \
         f.excl = _excl;                                   \
@@ -951,7 +966,7 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
 // score in *score, or false once the node count reaches stopAt: the running call goes back to g->cur,
 // and the next call carries on from it.
 __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc, Tables* tb, u64 stopAt, int* score) {
-    __syncwarp();
+    gsync();
     Frame f = g->cur;
     int sp = g->sp, ret = 0;
     // The node count and the stop flag stay in registers until the search pauses or returns (every
@@ -961,12 +976,12 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
     int stopped = g->stopped;
     while (true) {
         if (nodes >= stopAt) {
-            __syncwarp();
+            gsync();
             g->cur = f;
             g->sp = sp;
             g->nodes = nodes;
             g->stopped = stopped;
-            __syncwarp();
+            gsync();
             return false;
         }
         switch (f.state) {
@@ -1016,7 +1031,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 int R = p.nmpBase + f.depth / p.nmpDiv + (p.nmpEvalDiv ? min((f.staticEval - f.beta) / p.nmpEvalDiv, p.nmpEvalMax) : 0);
                 g->moveStack[f.ply] = MOVE_NONE;
                 g->doubleExt[f.ply + 1] = g->doubleExt[f.ply];
-                __syncwarp();
+                gsync();
                 do_null_move(g);
                 CALL(S_NULL_DONE, S_ENTRY, -f.beta, -f.beta + 1, f.depth - 1 - R)
             }
@@ -1037,7 +1052,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             if (!f.root && !f.excl && f.depth >= p.iirDepth && f.ttMove == MOVE_NONE) --f.depth;
             int slot = move_slot(f);
             PB(0) f.n = generate(g, g->moves[slot], false);
-            __syncwarp(); PE(0)
+            gsync(); PE(0)
             PB(1) score_moves(g, tb, p.contHist, g->moves[slot], f.n, g->scores[slot], f.ttMove, f.ply); PE(1)
             f.originalAlpha = f.alpha;
             f.best = -VALUE_INF;
@@ -1084,7 +1099,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 g->moveStack[f.ply] = m;
                 g->pieceStack[f.ply] = moved;
                 g->doubleExt[f.ply + 1] = g->doubleExt[f.ply] + (f.ext == 2);
-                __syncwarp();
+                gsync();
                 found = true;
                 break;
             }
@@ -1128,7 +1143,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             g->moveStack[f.ply] = f.m;
             g->pieceStack[f.ply] = moved;
             g->doubleExt[f.ply + 1] = g->doubleExt[f.ply] + (f.ext == 2);
-            __syncwarp();
+            gsync();
         }
         // fall through
         case S_SEARCH_MOVE: { // search the move just made, f.m
@@ -1165,16 +1180,16 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                     if (f.root) {
                         g->rootBest = m;
                         g->rootPv = 1;
-                        __syncwarp();
+                        gsync();
                     }
                     if (score >= f.beta) {
                         if (f.quiet) {
                             if (m != g->killers[f.ply][0]) {
                                 u16 k0 = g->killers[f.ply][0];
-                                __syncwarp();
+                                gsync();
                                 g->killers[f.ply][1] = k0;
                                 g->killers[f.ply][0] = m;
-                                __syncwarp();
+                                gsync();
                             }
                             int bonus = min(p.histMul * f.depth * f.depth, p.histMax);
                             update_history(g, tb, p.contHist, f.ply, m, bonus);
@@ -1188,7 +1203,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             }
             if (f.quiet) {
                 g->quiets[move_slot(f)][f.quietCount++] = m;
-                __syncwarp();
+                gsync();
             }
             continue;
         }
@@ -1199,7 +1214,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             f.alpha = max(f.alpha, standPat);
             f.staticEval = standPat; // for delta pruning
             PB(0) f.n = generate(g, g->moves[move_slot(f)], true);
-            __syncwarp(); PE(0)
+            gsync(); PE(0)
             PB(1) score_moves(g, tb, 0, g->moves[move_slot(f)], f.n, g->scores[move_slot(f)], MOVE_NONE, -1); PE(1)
             f.best = standPat;
             f.i = 0;
@@ -1246,14 +1261,14 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         }
         // The running call returned ret: resume its caller, or leave if it was the root.
         if (sp == 0) {
-            __syncwarp();
+            gsync();
             g->nodes = nodes;
             g->stopped = stopped;
-            __syncwarp();
+            gsync();
             *score = ret;
             return true;
         }
-        __syncwarp();
+        gsync();
         f = g->frames[--sp];
         f.childScore = ret;
     }
@@ -1281,7 +1296,7 @@ __device__ void think_start(Game* g, Tables* tb, u64 nodeLimit) {
     // Search::think halves the continuation history before each search: only the marked blocks, since
     // the rest are zero. Each lane owns whole words of marks, so no two lanes touch one block.
     int4* ch = reinterpret_cast<int4*>(&tb->conthist[0][0]);
-    for (int w = lane; w < CH_WORDS; w += 32) {
+    for (int w = lane; w < CH_WORDS; w += GS) {
         unsigned marks = tb->chMask[w], keep = marks;
         for (unsigned m = marks; m; m &= m - 1) {
             int b = __ffs(m) - 1, i = w * 32 + b;
@@ -1292,16 +1307,16 @@ __device__ void think_start(Game* g, Tables* tb, u64 nodeLimit) {
         }
         if (keep != marks) tb->chMask[w] = keep;
     }
-    __syncwarp();
-    for (int i = lane; i < MAX_PLY + 1; i += 32) g->pieceStack[i] = 0;
-    for (int i = lane; i < MAX_PLY + 1; i += 32) g->evalStack[i] = 0;
-    for (int i = lane; i < 2 * 64 * 64; i += 32) (&g->history[0][0][0])[i] = 0;
-    for (int i = lane; i < (MAX_PLY + 1) * 2; i += 32) (&g->killers[0][0])[i] = 0;
-    for (int i = lane; i < MAX_PLY + 1; i += 32) g->moveStack[i] = 0;
-    for (int i = lane; i < MAX_PLY + 2; i += 32) g->doubleExt[i] = 0;
+    gsync();
+    for (int i = lane; i < MAX_PLY + 1; i += GS) g->pieceStack[i] = 0;
+    for (int i = lane; i < MAX_PLY + 1; i += GS) g->evalStack[i] = 0;
+    for (int i = lane; i < 2 * 64 * 64; i += GS) (&g->history[0][0][0])[i] = 0;
+    for (int i = lane; i < (MAX_PLY + 1) * 2; i += GS) (&g->killers[0][0])[i] = 0;
+    for (int i = lane; i < MAX_PLY + 1; i += GS) g->moveStack[i] = 0;
+    for (int i = lane; i < MAX_PLY + 2; i += GS) g->doubleExt[i] = 0;
     int stm = g->stm;
     unsigned gen = tb->gen;
-    __syncwarp();
+    gsync();
     tb->gen = gen + 1; // TT.new_search()
     g->nodes = 0;
     g->nodeLimit = nodeLimit;
@@ -1313,11 +1328,11 @@ __device__ void think_start(Game* g, Tables* tb, u64 nodeLimit) {
     g->thinkScore = 0;
     g->thinkDepth = 1;
     g->thinkState = T_DEPTH;
-    __syncwarp();
+    gsync();
 }
 
 __device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, Tables* tb, u64 budget) {
-    __syncwarp();
+    gsync();
     u64 stopAt = g->nodes + budget;
     int state = g->thinkState, depth = g->thinkDepth, bestScore = g->thinkScore;
     int alpha = g->aspAlpha, beta = g->aspBeta, delta = g->aspDelta;
@@ -1336,16 +1351,16 @@ __device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, 
         }
         if (state == T_SEARCH) { // search(alpha, beta, depth, 0)
             Frame root = new_call(S_ENTRY, alpha, beta, depth, 0);
-            __syncwarp();
+            gsync();
             g->cur = root;
             g->sp = 0;
             g->thinkDepth = depth; // rootDepth: singular extensions stop at twice this ply
-            __syncwarp();
+            gsync();
             state = T_SEARCHING;
         }
         int score;
         if (!search_run(g, net, p, acc, tb, stopAt, &score)) {
-            __syncwarp();
+            gsync();
             g->thinkState = state;
             g->thinkDepth = depth;
             g->thinkScore = bestScore;
@@ -1353,7 +1368,7 @@ __device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, 
             g->aspBeta = beta;
             g->aspDelta = delta;
             g->thinkBest = best;
-            __syncwarp();
+            gsync();
             return false;
         }
         if (g->stopped) break;
@@ -1371,11 +1386,11 @@ __device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, 
         state = T_DEPTH;
     }
     if (best == MOVE_NONE) best = first_legal_move(g, net, acc, 0);
-    __syncwarp();
+    gsync();
     g->thinkBest = best;
     g->thinkScore = bestScore;
     g->thinkState = T_IDLE;
-    __syncwarp();
+    gsync();
     return true;
 }
 
@@ -1390,15 +1405,15 @@ __device__ bool is_noisy(const Game* g, u16 m) {
 extern "C" __global__ void datagen_setup(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
                                           short* accs, Tables* tables) {
     Net net = {ftw, ftb, outw, outb};
-    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    int w = game_id();
     if (w >= n) return;
     Game* g = games + w;
     clear_tables(tables + w);
     short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
     g->accTop = 0;
-    __syncwarp();
+    gsync();
     refresh(g, net, acc_slot(acc, 0));
-    __syncwarp();
+    gsync();
 }
 
 // Plays one ply of every unfinished game.
@@ -1406,7 +1421,7 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
                                          const Params* params, short* accs, Tables* tables, unsigned long long nodes,
                                          unsigned long long budget) {
     Net net = {ftw, ftb, outw, outb};
-    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    int w = game_id();
     if (w >= n) return;
     Game* g = games + w;
     if (g->done) return;
@@ -1422,7 +1437,7 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
         }
         if (is_draw(g)) { g->result = 0.5f; g->done = 1; return; }
         int ev = evaluate(g, net, acc);
-        __syncwarp();
+        gsync();
         g->rootEval = g->stm == 0 ? ev : -ev;
         think_start(g, tb, nodes);
     }
@@ -1436,24 +1451,24 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     int pl0 = g->ply;
     g->lastBest = best; g->lastScore = score; g->lastNodes = (int)g->nodes;
     g->plyBest[pl0] = best; g->plyScore[pl0] = score; g->plyNodes[pl0] = (int)g->nodes;
-    __syncwarp();
+    gsync();
     if (!in_check(g) && !is_noisy(g, best) && abs(score) < VALUE_MATE_IN_MAX_PLY && g->nsamples < MAX_SAMPLES) {
         Sample* s = g->samples + g->nsamples;
         int lane = lane_id();
-        for (int i = lane; i < 64; i += 32) s->board[i] = g->board[i];
+        for (int i = lane; i < 64; i += GS) s->board[i] = g->board[i];
         const StateInfo& st = g->states[g->nstates - 1];
         s->stm = g->stm; s->castling = st.castling; s->ep = st.ep; s->rule50 = st.rule50; s->fullmove = g->fullmove;
         s->score = whiteScore; s->eval = whiteEval;
         int ns = g->nsamples;
-        __syncwarp();
+        gsync();
         g->nsamples = ns + 1;
-        __syncwarp();
+        gsync();
     }
     int ws = g->winStreak;
     if (whiteScore >= WIN_SCORE) ws = ws > 0 ? ws + 1 : 1;
     else if (whiteScore <= -WIN_SCORE) ws = ws < 0 ? ws - 1 : -1;
     else ws = 0;
-    __syncwarp();
+    gsync();
     g->winStreak = ws;
     if (ws >= WIN_PLIES) { g->result = 1.0f; g->done = 1; return; }
     if (ws <= -WIN_PLIES) { g->result = 0.0f; g->done = 1; return; }
@@ -1464,10 +1479,10 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     for (int persp = 0; persp < 2; ++persp)
         for (int c = 0; c < UNITS; c += 8) store8(acc + persp * H + base + c, load8(top + persp * H + base + c));
     int pl = g->ply;
-    __syncwarp();
+    gsync();
     g->accTop = 0;
     g->ply = pl + 1;
-    __syncwarp();
+    gsync();
     PE(10)
 }
 
@@ -1478,7 +1493,7 @@ extern "C" __global__ void score_step(Game* games, int n, const short* ftw, cons
                                       const Params* params, short* accs, Tables* tables, unsigned long long nodes,
                                       unsigned long long budget, int* scores) {
     Net net = {ftw, ftb, outw, outb};
-    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    int w = game_id();
     if (w >= n) return;
     Game* g = games + w;
     if (g->done) return;
@@ -1487,10 +1502,10 @@ extern "C" __global__ void score_step(Game* games, int n, const short* ftw, cons
     if (g->thinkState == T_IDLE) think_start(g, tb, nodes);
     if (!think_run(g, net, *params, acc, tb, budget)) return;
     int score = g->thinkScore, white = g->stm == 0 ? score : -score;
-    __syncwarp();
+    gsync();
     if (lane_id() == 0) scores[w] = white;
     g->done = 1;
-    __syncwarp();
+    gsync();
 }
 
 // ---- Host interface ----
@@ -1572,28 +1587,28 @@ __device__ __forceinline__ u64 splitmix64(u64& x) {
 extern "C" __global__ void datagen_opening(Game* games, const int* slots, int k, const u8* start, const u64* ids, u64 seed,
                                            int randomPlies, const short* ftw, const short* ftb, const short* outw, int outb,
                                            short* accs, Tables* tables) {
-    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
+    int w = game_id(), lane = lane_id();
     if (w >= k) return;
     Net net = {ftw, ftb, outw, outb};
     int slot = slots[w];
     Game* g = games + slot;
     short* acc = accs + (size_t)slot * ACC_SLOTS * 2 * H;
     if (lane == 0) init_game(g, start);
-    __syncwarp();
+    gsync();
     u64 rng = seed ^ (ids[w] * 0xD1B54A32D192ED03ULL);
     bool dead = false;
     for (int i = 0; i < randomPlies && !dead; ++i) {
         u16* list = g->moves[0];
         u16* legal = g->quiets[0];
         int n = generate(g, list, false), nl = 0;
-        __syncwarp();
+        gsync();
         for (int j = 0; j < n; ++j) {
             u16 m = list[j];
             bool ok = do_move(g, m, net, acc);
             undo_move(g, m);
             if (ok) {
                 legal[nl++] = m;
-                __syncwarp();
+                gsync();
             }
         }
         if (nl == 0) {
@@ -1602,18 +1617,18 @@ extern "C" __global__ void datagen_opening(Game* games, const int* slots, int k,
         }
         u16 m = legal[splitmix64(rng) % (u64)nl];
         do_move(g, m, net, acc);
-        __syncwarp();
+        gsync();
     }
     clear_tables(tables + slot);
     g->accTop = 0;
-    __syncwarp();
+    gsync();
     refresh(g, net, acc_slot(acc, 0));
-    __syncwarp();
+    gsync();
     if (dead) {
         g->done = 1;
         g->result = -1.0f;
     }
-    __syncwarp();
+    gsync();
 }
 
 // Copies the listed (finished) slots' results and samples out.
@@ -1647,14 +1662,14 @@ __device__ bool insufficient(const Game* g) {
     return !heavy && __popcll(g->byType[KNIGHT] | g->byType[BISHOP]) <= 1;
 }
 __device__ bool threefold(Game* g) {
-    __syncwarp();
+    gsync();
     int n = g->nstates;
     const StateInfo& st = g->states[n - 1];
     u64 key = st.key;
     int lookback = min(st.rule50, n - 1), count = 0;
-    for (int i = 4 + 2 * lane_id(); i <= lookback; i += 64)
+    for (int i = 4 + 2 * lane_id(); i <= lookback; i += 2 * GS)
         if (g->states[n - 1 - i].key == key) ++count;
-    for (int off = 16; off; off >>= 1) count += __shfl_xor_sync(0xffffffffu, count, off);
+    for (int off = GS / 2; off; off >>= 1) count += __shfl_xor_sync(gmask(), count, off);
     return count >= 2;
 }
 
@@ -1671,7 +1686,7 @@ extern "C" __global__ void match_init(Game* games, const int* slots, int k, cons
 
 // Clears both sides' tables in each of k slots (ucinewgame).
 extern "C" __global__ void match_setup(const int* slots, int k, Tables* tablesA, Tables* tablesB) {
-    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    int w = game_id();
     if (w >= k) return;
     clear_tables(tablesA + slots[w]);
     clear_tables(tablesB + slots[w]);
@@ -1682,7 +1697,7 @@ extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, con
                                       const Params* pa, const Params* pb, int perGame,
                                       short* accs, Tables* tablesA, Tables* tablesB, unsigned long long nodes,
                                       unsigned long long budget) {
-    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    int w = game_id();
     if (w >= n) return;
     Game* g = games + w;
     if (g->matchResult >= 0) return;
@@ -1696,16 +1711,16 @@ extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, con
         if (first_legal_move(g, net, acc, 0) == MOVE_NONE) result = in_check(g) ? (g->stm == 0 ? 0 : 2) : 1;
         else if (g->states[g->nstates - 1].rule50 >= 100 || insufficient(g) || threefold(g) || g->ply >= 600) result = 1;
         if (result >= 0) {
-            __syncwarp();
+            gsync();
             g->matchResult = result;
-            __syncwarp();
+            gsync();
             return;
         }
-        __syncwarp();
+        gsync();
         g->accTop = 0;
-        __syncwarp();
+        gsync();
         refresh(g, net, acc_slot(acc, 0)); // this side's network
-        __syncwarp();
+        gsync();
         think_start(g, tb, nodes);
     }
     if (!think_run(g, net, (aToMove ? pa : pb)[perGame ? w : 0], acc, tb, budget)) return;
@@ -1718,21 +1733,21 @@ extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, con
     if (rp >= 6) result = 2;
     else if (rp <= -6) result = 0;
     else if (dp >= 16) result = 1;
-    __syncwarp();
+    gsync();
     g->resignPlies = rp;
     g->drawPlies = dp;
-    __syncwarp();
+    gsync();
     if (result >= 0) {
         g->matchResult = result;
-        __syncwarp();
+        gsync();
         return;
     }
     do_move(g, best, net, acc);
     int pl = g->ply;
-    __syncwarp();
+    gsync();
     g->accTop = 0;
     g->ply = pl + 1;
-    __syncwarp();
+    gsync();
 }
 
 extern "C" __global__ void match_results(const Game* games, int n, int* out) {
