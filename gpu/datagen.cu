@@ -334,6 +334,10 @@ __device__ __forceinline__ int feat(int persp, int p, int s) { // White's view, 
 // accumulators are 16-byte aligned). __vadd2 and __vsub2 add two int16 values per 32-bit word with
 // the same wrap-around as (short)(a + b).
 static_assert(UNITS % 8 == 0, "each lane's units must be whole groups of 8");
+// Lane l owns the 8-unit groups l, l + 32, l + 64, ...: each group access of the warp is one contiguous 512 bytes,
+// at any hidden size (owning H / 32 consecutive units instead measured 3.8% slower at 768 units).
+#define LANE_BASE (lane_id() * 8)
+#define UOFF(c) (base + (c) * 32)
 __device__ __forceinline__ uint4 load8(const short* p) { return *(const uint4*)p; }
 __device__ __forceinline__ void store8(short* p, uint4 v) { *(uint4*)p = v; }
 __device__ __forceinline__ uint4 add8(uint4 a, uint4 b) {
@@ -344,15 +348,15 @@ __device__ __forceinline__ uint4 sub8(uint4 a, uint4 b) {
 }
 
 __device__ void refresh(const Game* g, const Net& net, short* a) {
-    int base = lane_id() * UNITS;
+    int base = LANE_BASE;
     for (int persp = 0; persp < 2; ++persp) {
         for (int c = 0; c < UNITS; c += 8) {
-            uint4 v = load8(net.ftb + base + c);
+            uint4 v = load8(net.ftb + UOFF(c));
             for (u64 b = occupied(g); b; b &= b - 1) {
                 int s = lsb(b);
-                v = add8(v, load8(net.ftw + (size_t)feat(persp, g->board[s], s) * H + base + c));
+                v = add8(v, load8(net.ftw + (size_t)feat(persp, g->board[s], s) * H + UOFF(c)));
             }
-            store8(a + persp * H + base + c, v);
+            store8(a + persp * H + UOFF(c), v);
         }
     }
 }
@@ -364,7 +368,7 @@ struct Delta {
     int piece[4], sq[4];
 };
 __device__ void apply_delta(const Net& net, const short* from, short* to, const Delta& d) {
-    int base = lane_id() * UNITS;
+    int base = LANE_BASE;
 #ifndef JOINT_DELTA
     // One perspective at a time: half the loads in flight (20 registers instead of 40 at the search's
     // busiest point), at the cost of a second wait for the weight rows. Measured on the RTX 5060 Ti
@@ -373,14 +377,14 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
     for (int c = 0; c < UNITS; c += 8) {
 #pragma unroll 1
         for (int persp = 0; persp < 2; ++persp) {
-            uint4 v = load8(from + persp * H + base + c), w[4];
+            uint4 v = load8(from + persp * H + UOFF(c)), w[4];
 #pragma unroll
             for (int k = 0; k < 4; ++k)
-                if (k < d.n) w[k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + base + c);
+                if (k < d.n) w[k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + UOFF(c));
 #pragma unroll
             for (int k = 0; k < 4; ++k)
                 if (k < d.n) v = k % 2 ? add8(v, w[k]) : sub8(v, w[k]);
-            store8(to + persp * H + base + c, v);
+            store8(to + persp * H + UOFF(c), v);
         }
     }
 #else
@@ -389,17 +393,17 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
         uint4 v[2], w[2][4];
 #pragma unroll
         for (int persp = 0; persp < 2; ++persp) {
-            v[persp] = load8(from + persp * H + base + c);
+            v[persp] = load8(from + persp * H + UOFF(c));
 #pragma unroll
             for (int k = 0; k < 4; ++k)
-                if (k < d.n) w[persp][k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + base + c);
+                if (k < d.n) w[persp][k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + UOFF(c));
         }
 #pragma unroll
         for (int persp = 0; persp < 2; ++persp) {
 #pragma unroll
             for (int k = 0; k < 4; ++k)
                 if (k < d.n) v[persp] = k % 2 ? add8(v[persp], w[persp][k]) : sub8(v[persp], w[persp][k]);
-            store8(to + persp * H + base + c, v[persp]);
+            store8(to + persp * H + UOFF(c), v[persp]);
         }
     }
 #endif
@@ -407,11 +411,11 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
 // NNUE::evaluate: the side to move's view first, SCReLU, int16 v * w times v, truncating divisions.
 __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
     const short* a = acc_slot((short*)acc, g->accTop);
-    int base = lane_id() * UNITS, part = 0;
+    int base = LANE_BASE, part = 0;
     for (int half = 0; half < 2; ++half) {
         int persp = half == 0 ? g->stm : g->stm ^ 1;
         for (int c = 0; c < UNITS; c += 8) {
-            uint4 av = load8(a + persp * H + base + c), wv = load8(net.outw + half * H + base + c);
+            uint4 av = load8(a + persp * H + UOFF(c)), wv = load8(net.outw + half * H + UOFF(c));
             unsigned aw[4] = {av.x, av.y, av.z, av.w}, ww[4] = {wv.x, wv.y, wv.z, wv.w};
             for (int j = 0; j < 8; ++j) { // unit j of the group: half j % 2 of word j / 2
                 int v = min(max((int)(short)(aw[j / 2] >> (16 * (j % 2))), 0), QA);
@@ -1569,9 +1573,9 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     do_move(g, best, net, acc);
     // Keep only the new position's accumulator, in slot 0 (the values are the same at any depth).
     short* top = acc_slot(acc, g->accTop);
-    int base = lane_id() * UNITS;
+    int base = LANE_BASE;
     for (int persp = 0; persp < 2; ++persp)
-        for (int c = 0; c < UNITS; c += 8) store8(acc + persp * H + base + c, load8(top + persp * H + base + c));
+        for (int c = 0; c < UNITS; c += 8) store8(acc + persp * H + UOFF(c), load8(top + persp * H + UOFF(c)));
     int pl = g->ply;
     __syncwarp();
     g->accTop = 0;
