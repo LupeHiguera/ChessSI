@@ -7,6 +7,25 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net19b-h512.nnue
+
+- **SHA-256:** `7b03d70cbf03f81595b9a1c1ad2d43659a4b89c560dfdc6e00cff1881f2ff34b`
+- **Data:** net18's: 520,936,189 unique positions from 6,652,053 games, all self-play and all from
+  generation 10 (net14 at 5,000 nodes a move in `gpu/datagen.py`, 8 random plies, a 1 MB table per
+  game): lines 1-539M of `dg10/gpu0-1001.txt` (PR #74's search, `340e420`, RTX 5080, seed 1001) and
+  the first 60M lines of `dg10/gpu1-1002.txt` (RTX 5060 Ti, seed 1002), as thirty 20M-line pieces.
+- **Training:** net18's recipe from scratch at 512 hidden units: `train.py <30 pieces> net19b-h512.nnue
+  --hidden 512 --epochs 20 --seed 1 --cache-dir <dir> --aux-weight 1.0 --future-plies 4 --gpu-data-gb 0`
+  with the trainer of PR #79 (`327f561`). Validation loss 0.00811 against net18's 0.00849 (256 units,
+  same data, split and recipe). 2 h 50 min on an RTX 5080 after 22 min of loading from the cache; peak
+  RSS 31.1 GB. A restart of net19, which the 2026-10-31 freeze killed at epoch 16 on the RTX 5060 Ti.
+- **Speed:** about 15% slower than net14: 2.43M against 2.86M nodes a second (depth 17 from the start
+  position, each network twice, alternating, on one core).
+- **Result:** replaced net14, +56.6 ± 14.1 Elo, SPRT [0, 5] at 10+0.1, H1 after 824 games (both
+  networks loaded in one binary built from `8912405`, 4 concurrent). GPU matches (another Claude session,
+  `claude/gpu-sides`, 2 × 1,024 pairs each): +73 ± 8 at 20,000 nodes each, +37 ± 8 with net19b at
+  17,000 nodes against 20,000 to charge for its speed, +46.4 ± 10.3 at 85,000 against 100,000.
+
 ## net14-h256.nnue
 
 - **SHA-256:** `440ef1960ff97e575a9ce420ab18a1d3e312ed887dc48f45f15aa96f64cc17ec` (`net14-warm.nnue` in the
