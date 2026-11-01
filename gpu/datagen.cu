@@ -262,6 +262,69 @@ __device__ bool attacked(const Game* g, int s, int by) {
 }
 __device__ __forceinline__ bool in_check(const Game* g) { return attacked(g, king_sq(g, g->stm), g->stm ^ 1); }
 
+// The line through squares a != b: 1 file, 2 rank, 3 diagonal, 4 anti-diagonal, 0 none.
+__device__ __forceinline__ int line_kind(int a, int b) {
+    int df = (a & 7) - (b & 7), dr = (a >> 3) - (b >> 3);
+    return df == 0 ? 1 : dr == 0 ? 2 : df == dr ? 3 : df == -dr ? 4 : 0;
+}
+__device__ __forceinline__ u64 line_mask(int kind, int s) {
+    return kind == 1 ? file_mask(s) : kind == 2 ? rank_mask(s) : kind == 3 ? diag_mask(s) : anti_mask(s);
+}
+// Color c's sliders that move along lines of this kind.
+__device__ __forceinline__ u64 line_sliders(const Game* g, int c, int kind) {
+    return g->byColor[c] & (g->byType[QUEEN] | g->byType[kind <= 2 ? ROOK : BISHOP]);
+}
+
+// Would the pseudo-legal move m leave the mover's king attacked? Before do_move, so an illegal move is never
+// made; inCheck is whether the side to move is in check now. Not in check, a move other than a king move or en
+// passant is illegal only when it uncovers the king: `from` on a line through it, `to` off that line, and an
+// enemy slider of the line's kind behind `from`. Everything else gets the exact test on the board after the move.
+__device__ bool legal(const Game* g, u16 m, bool inCheck) {
+    int from = m & 63, to = (m >> 6) & 63, type = m & (3 << 14), us = g->stm, them = us ^ 1, k = king_sq(g, us);
+    if (!inCheck && from != k && type != M_EN_PASSANT) {
+        int kind = line_kind(from, k);
+        if (!kind || line_kind(to, k) == kind) return true;
+        u64 mask = line_mask(kind, k), sl = line_sliders(g, them, kind);
+        return !(mask & sl) || !(line_attacks(occupied(g) ^ bit(from), mask, k) & sl);
+    }
+    u64 occ = occupied(g), enemy = g->byColor[them];
+    if (type == M_CASTLING) {
+        bool kingside = to > from;
+        occ ^= bit(from) | bit(to) | bit(kingside ? from + 3 : from - 4) | bit(kingside ? from + 1 : from - 1);
+    } else {
+        int capSq = type == M_EN_PASSANT ? (us == 0 ? to - 8 : to + 8) : to;
+        occ = (occ ^ bit(from) ^ bit(capSq) * (capSq != to)) | bit(to);
+        enemy &= ~bit(capSq);
+    }
+    int s = from == k ? to : k;
+    return !((pawn_att(s, us) & enemy & g->byType[PAWN]) || (knight_att(bit(s)) & enemy & g->byType[KNIGHT])
+          || (king_att(bit(s)) & enemy & g->byType[KING])
+          || (bishop_att(s, occ) & enemy & (g->byType[BISHOP] | g->byType[QUEEN]))
+          || (rook_att(s, occ) & enemy & (g->byType[ROOK] | g->byType[QUEEN])));
+}
+
+// Just after do_move(m): is the side to move in check? Only the piece on `to` can give it directly, and only a
+// line through `from` can open; castling and en passant (rook, captured pawn) take in_check.
+__device__ bool gives_check(const Game* g, u16 m) {
+    int type = m & (3 << 14);
+    if (type == M_CASTLING || type == M_EN_PASSANT) return in_check(g);
+    int from = m & 63, to = (m >> 6) & 63, mover = g->stm ^ 1, k = king_sq(g, g->stm), pt = type_of(g->board[to]);
+    u64 occ = occupied(g);
+    if (pt == PAWN) {
+        if (pawn_att(to, mover) & bit(k)) return true;
+    } else if (pt == KNIGHT) {
+        if (knight_att(bit(to)) & bit(k)) return true;
+    } else if (pt != KING) {
+        int kind = line_kind(to, k);
+        if (kind && (pt == QUEEN || (pt == ROOK) == (kind <= 2)) && (line_attacks(occ, line_mask(kind, k), k) & bit(to)))
+            return true;
+    }
+    int kind = line_kind(from, k);
+    if (!kind || line_kind(to, k) == kind) return false;
+    u64 mask = line_mask(kind, k), sl = line_sliders(g, mover, kind);
+    return (mask & sl) && (line_attacks(occ, mask, k) & sl);
+}
+
 // ---- NNUE (one warp per game; this lane's units) ----
 __device__ __forceinline__ short* acc_slot(short* acc, int slot) { return acc + (size_t)slot * 2 * H; }
 __device__ __forceinline__ int feat(int persp, int p, int s) { // White's view, or Black's (colors swapped, ranks flipped)
@@ -426,7 +489,8 @@ __device__ __forceinline__ void prefetch_child(const Game* g, Tables* tb, u64 ke
 
 // Position::do_move: plays a pseudo-legal move and returns whether it was legal. With tb and a prefetch kind,
 // it also prefetches what the child will look up first (prefetch_child).
-__device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb = nullptr, int prefetch = PF_NONE) {
+__device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb = nullptr, int prefetch = PF_NONE,
+                        bool known = false) { // known: legal() said yes
     __syncwarp();
     int n = g->nstates, top = g->accTop, us = g->stm, them = us ^ 1, fm = g->fullmove;
     StateInfo st = g->states[n - 1];
@@ -514,8 +578,8 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
     if (prefetch != PF_NONE) prefetch_child(g, tb, st.key, pc, to, prefetch);
 #endif
     // Legal first: the caller undoes an illegal move at once, and nothing ever reads its
-    // accumulator, so it is only computed for legal ones (about a quarter of updates are not).
-    bool legal = !attacked(g, king_sq(g, us), them);
+    // accumulator, so it is only computed for legal ones. The search checks with legal() before.
+    bool legal = known || !attacked(g, king_sq(g, us), them);
     if (legal) apply_delta(net, acc_slot(acc, top), acc_slot(acc, top + 1), d);
     __syncwarp();
     return legal;
@@ -903,8 +967,9 @@ enum { S_ENTRY, S_NULL_DONE, S_MOVES, S_LOOP, S_SING_DONE, S_SEARCH_MOVE, S_FIRS
 // The slot of a call's moves, scores and quiets (see Game::moves).
 __device__ __forceinline__ int move_slot(const Frame& f) { return f.excl ? MAX_PLY + 1 + f.ply : f.ply; }
 
-__device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int depth, int ply) {
+__device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int depth, int ply, bool inCheck) {
     Frame f = {};
+    f.inCheck = inCheck;
     f.state = state;
     f.alpha = alpha;
     f.beta = beta;
@@ -913,13 +978,15 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
     return f;
 }
 
-// Call a child at ply + 1 (starting in ENTRY) and resume this call in RESUME when it returns.
-#define CALL(RESUME, ENTRY, A, B, D)                     \
+// Call a child at ply + 1 (starting in ENTRY; CHK: whether it is in check) and resume this call in RESUME
+// when it returns.
+#define CALL(RESUME, ENTRY, A, B, D, CHK)                \
     {                                                     \
+        bool _chk = (CHK);                                \
         f.state = RESUME;                                 \
         __syncwarp();                                     \
         g->frames[sp++] = f;                              \
-        f = new_call(ENTRY, A, B, D, f.ply + 1);          \
+        f = new_call(ENTRY, A, B, D, f.ply + 1, _chk);    \
         continue;                                         \
     }
 // Call search(A, B, D, ply) at this call's own ply with move EXCL left out (a singular search), and resume
@@ -930,7 +997,7 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
         f.state = RESUME;                                 \
         __syncwarp();                                     \
         g->frames[sp++] = f;                              \
-        f = new_call(S_ENTRY, A, B, D, f.ply);            \
+        f = new_call(S_ENTRY, A, B, D, f.ply, f.inCheck); \
         f.excl = _excl;                                   \
         continue;                                         \
     }
@@ -974,8 +1041,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         }
         switch (f.state) {
         case S_ENTRY: {
-            PB(8) f.inCheck = in_check(g); PE(8)
-            if (f.inCheck) ++f.depth;
+            if (f.inCheck) ++f.depth; // the caller set inCheck
             if (f.depth <= 0) { // return qsearch(alpha, beta, ply)
                 f.state = Q_ENTRY;
                 continue;
@@ -1021,7 +1087,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 g->doubleExt[f.ply + 1] = g->doubleExt[f.ply];
                 __syncwarp();
                 do_null_move(g);
-                CALL(S_NULL_DONE, S_ENTRY, -f.beta, -f.beta + 1, f.depth - 1 - R)
+                CALL(S_NULL_DONE, S_ENTRY, -f.beta, -f.beta + 1, f.depth - 1 - R, in_check(g))
             }
             f.state = S_MOVES;
             continue;
@@ -1077,12 +1143,10 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                     singular = true;
                     break;
                 }
+                PB(8) bool ok = legal(g, m, f.inCheck); PE(8)
+                if (!ok) continue;
                 u8 moved = g->board[m & 63];
-                PB(3) bool legal = do_move(g, m, net, acc, tb, PF_SEARCH); PE(3)
-                if (!legal) {
-                    PB(4) undo_move(g, m); PE(4)
-                    continue;
-                }
+                PB(3) do_move(g, m, net, acc, tb, PF_SEARCH, true); PE(3)
                 ++f.legalMoves;
                 g->moveStack[f.ply] = m;
                 g->pieceStack[f.ply] = moved;
@@ -1120,13 +1184,13 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 f.ext = !f.pvNode && f.childScore < singularBeta - p.dextMargin && g->doubleExt[f.ply] < p.dextLimit ? 2 : 1;
             else if (singularBeta >= f.beta) RETURN(singularBeta) // several moves beat beta: multi-cut
             else if (p.negExt && f.ttScore >= f.beta) f.ext = -1; // others likely beat beta too: a ply shallower
-            u8 moved = g->board[f.m & 63];
-            PB(3) bool legal = do_move(g, f.m, net, acc, tb, PF_SEARCH); PE(3)
-            if (!legal) {
-                PB(4) undo_move(g, f.m); PE(4)
+            PB(8) bool ok = legal(g, f.m, f.inCheck); PE(8)
+            if (!ok) {
                 f.state = S_LOOP;
                 continue;
             }
+            u8 moved = g->board[f.m & 63];
+            PB(3) do_move(g, f.m, net, acc, tb, PF_SEARCH, true); PE(3)
             ++f.legalMoves;
             g->moveStack[f.ply] = f.m;
             g->pieceStack[f.ply] = moved;
@@ -1136,22 +1200,22 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         // fall through
         case S_SEARCH_MOVE: { // search the move just made, f.m
             int newDepth = f.depth - 1 + f.ext;
-            if (f.legalMoves == 1) CALL(S_FIRST_DONE, S_ENTRY, -f.beta, -f.alpha, newDepth)
+            PB(8) bool givesCheck = gives_check(g, f.m); PE(8)
+            if (f.legalMoves == 1) CALL(S_FIRST_DONE, S_ENTRY, -f.beta, -f.alpha, newDepth, givesCheck)
             f.r = 0;
-            PB(8) bool givesCheck = f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && in_check(g); PE(8)
             if (f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && !givesCheck) {
                 int r = p.lmr[min(f.depth, 63)][min(f.legalMoves, 63)];
                 if (p.lmrImproving && !f.improving) ++r;
                 if (f.pvNode) --r;
                 f.r = max(0, min(r, f.depth - 2));
             }
-            CALL(S_RED_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, newDepth - f.r)
+            CALL(S_RED_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, newDepth - f.r, givesCheck)
         }
         case S_RED_DONE: // the reduced zero-window search returned
-            if (-f.childScore > f.alpha && f.r > 0) CALL(S_FULL_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, f.depth - 1 + f.ext)
+            if (-f.childScore > f.alpha && f.r > 0) CALL(S_FULL_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, f.depth - 1 + f.ext, gives_check(g, f.m))
             // fall through: its score stands as the full-depth one
         case S_FULL_DONE: // the full-depth zero-window search returned
-            if (-f.childScore > f.alpha && -f.childScore < f.beta) CALL(S_PV_DONE, S_ENTRY, -f.beta, -f.alpha, f.depth - 1 + f.ext)
+            if (-f.childScore > f.alpha && -f.childScore < f.beta) CALL(S_PV_DONE, S_ENTRY, -f.beta, -f.alpha, f.depth - 1 + f.ext, gives_check(g, f.m))
             // fall through
         case S_FIRST_DONE:
         case S_PV_DONE: {
@@ -1220,16 +1284,14 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                     + PIECE_VALUE[(m & (3 << 14)) == M_EN_PASSANT ? PAWN : type_of(g->board[(m >> 6) & 63])] <= f.alpha) continue;
                 PB(7) bool seeOk = see_ge(g, m, p.qsSee); PE(7)
                 if (!seeOk) continue;
-                PB(3) bool legal = do_move(g, m, net, acc, tb, PF_QSEARCH); PE(3)
-                if (!legal) {
-                    PB(4) undo_move(g, m); PE(4)
-                    continue;
-                }
+                PB(8) bool ok = legal(g, m, f.inCheck); PE(8)
+                if (!ok) continue;
+                PB(3) do_move(g, m, net, acc, tb, PF_QSEARCH, true); PE(3)
                 f.m = m;
                 found = true;
                 break;
             }
-            if (found) CALL(Q_DONE, Q_ENTRY, -f.beta, -f.alpha, 0)
+            if (found) CALL(Q_DONE, Q_ENTRY, -f.beta, -f.alpha, 0, gives_check(g, f.m))
             RETURN(f.best)
         }
         case Q_DONE: {
@@ -1338,7 +1400,7 @@ __device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, 
             state = T_SEARCH;
         }
         if (state == T_SEARCH) { // search(alpha, beta, depth, 0)
-            Frame root = new_call(S_ENTRY, alpha, beta, depth, 0);
+            Frame root = new_call(S_ENTRY, alpha, beta, depth, 0, in_check(g));
             __syncwarp();
             g->cur = root;
             g->sp = 0;
