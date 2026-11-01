@@ -212,16 +212,16 @@ def auto_capacity(resident, game_bytes, free_bytes):
     return max(resident, min(AUTO_WAVES * resident, fit))
 
 
-def build_module(h, kernel="datagen_step"):
-    """datagen.cu compiled for networks of h hidden units, with its Zobrist keys loaded, for running `kernel`."""
+def build_module(h):
+    """datagen.cu compiled for networks of h hidden units, with its Zobrist keys loaded."""
     src = open(os.path.join(HERE, "datagen.cu")).read()
     options = ("--std=c++17", f"-DH={h}", f"-DTT_BITS={TT_BITS}")
     # Compile-time variants of datagen.cu for measuring, as -D flags (e.g. "-DSPLIT_DELTA -DNO_PREFETCH").
     options += tuple(os.environ.get("GPU_DEFINES", "").split())
-    # Registers per thread (GPU_MAXRREG overrides; 0 leaves it to the compiler). Datagen and scoring get 128, which
-    # fits four 4-warp blocks per SM (16 warps) where 168 fit three: 7-10% faster on the RTX 5060 Ti despite 164 bytes
-    # of spills (gpu/bench.py). Matches keep 168: match_step spills 450 bytes at 128, and that is unmeasured.
-    maxrreg = int(os.environ.get("GPU_MAXRREG") or (168 if kernel.startswith("match") else 128))
+    # Registers per thread (GPU_MAXRREG overrides; 0 leaves it to the compiler): 128 fits four 4-warp blocks per SM
+    # (16 warps) where 168 fit three. On the RTX 5060 Ti, despite some spills (164 bytes in datagen_step, 450 in
+    # match_step), searches ran 7-10% faster (gpu/bench.py), cross-size matches 5% faster and same-size ones the same.
+    maxrreg = int(os.environ.get("GPU_MAXRREG") or 128)
     if maxrreg:
         options += (f"--maxrregcount={maxrreg}",)
     mod = cp.RawModule(code=src, options=options)
@@ -242,7 +242,7 @@ class GpuDatagen:
     def __init__(self, net_path, capacity, kernel="datagen_step"):
         """capacity: games in flight, or "<k>w" for k full waves of `kernel` (match_step for matches and SPSA)."""
         self.h, ftw, ftb, outw, self.outb = load_net(net_path)
-        self.mod = build_module(self.h, kernel)
+        self.mod = build_module(self.h)
         self.game_bytes, sample_bytes, tt_bytes, params_bytes, self.tables_bytes = module_sizes(self.mod)
         assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16 and params_bytes == PARAMS.itemsize
         # The search's constants: src/search.cpp's, or GPU_PARAMS (JSON, as gpu/spsa.py prints them).
