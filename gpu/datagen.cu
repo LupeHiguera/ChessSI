@@ -302,6 +302,23 @@ struct Delta {
 };
 __device__ void apply_delta(const Net& net, const short* from, short* to, const Delta& d) {
     int base = lane_id() * UNITS;
+#ifdef SPLIT_DELTA
+    // One perspective at a time: half the loads in flight (20 registers instead of 40 at the search's
+    // busiest point), at the cost of a second wait for the weight rows.
+    for (int c = 0; c < UNITS; c += 8) {
+#pragma unroll 1
+        for (int persp = 0; persp < 2; ++persp) {
+            uint4 v = load8(from + persp * H + base + c), w[4];
+#pragma unroll
+            for (int k = 0; k < 4; ++k)
+                if (k < d.n) w[k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + base + c);
+#pragma unroll
+            for (int k = 0; k < 4; ++k)
+                if (k < d.n) v = k % 2 ? add8(v, w[k]) : sub8(v, w[k]);
+            store8(to + persp * H + base + c, v);
+        }
+    }
+#else
     for (int c = 0; c < UNITS; c += 8) {
         // Every load first, both perspectives and all (up to 4) features, so their latencies overlap.
         uint4 v[2], w[2][4];
@@ -320,6 +337,7 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
             store8(to + persp * H + base + c, v[persp]);
         }
     }
+#endif
 }
 // NNUE::evaluate: the side to move's view first, SCReLU, int16 v * w times v, truncating divisions.
 __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
@@ -374,8 +392,38 @@ __device__ __forceinline__ void b_store(Game* g, const Board& b) {
     g->byColor[1] = b.bc[1];
 }
 
-// Position::do_move: plays a pseudo-legal move and returns whether it was legal.
-__device__ bool do_move(Game* g, u16 m, const Net& net, short* acc) {
+// Prefetching (no value changes, only when data arrives). PREFETCH_L1 asks for L1 instead of L2; NO_PREFETCH
+// leaves it out, for measuring.
+__device__ __forceinline__ void prefetch_line(const void* p) {
+#ifdef PREFETCH_L1
+    asm volatile("prefetch.global.L1 [%0];" ::"l"(p));
+#else
+    asm volatile("prefetch.global.L2 [%0];" ::"l"(p));
+#endif
+}
+__device__ __forceinline__ TTEntry* tt_entry(TTEntry* tt, u64 key);
+__device__ __forceinline__ int pawn_index(const Game* g);
+__device__ __forceinline__ int nonpawn_index(const Game* g, int c);
+enum { PF_NONE, PF_QSEARCH, PF_SEARCH };
+// From the parent's do_move, with the child position already in g: what the child looks up first. Its
+// correction-history entries (both kinds), and in the main search its TT entry and the continuation-history row
+// it scores quiet moves from (the moved piece and its target, 1,536 bytes: 13 lines when not 128-byte aligned).
+// Each lane computes the same indices and takes one address, so one prefetch instruction covers all of them.
+__device__ __forceinline__ void prefetch_child(const Game* g, Tables* tb, u64 key, int piece, int to, int kind) {
+    int lane = lane_id(), us = g->stm;
+    int pi = pawn_index(g), n0 = nonpawn_index(g, 0), n1 = nonpawn_index(g, 1);
+    const char* row = (const char*)&tb->conthist[piece * 64 + to][0];
+    const char* a = lane == 0 ? (const char*)tt_entry(tb->tt, key)
+                  : lane == 1 ? (const char*)&tb->corr[us][pi]
+                  : lane == 2 ? (const char*)&tb->npcorr[us][0][n0]
+                  : lane == 3 ? (const char*)&tb->npcorr[us][1][n1]
+                              : row + (lane - 4) * 128;
+    if (kind == PF_SEARCH ? lane < 17 : lane >= 1 && lane <= 3) prefetch_line(a);
+}
+
+// Position::do_move: plays a pseudo-legal move and returns whether it was legal. With tb and a prefetch kind,
+// it also prefetches what the child will look up first (prefetch_child).
+__device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb = nullptr, int prefetch = PF_NONE) {
     __syncwarp();
     int n = g->nstates, top = g->accTop, us = g->stm, them = us ^ 1, fm = g->fullmove;
     StateInfo st = g->states[n - 1];
@@ -459,6 +507,9 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc) {
     g->fullmove = fm + (us == 1);
     g->accTop = top + 1;
     __syncwarp();
+#ifndef NO_PREFETCH
+    if (prefetch != PF_NONE) prefetch_child(g, tb, st.key, pc, to, prefetch);
+#endif
     // Legal first: the caller undoes an illegal move at once, and nothing ever reads its
     // accumulator, so it is only computed for legal ones (about a quarter of updates are not).
     bool legal = !attacked(g, king_sq(g, us), them);
@@ -1024,7 +1075,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                     break;
                 }
                 u8 moved = g->board[m & 63];
-                PB(3) bool legal = do_move(g, m, net, acc); PE(3)
+                PB(3) bool legal = do_move(g, m, net, acc, tb, PF_SEARCH); PE(3)
                 if (!legal) {
                     PB(4) undo_move(g, m); PE(4)
                     continue;
@@ -1067,7 +1118,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             else if (singularBeta >= f.beta) RETURN(singularBeta) // several moves beat beta: multi-cut
             else if (p.negExt && f.ttScore >= f.beta) f.ext = -1; // others likely beat beta too: a ply shallower
             u8 moved = g->board[f.m & 63];
-            PB(3) bool legal = do_move(g, f.m, net, acc); PE(3)
+            PB(3) bool legal = do_move(g, f.m, net, acc, tb, PF_SEARCH); PE(3)
             if (!legal) {
                 PB(4) undo_move(g, f.m); PE(4)
                 f.state = S_LOOP;
@@ -1166,7 +1217,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                     + PIECE_VALUE[(m & (3 << 14)) == M_EN_PASSANT ? PAWN : type_of(g->board[(m >> 6) & 63])] <= f.alpha) continue;
                 PB(7) bool seeOk = see_ge(g, m, p.qsSee); PE(7)
                 if (!seeOk) continue;
-                PB(3) bool legal = do_move(g, m, net, acc); PE(3)
+                PB(3) bool legal = do_move(g, m, net, acc, tb, PF_QSEARCH); PE(3)
                 if (!legal) {
                     PB(4) undo_move(g, m); PE(4)
                     continue;

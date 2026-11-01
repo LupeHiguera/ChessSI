@@ -199,6 +199,8 @@ class GpuDatagen:
         self.h, ftw, ftb, outw, self.outb = load_net(net_path)
         src = open(os.path.join(HERE, "datagen.cu")).read()
         options = ("--std=c++17", f"-DH={self.h}", f"-DTT_BITS={TT_BITS}")
+        # Compile-time variants of datagen.cu for measuring, as -D flags (e.g. "-DSPLIT_DELTA -DNO_PREFETCH").
+        options += tuple(os.environ.get("GPU_DEFINES", "").split())
         # Registers per thread: the search wants 176, which fits two 4-warp blocks per SM; capped at 168,
         # three fit, and that measured fastest (GPU_MAXRREG overrides; 0 leaves it to the compiler).
         maxrreg = int(os.environ.get("GPU_MAXRREG") or 168)
