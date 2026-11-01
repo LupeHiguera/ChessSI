@@ -2,6 +2,10 @@
 
     python train.py <data.txt>... <out.nnue> [--hidden 128] [--epochs 20] [--lambda 0.75] [--cache-dir dir]
                     [--aux-weight 0] [--future-plies 8] [--policy-weight 0]
+    python train.py --shards <dir> <out.nnue> [same options] [--group 8] [--val-max N] [--resume]
+
+With --shards, positions stream from binary shards on disk (made by shards.cpp and shards.py), so the
+data can be far larger than RAM; see train_streaming.
 
 Network: (768 -> H) x 2 perspectives -> SCReLU -> 1, the usual first NNUE. Input features are
 (piece colour relative to the perspective, piece type, square), with squares mirrored vertically for
@@ -20,6 +24,7 @@ int16[768][H] and biases int16[H] scaled by QA, output weights int16[2H] scaled 
 int32 scaled by QA * QB.
 """
 import argparse
+import glob
 import hashlib
 import os
 import math
@@ -433,10 +438,171 @@ def export(net, path):
         f.write(struct.pack("<i", out_b))
 
 
+SHARD_COLS = {"occ": np.uint64, "pcs": np.uint8, "white": np.int8, "scores": np.float32, "results": np.float32,
+              "future": np.float32, "isval": np.uint8, "keep": np.uint8}
+
+
+def shard_items(dirs):
+    """(path stem, positions) of every shard in the directories, in manifest order (see shards.py)."""
+    out = []
+    for d in dirs:
+        for m in sorted(glob.glob(os.path.join(d, "*.manifest"))):
+            with open(m) as f:
+                out.extend((os.path.join(d, line.split()[0]), int(line.split()[1])) for line in f if line.strip())
+    return out
+
+
+def shard_rows(stem, n, val):
+    """The kept training (val=False) or validation (val=True) rows of one shard, as a dict of arrays."""
+    def col(c):
+        a = np.fromfile(f"{stem}.{c}", dtype=SHARD_COLS[c])
+        a = a.reshape(-1, 16) if c == "pcs" else a
+        if len(a) != n:
+            raise RuntimeError(f"{stem}.{c}: {len(a)} rows, the manifest says {n}")
+        return a
+    held = col("isval").astype(bool)
+    idx = np.flatnonzero(col("keep").astype(bool) & (held if val else ~held))
+    return {c: col(c)[idx] for c in ("occ", "pcs", "white", "scores", "results", "future")}
+
+
+def concat_shuffled(parts, rng):
+    n = sum(len(p["white"]) for p in parts)
+    perm = rng.permutation(n)
+    return {c: np.concatenate([p[c] for p in parts])[perm] for c in parts[0]}
+
+
+def train_streaming(args):
+    """Training from shards on disk, so the data can be far larger than RAM. Each epoch reads every shard
+    once, in a fresh random order, --group shards at a time: their kept training rows are loaded,
+    shuffled together and trained on, while a background thread loads the next group. Validation is the
+    first --val-max kept validation rows. The targets are the in-memory trainer's, computed per batch.
+    After every epoch the network is exported to <out>.eNN and the run's state saved to <out>.pt, which
+    --resume continues from."""
+    import queue
+    import threading
+
+    t0 = time.time()
+    torch.manual_seed(args.seed)
+    items = shard_items(args.shards)
+    for d in args.shards:
+        with open(os.path.join(d, "FUTURE_PLIES")) as f:
+            if int(f.read()) != args.future_plies:
+                raise SystemExit(f"{d} holds future targets for another --future-plies")
+    ntrain = nval = 0
+    for stem, n in items:
+        keep = np.fromfile(f"{stem}.keep", dtype=np.uint8).astype(bool)
+        held = np.fromfile(f"{stem}.isval", dtype=np.uint8).astype(bool)
+        ntrain += int(np.count_nonzero(keep & ~held))
+        nval += int(np.count_nonzero(keep & held))
+    val_parts, got = [], 0
+    for stem, n in items:
+        if got >= args.val_max:
+            break
+        p = shard_rows(stem, n, val=True)
+        val_parts.append(p)
+        got += len(p["white"])
+    val = {c: np.concatenate([p[c] for p in val_parts])[:args.val_max] for c in val_parts[0]}
+    del val_parts
+    print(f"{len(items)} shards: {ntrain} training positions, {nval} validation ({len(val['white'])} used), "
+          f"{sum(n for _, n in items)} before deduplication; set up in {time.time() - t0:.0f}s", flush=True)
+
+    dev = torch.device("cuda")
+    flip_t = torch.from_numpy(FLIP).to(dev)
+    net = Net(args.hidden, aux=args.aux_weight > 0).to(dev)
+    opt = torch.optim.Adam(net.parameters(), lr=args.lr)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
+    first_epoch = 1
+    state_path = args.out + ".pt"
+    if args.resume:
+        state = torch.load(state_path, map_location=dev)
+        if state["args"]["epochs"] != args.epochs:  # the schedule's length is fixed at the start
+            raise SystemExit(f"{state_path} was started with --epochs {state['args']['epochs']}")
+        net.load_state_dict(state["net"])
+        opt.load_state_dict(state["opt"])
+        sched.load_state_dict(state["sched"])
+        first_epoch = state["epoch"] + 1
+        print(f"resumed after epoch {state['epoch']}", flush=True)
+
+    def losses(b):
+        occ = torch.from_numpy(b["occ"].view(np.int64)).to(dev, non_blocking=True)
+        pcs = torch.from_numpy(b["pcs"]).to(dev, non_blocking=True)
+        w = torch.from_numpy(b["white"]).to(dev).bool()
+        feats_w = decode(occ, pcs)
+        feats_b = flip_t[feats_w]
+        wt = w.unsqueeze(1)
+        main, aux, _, _ = net(torch.where(wt, feats_w, feats_b), torch.where(wt, feats_b, feats_w))
+        score = torch.from_numpy(b["scores"]).to(dev) * (w.float() * 2 - 1)
+        result_w = torch.from_numpy(b["results"]).to(dev)
+        target = args.lam * torch.sigmoid(score / SCALE) + (1 - args.lam) * torch.where(w, result_w, 1 - result_w)
+        main_loss = torch.mean((torch.sigmoid(main) - target) ** 2)
+        if aux is None:
+            return main_loss, torch.zeros((), device=dev)
+        future_w = torch.from_numpy(b["future"]).to(dev)
+        return main_loss, torch.mean((torch.sigmoid(aux) - torch.where(w, future_w, 1 - future_w)) ** 2)
+
+    def groups(epoch):
+        # The epoch's shard order and each group's shuffle come from (seed, epoch), so a resumed run
+        # sees the order it would have seen.
+        order = np.random.default_rng([args.seed, epoch]).permutation(len(items))
+        for g, s in enumerate(range(0, len(order), args.group)):
+            parts = [shard_rows(*items[i], val=False) for i in order[s:s + args.group]]
+            yield concat_shuffled(parts, np.random.default_rng([args.seed, epoch, g]))
+
+    def prefetch(gen):
+        q = queue.Queue(maxsize=1)
+
+        def run():
+            for x in gen:
+                q.put(x)
+            q.put(None)
+        threading.Thread(target=run, daemon=True).start()
+        while (x := q.get()) is not None:
+            yield x
+
+    for epoch in range(first_epoch, args.epochs + 1):
+        net.train()
+        total, seen, te = 0.0, 0, time.time()
+        for g in prefetch(groups(epoch)):
+            m = len(g["white"])
+            for i in range(0, m, args.batch):
+                b = {c: g[c][i:i + args.batch] for c in g}
+                opt.zero_grad()
+                main_loss, aux_loss = losses(b)
+                (main_loss + args.aux_weight * aux_loss).backward()
+                opt.step()
+                net.clip()
+                total += main_loss.item() * len(b["white"])
+            seen += m
+            print(f"  epoch {epoch}: {seen}/{ntrain} positions, {seen / (time.time() - te):,.0f}/s", flush=True)
+        sched.step()
+        net.eval()
+        v = va = 0.0
+        nv = len(val["white"])
+        with torch.no_grad():
+            for i in range(0, nv, 65536):
+                b = {c: val[c][i:i + 65536] for c in val}
+                main_loss, aux_loss = losses(b)
+                v += main_loss.item() * len(b["white"])
+                va += aux_loss.item() * len(b["white"])
+        aux_text = f" aux {va / nv:.5f}" if args.aux_weight > 0 else ""
+        print(f"epoch {epoch:3d} train {total / seen:.5f} val {v / nv:.5f}{aux_text}  ({time.time() - t0:.0f}s)", flush=True)
+        export(net, f"{args.out}.e{epoch:02d}")
+        torch.save({"net": net.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(), "epoch": epoch,
+                    "args": vars(args)}, state_path + ".tmp")
+        os.replace(state_path + ".tmp", state_path)
+
+    export(net, args.out)
+    print(f"wrote {args.out}")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("data", nargs="+")
+    ap.add_argument("data", nargs="*", help="datagen text files (not with --shards)")
     ap.add_argument("out")
+    ap.add_argument("--shards", action="append", help="train streaming from a shard directory (see shards.py); repeatable")
+    ap.add_argument("--group", type=int, default=8, help="with --shards: shards shuffled together in memory at once")
+    ap.add_argument("--val-max", type=int, default=20_000_000, help="with --shards: validation positions kept")
+    ap.add_argument("--resume", action="store_true", help="with --shards: continue from <out>.pt")
     ap.add_argument("--hidden", type=int, default=128)
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--batch", type=int, default=16384)
@@ -452,6 +618,12 @@ def main():
     ap.add_argument("--teacher", help="an exported network whose evaluation a training-only head learns")
     ap.add_argument("--teacher-weight", type=float, default=1.0, help="weight of the teacher loss (with --teacher)")
     args = ap.parse_args()
+    if args.shards:
+        if args.data or args.policy_weight > 0 or args.teacher:
+            ap.error("--shards takes no data files, --policy-weight or --teacher")
+        return train_streaming(args)
+    if not args.data:
+        ap.error("give data files or --shards")
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
