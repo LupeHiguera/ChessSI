@@ -442,6 +442,36 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
     }
 #endif
 }
+// dp2a: the two 16-bit halves of a, as signed values, times two bytes of b, as unsigned ones (bytes 0 and 1 for lo,
+// 2 and 3 for hi), plus c. One instruction (IDP.2A) on the GPUs we use.
+__device__ __forceinline__ int dp2a_lo(unsigned a, unsigned b, int c) {
+    int d;
+    asm("dp2a.lo.s32.u32 %0, %1, %2, %3;" : "=r"(d) : "r"(a), "r"(b), "r"(c));
+    return d;
+}
+__device__ __forceinline__ int dp2a_hi(unsigned a, unsigned b, int c) {
+    int d;
+    asm("dp2a.hi.s32.u32 %0, %1, %2, %3;" : "=r"(d) : "r"(a), "r"(b), "r"(c));
+    return d;
+}
+// Both halves of a, as signed 16-bit values, clamped to [0, QA]: min.relu.s16x2 is min(a, QA) with negative results
+// set to 0, one instruction (VIMNMX.S16x2.RELU) on sm_90 and later.
+__device__ __forceinline__ unsigned clamp2(unsigned a) {
+    unsigned d;
+    asm("min.relu.s16x2 %0, %1, %2;" : "=r"(d) : "r"(a), "r"(QA * 0x10001u));
+    return d;
+}
+// SCReLU of two units, one 32-bit word of accumulator a and of output weights w: part + (short)(v * w) * v for each
+// half, v = clamp(a, 0, QA). With QA < 256 each v is a byte of the clamped word (bytes 1 and 3 are zero), so dp2a
+// multiplies by it directly: 6 instructions a pair instead of 13 (SCALAR_EVAL).
+static_assert(QA < 256, "screlu2 needs each clamped unit to fit a byte");
+__device__ __forceinline__ int screlu2(unsigned a, unsigned w, int part) {
+    unsigned v = clamp2(a);                                 // bytes v0, 0, v1, 0
+    unsigned p0 = v * w;                                    // low half (short)(v0 * w0); the high half is never read
+    unsigned p1 = (unsigned)dp2a_hi(w, v << 8, 0);          // w0 * 0 + w1 * v1: low half (short)(v1 * w1)
+    part = dp2a_lo(p0, v, part);                            // + (short)(v0 * w0) * v0 + (high half) * 0
+    return dp2a_hi(p1, v, part);                            // + (short)(v1 * w1) * v1 + (high half) * 0
+}
 // NNUE::evaluate: the side to move's view first, SCReLU, int16 v * w times v, truncating divisions.
 __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
     const short* a = acc_slot((short*)acc, g->accTop);
@@ -451,11 +481,16 @@ __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
         for (int c = 0; c < UNITS; c += 8) {
             uint4 av = load8(a + persp * H + UOFF(c)), wv = load8(net.outw + half * H + UOFF(c));
             unsigned aw[4] = {av.x, av.y, av.z, av.w}, ww[4] = {wv.x, wv.y, wv.z, wv.w};
+#ifdef SCALAR_EVAL
             for (int j = 0; j < 8; ++j) { // unit j of the group: half j % 2 of word j / 2
                 int v = min(max((int)(short)(aw[j / 2] >> (16 * (j % 2))), 0), QA);
                 int vw = (short)(v * (short)(ww[j / 2] >> (16 * (j % 2))));
                 part += vw * v;
             }
+#else
+#pragma unroll
+            for (int j = 0; j < 4; ++j) part = screlu2(aw[j], ww[j], part);
+#endif
         }
     }
     // part = hi * 65536 + lo with lo in [0, 65535]: each half's total fits an int, and the sum is exact.
