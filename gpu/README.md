@@ -48,6 +48,8 @@ history reached the GPU:
 | RTX 5060 Ti (first, recursive search) | 1,536 | about 3,400 | 24M |
 | RTX 5060 Ti, 2026-11-01: main's search, net14 (256 units) | 3,456 (`auto`) | 6,450 | 44.5M |
 | RTX 5060 Ti, 2026-11-01: main's search, net19b (512 units) | 3,456 (`auto`) | 5,630 | 38.6M |
+| RTX 5060 Ti, generation 11: net19b with #88's history bonus | 3,456 (`auto`) | 5,708 | 39.1M |
+| The same, with the attack tables, dp2a SCReLU, negated rows, in-place bitboards and 128 registers | 3,456 (`auto`) | **6,970** | **47.8M** |
 | ChessSI on 13 CPU cores, for comparison | | about 8,300 | 39M |
 
 How the 5080 got from about 5,900 to about 13,000 positions per second, each step byte-identical:
