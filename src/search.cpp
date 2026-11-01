@@ -460,6 +460,15 @@ struct Searcher {
             }
 
             Piece moved = pos.piece_on(from_sq(m));
+            // The quiet move's history and continuation entries, read before the move is made
+            // (afterwards its from-square is empty and the continuation lookup would be wrong).
+            int stat = 0;
+            if (quiet) {
+                stat = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
+                for (int back = 1; back <= 2; ++back)
+                    if (const int* c = cont_entry(ply, back, m))
+                        stat += *c;
+            }
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
@@ -480,6 +489,9 @@ struct Searcher {
                     r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
                     if (pvNode)
                         --r;
+                    // Quiet moves with a good history are reduced less, bad ones more: one ply per
+                    // 10,000 of history plus both continuation entries (each within +/-16,384).
+                    r -= stat / 10000;
                     r = std::clamp(r, 0, depth - 2);
                 }
                 score = -search(-alpha - 1, -alpha, newDepth - r, ply + 1);
