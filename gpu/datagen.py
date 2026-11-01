@@ -113,6 +113,12 @@ def load_net(path):
     return h, ftw, ftb, outw, outb
 
 
+def feature_rows(ftw):
+    """The feature weights as the kernel reads them, on the GPU: the 768 rows, then the same rows negated (apply_delta
+    adds a removed feature's negated row; int16 negation wraps as the subtraction it replaces does)."""
+    return cp.asarray(np.concatenate([ftw, -ftw]))
+
+
 def compact(fen):
     f = fen.split()
     out = np.zeros(START_BYTES, np.uint8)
@@ -244,7 +250,7 @@ class GpuDatagen:
         # same result in any number of launches. Unlimited by default: 5,000-node searches are short.
         self.budget = np.uint64(int(os.environ.get("GPU_BUDGET", 1 << 62)))
         cp.cuda.runtime.deviceSetLimit(0, 1024)  # cudaLimitStackSize, the default: the search needs about 200 bytes
-        self.ftw, self.ftb, self.outw = cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw)
+        self.ftw, self.ftb, self.outw = feature_rows(ftw), cp.asarray(ftb), cp.asarray(outw)
         self.resident = resident_warps(self.mod.get_function(kernel))
         kind, value = parse_capacity(capacity)
         # One game: its Game, its Tables (TT, correction and continuation history), its accumulators.

@@ -401,6 +401,11 @@ struct Delta {
     int n;
     int piece[4], sq[4];
 };
+// net.ftw holds 768 rows of feature weights and then the same rows negated (feature_rows in datagen.py): a removed
+// feature (slots 0 and 2) adds its negated row, one 16x2 add per word where a subtraction takes three on sm_120.
+#ifndef NO_NEG_ROWS
+#define OFF_ROW(k) ((k) % 2 ? 0 : 768)
+#endif
 __device__ void apply_delta(const Net& net, const short* from, short* to, const Delta& d) {
     int base = LANE_BASE;
 #ifndef JOINT_DELTA
@@ -414,10 +419,17 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
             uint4 v = load8(from + persp * H + UOFF(c)), w[4];
 #pragma unroll
             for (int k = 0; k < 4; ++k)
+#ifdef NO_NEG_ROWS
                 if (k < d.n) w[k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + UOFF(c));
 #pragma unroll
             for (int k = 0; k < 4; ++k)
                 if (k < d.n) v = k % 2 ? add8(v, w[k]) : sub8(v, w[k]);
+#else
+                if (k < d.n) w[k] = load8(net.ftw + (size_t)(feat(persp, d.piece[k], d.sq[k]) + OFF_ROW(k)) * H + UOFF(c));
+#pragma unroll
+            for (int k = 0; k < 4; ++k)
+                if (k < d.n) v = add8(v, w[k]);
+#endif
             store8(to + persp * H + UOFF(c), v);
         }
     }
