@@ -1,6 +1,8 @@
 """Self-play data generation on the GPU (issue #31, stage 2), with gpu/datagen.cu.
 
-    python gpu/datagen.py run <net.nnue> <out.txt> <games> [nodes=5000] [capacity=1024] [seed=1] [random plies=8]
+    python gpu/datagen.py run <net.nnue> <out.txt> <games> [nodes=5000] [capacity=auto] [seed=1] [random plies=8]
+
+capacity is the games in flight, or "<k>w" for k full waves of what the GPU runs at once (see resident_warps).
     python gpu/datagen.py <net.nnue> <file of start FENs> <nodes> [-v]
 
 run: like `chesssi datagen`. Each game opens with random legal plies from the start position, then
@@ -37,7 +39,8 @@ def wait():
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_SAMPLES, MAX_PLIES, MAX_PLY, START_BYTES = 400, 400, 128, 72
-# Each game's table has 2^TT_BITS entries of 16 bytes: 1 MB at 16, like gpu/ref.cpp's default.
+# Each game's table has 2^TT_BITS entries of 16 bytes: 1 MB at 16, like gpu/ref.cpp's default. Its
+# correction history (64 KB) sits beside it (Tables in datagen.cu).
 TT_BITS = int(os.environ.get("GPU_TT_BITS", 16))
 PIECES = "PNBRQKpnbrqk"
 SAMPLE = np.dtype([("board", "u1", 64), ("stm", "u1"), ("castling", "u1"), ("ep", "u1"), ("pad", "u1"),
@@ -71,13 +74,22 @@ def reductions(base=0.75, div=2.25):
 
 
 # The Params struct of datagen.cu, and src/search.cpp's values.
-PARAMS = np.dtype([(name, "<i4") for name in ("rfpDepth", "rfpMargin", "nmpDepth", "nmpBase", "nmpDiv", "lmpDepth", "lmpBase",
+PARAMS = np.dtype([(name, "<i4") for name in ("rfpDepth", "rfpMargin", "nmpDepth", "nmpBase", "nmpDiv", "nmpEvalDiv", "nmpEvalMax", "lmpDepth", "lmpBase",
                                                 "futDepth", "futMargin", "lmrDepth", "lmrMoves", "histMax", "aspDepth",
-                                                "aspDelta", "qsSee")] + [("lmr", "u1", (64, 64))])
-# src/search.cpp's values since PR #40 (SPSA): keep them equal, or the GPU search stops matching the engine
-# (the parity check in gpu/README.md catches it).
-DEFAULTS = dict(rfpDepth=5, rfpMargin=77, nmpDepth=3, nmpBase=3, nmpDiv=4, lmpDepth=7, lmpBase=6, futDepth=6, futMargin=127,
-                lmrDepth=3, lmrMoves=4, histMax=1239, aspDepth=4, aspDelta=22, qsSee=0, lmrBase=0.82, lmrDiv=1.72)
+                                                "aspDelta", "qsSee", "seeDepth", "seeQuiet", "seeCapture", "iirDepth",
+                                                "singDepth", "singTTMargin", "singBeta", "negExt", "dextMargin",
+                                                "dextLimit", "contHist", "lmpImproving",
+                                                "rfpImproving", "lmrImproving", "histPruneDepth",
+                                                "histPruneMargin", "qsDelta", "histMul")]
+                  + [("lmr", "u1", (64, 64))])
+# src/search.cpp's values since PR #40 (SPSA), SEE pruning's since PR #45, and those of singular extensions
+# and IIR since PR #78: keep them equal, or the GPU search stops matching the engine (the parity check in
+# gpu/README.md catches it). singBeta is in 1/16: the singular beta is ttScore - singBeta * depth / 16.
+DEFAULTS = dict(rfpDepth=5, rfpMargin=77, nmpDepth=3, nmpBase=3, nmpDiv=4, nmpEvalDiv=200, nmpEvalMax=3, lmpDepth=7, lmpBase=6, futDepth=6, futMargin=127,
+                lmrDepth=3, lmrMoves=4, histMax=1239, aspDepth=4, aspDelta=22, qsSee=0, seeDepth=6, seeQuiet=60, seeCapture=30,
+                iirDepth=4, singDepth=8, singTTMargin=3, singBeta=16, negExt=0, dextMargin=20, dextLimit=0, contHist=1, lmpImproving=0,
+                rfpImproving=0, lmrImproving=0, histPruneDepth=0, histPruneMargin=0, qsDelta=0, histMul=1,
+                lmrBase=0.82, lmrDiv=1.72)
 
 
 def make_params(values=None):
@@ -161,11 +173,47 @@ def move_uci(m):
     return out
 
 
+def resident_warps(kernel, block=128):
+    """How many warps of `kernel`, launched in blocks of `block` threads, the GPU runs at once.
+
+    A launch plays one search per game, one game per warp. With R warps resident, a capacity that is not a
+    multiple of R leaves a last, partly filled wave: it keeps the launch open for a whole search while most
+    SMs sit idle (3,072 games on an RTX 5080, which holds 1,008, end with a wave of 48)."""
+    props = cp.cuda.runtime.getDeviceProperties(cp.cuda.Device().id)
+    warps = block // 32
+    per_warp = (kernel.num_regs * 32 + 255) // 256 * 256  # registers are allocated per warp, 256 at a time
+    blocks = min(props["regsPerMultiprocessor"] // (per_warp * warps), props["maxThreadsPerMultiProcessor"] // block,
+                 props["maxBlocksPerMultiProcessor"])
+    return blocks * warps * props["multiProcessorCount"]
+
+
+def parse_capacity(text):
+    """A capacity argument: a number of games, "<k>w" for k full waves (see resident_warps), or "auto"."""
+    text = str(text)
+    if text == "auto":
+        return ("auto", 0)
+    return ("waves", int(text[:-1])) if text.endswith("w") else ("games", int(text))
+
+
+AUTO_WAVES, AUTO_MEMORY = 8, 0.8
+
+
+def auto_capacity(resident, game_bytes, free_bytes):
+    """The most games in flight, in whole waves of `resident`, up to AUTO_WAVES waves, that fit in AUTO_MEMORY of
+    the free GPU memory. More games in flight measured faster on the RTX 5060 Ti (3,456 games: 6,301 searches/s;
+    1,728: 6,084), so this fills what the card holds."""
+    fit = int(free_bytes * AUTO_MEMORY) // game_bytes // resident * resident
+    return max(resident, min(AUTO_WAVES * resident, fit))
+
+
 class GpuDatagen:
-    def __init__(self, net_path, capacity):
+    def __init__(self, net_path, capacity, kernel="datagen_step"):
+        """capacity: games in flight, or "<k>w" for k full waves of `kernel` (match_step for matches and SPSA)."""
         self.h, ftw, ftb, outw, self.outb = load_net(net_path)
         src = open(os.path.join(HERE, "datagen.cu")).read()
         options = ("--std=c++17", f"-DH={self.h}", f"-DTT_BITS={TT_BITS}")
+        # Compile-time variants of datagen.cu for measuring, as -D flags (e.g. "-DSPLIT_DELTA -DNO_PREFETCH").
+        options += tuple(os.environ.get("GPU_DEFINES", "").split())
         # Registers per thread: the search wants 176, which fits two 4-warp blocks per SM; capped at 168,
         # three fit, and that measured fastest (GPU_MAXRREG overrides; 0 leaves it to the compiler).
         maxrreg = int(os.environ.get("GPU_MAXRREG") or 168)
@@ -174,9 +222,9 @@ class GpuDatagen:
         self.mod = cp.RawModule(code=src, options=options)
         for name, arr in zip(("Z_PSQ", "Z_CASTLING", "Z_EP", "Z_SIDE"), zobrist()):
             cp.ndarray(arr.shape, arr.dtype, self.mod.get_global(name))[...] = cp.asarray(arr)
-        sizes = cp.zeros(4, cp.int32)
+        sizes = cp.zeros(5, cp.int32)
         self.mod.get_function("datagen_sizes")((1,), (1,), (sizes,))
-        self.game_bytes, sample_bytes, tt_bytes, params_bytes = (int(x) for x in sizes.get())
+        self.game_bytes, sample_bytes, tt_bytes, params_bytes, self.tables_bytes = (int(x) for x in sizes.get())
         assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16 and params_bytes == PARAMS.itemsize
         # The search's constants: src/search.cpp's, or GPU_PARAMS (JSON, as gpu/spsa.py prints them).
         self.params = cp.asarray(make_params(json.loads(os.environ.get("GPU_PARAMS", "{}"))).view(np.uint8))
@@ -185,10 +233,22 @@ class GpuDatagen:
         self.budget = np.uint64(int(os.environ.get("GPU_BUDGET", 1 << 62)))
         cp.cuda.runtime.deviceSetLimit(0, 1024)  # cudaLimitStackSize, the default: the search needs about 200 bytes
         self.ftw, self.ftb, self.outw = cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw)
+        self.resident = resident_warps(self.mod.get_function(kernel))
+        kind, value = parse_capacity(capacity)
+        if kind == "auto":  # one game: its Game, its Tables (TT, correction and continuation history), its accumulators
+            per_game = self.game_bytes + self.tables_bytes + (MAX_PLY + 2) * 2 * self.h * 2
+            capacity = auto_capacity(self.resident, per_game, cp.cuda.runtime.memGetInfo()[0])
+        else:
+            capacity = value * self.resident if kind == "waves" else value
+        if capacity > self.resident and capacity % self.resident:
+            lo, hi = capacity // self.resident * self.resident, -(-capacity // self.resident) * self.resident
+            print(f"# capacity {capacity} is {capacity / self.resident:.2f} waves of {self.resident} resident warps: the "
+                  f"last wave is {capacity % self.resident / self.resident:.0%} full; {lo} or {hi} would fill it",
+                  file=sys.stderr, flush=True)
         self.capacity = capacity
         self.games = cp.zeros(capacity * self.game_bytes, cp.uint8)
         self.accs = cp.zeros(capacity * (MAX_PLY + 2) * 2 * self.h, cp.int16)
-        self.tts = cp.zeros(capacity * (1 << TT_BITS) * 16, cp.uint8)
+        self.tables = cp.zeros(capacity * self.tables_bytes, cp.uint8)  # each game's TT and correction history
         self.k = {n: self.mod.get_function(n) for n in ("datagen_init", "datagen_setup", "datagen_step", "datagen_collect",
                                                          "datagen_done", "datagen_opening", "datagen_collect_slots", "score_step")}
 
@@ -199,11 +259,11 @@ class GpuDatagen:
         threads, warps = ((n + 127) // 128,), ((n + 3) // 4,)
         net = (self.ftw, self.ftb, self.outw, np.int32(self.outb))
         self.k["datagen_init"](threads, (128,), (self.games, np.int32(n), start))
-        self.k["datagen_setup"](warps, (128,), (self.games, np.int32(n)) + net + (self.accs, self.tts))
+        self.k["datagen_setup"](warps, (128,), (self.games, np.int32(n)) + net + (self.accs, self.tables))
         done = cp.zeros(n, cp.int32)
         steps, t0 = 0, time.perf_counter()
         while True:
-            self.k["datagen_step"](warps, (128,), (self.games, np.int32(n)) + net + (self.params, self.accs, self.tts, np.uint64(nodes),
+            self.k["datagen_step"](warps, (128,), (self.games, np.int32(n)) + net + (self.params, self.accs, self.tables, np.uint64(nodes),
                                                                                     self.budget))
             steps += 1
             self.k["datagen_done"](threads, (128,), (self.games, np.int32(n), done))
@@ -247,7 +307,7 @@ class GpuDatagen:
             ids = cp.arange(next_id, next_id + k, dtype=cp.uint64)
             next_id += k
             self.k["datagen_opening"](((k + 3) // 4,), (128,), (self.games, cp.asarray(slots, cp.int32), np.int32(k), start, ids,
-                                      np.uint64(seed), np.int32(random_plies)) + net + (self.accs, self.tts))
+                                      np.uint64(seed), np.int32(random_plies)) + net + (self.accs, self.tables))
 
         reset(np.arange(cap, dtype=np.int32))
         started = cap
@@ -273,7 +333,7 @@ class GpuDatagen:
         with open(out_path, "a") as out:
             while active.any():
                 self.k["datagen_step"](((cap + 3) // 4,), (128,), (self.games, np.int32(cap)) + net
-                                       + (self.params, self.accs, self.tts, np.uint64(nodes), self.budget))
+                                       + (self.params, self.accs, self.tables, np.uint64(nodes), self.budget))
                 if collected is not None:  # format and write on the CPU while the step runs
                     write(out, *collected)
                     collected = None
@@ -320,10 +380,10 @@ def rescore(dg, in_path, out_path, nodes, report_lines=1_000_000):
             n = len(lines)
             start = cp.asarray(np.stack([compact(l.split(" | ")[0]) for l in lines]))
             dg.k["datagen_init"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), start))
-            dg.k["datagen_setup"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net + (dg.accs, dg.tts))
+            dg.k["datagen_setup"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net + (dg.accs, dg.tables))
             while True:
                 dg.k["score_step"](((n + 3) // 4,), (128,), (dg.games, np.int32(n)) + net
-                                   + (dg.params, dg.accs, dg.tts, np.uint64(nodes), dg.budget, scores))
+                                   + (dg.params, dg.accs, dg.tables, np.uint64(nodes), dg.budget, scores))
                 dg.k["datagen_done"](((n + 127) // 128,), (128,), (dg.games, np.int32(n), done))
                 wait()
                 if int(done[:n].sum()) == n:
@@ -337,18 +397,21 @@ def rescore(dg, in_path, out_path, nodes, report_lines=1_000_000):
 
 
 def main():
-    if sys.argv[1] == "rescore":  # rescore <net> <in.txt> <out.txt> [nodes=20000] [capacity=3072]
+    if sys.argv[1] == "rescore":  # rescore <net> <in.txt> <out.txt> [nodes=20000] [capacity=auto]
         net, src, dst = sys.argv[2], sys.argv[3], sys.argv[4]
         nodes = int(sys.argv[5]) if len(sys.argv) > 5 else 20000
-        capacity = int(sys.argv[6]) if len(sys.argv) > 6 else 3072
+        capacity = sys.argv[6] if len(sys.argv) > 6 else "auto"
         n = rescore(GpuDatagen(net, capacity), src, dst, nodes)
         print(f"# rescored {n} positions at {nodes} nodes", file=sys.stderr)
         return
-    if sys.argv[1] == "run":
+    if sys.argv[1] == "run":  # run <net> <out.txt> <games> [nodes=5000] [capacity=auto] [seed=1] [random plies=8]
         net, out, games = sys.argv[2], sys.argv[3], int(sys.argv[4])
-        rest = [int(x) for x in sys.argv[5:9]]
-        nodes, capacity, seed, plies = (rest + [5000, 1024, 1, 8][len(rest):])[:4]
-        GpuDatagen(net, capacity).run(out, games, nodes, seed, plies)
+        rest = sys.argv[5:9]
+        nodes, capacity, seed, plies = (rest + ["5000", "auto", "1", "8"][len(rest):])[:4]
+        dg = GpuDatagen(net, capacity)
+        print(f"# capacity {dg.capacity}: {dg.capacity / dg.resident:.2f} waves of {dg.resident} resident warps",
+              file=sys.stderr, flush=True)
+        dg.run(out, games, int(nodes), int(seed), int(plies))
         return
     net, fen_file, nodes = sys.argv[1], sys.argv[2], int(sys.argv[3])
     verbose = "-v" in sys.argv[4:]

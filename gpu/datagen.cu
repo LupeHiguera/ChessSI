@@ -72,8 +72,7 @@ struct TTEntry {
     u16 move;
     short score;
     signed char depth;
-    u8 bound;
-    u16 pad;
+    u8 bound, gen, pad;
 };
 struct Sample { // one datagen line before formatting: the position, and White-relative score and eval
     u8 board[64];
@@ -86,10 +85,13 @@ struct Sample { // one datagen line before formatting: the position, and White-r
 // calls waiting on it are in Game::frames.
 struct Frame {
     int state, alpha, beta, depth, ply;
-    int originalAlpha, best, legalMoves, quietCount, staticEval, n, i, r, childScore;
+    int originalAlpha, best, legalMoves, quietCount, staticEval, n, i, r, childScore, ttScore;
     u64 key;
     u16 ttMove, bestMove, m;
-    bool inCheck, pvNode, root, quiet;
+    u16 excl; // the move a singular search leaves out (excluded[ply]); MOVE_NONE otherwise
+    signed char ttDepth, ext; // the TT entry's depth (-1 without one), and the singular extension of f.m
+    u8 ttBound;
+    bool inCheck, pvNode, root, quiet, improving;
 };
 
 // The search's constants (src/search.cpp has them inline), so that matches can give each side its own.
@@ -97,13 +99,48 @@ struct Frame {
 struct Params {
     int rfpDepth, rfpMargin;       // reverse futility pruning: depth <= 3, staticEval - 150 * depth >= beta
     int nmpDepth, nmpBase, nmpDiv; // null move: depth >= 3, R = 3 + depth / 6
+    int nmpEvalDiv, nmpEvalMax;    // null move R += min((staticEval - beta) / nmpEvalDiv, nmpEvalMax) (0: off; nmp-eval: 200, 3)
     int lmpDepth, lmpBase;         // late move pruning: depth <= 8, quietCount >= 3 + depth * depth
     int futDepth, futMargin;       // futility pruning: depth <= 6, staticEval + 120 * depth <= alpha
     int lmrDepth, lmrMoves;        // late move reductions: depth >= 3, legalMoves > 3
     int histMax;                   // history bonus min(depth * depth, 1200)
     int aspDepth, aspDelta;        // aspiration windows from depth 5, delta 25
     int qsSee;                     // quiescence skips captures that fail see_ge(m, 0)
+    int seeDepth, seeQuiet, seeCapture; // SEE pruning: depth <= 6, quiets below -60 * depth, captures below -30 * depth^2
+    int iirDepth;                  // internal iterative reductions: depth >= 4 with no TT move
+    int singDepth, singTTMargin, singBeta; // singular extensions: depth >= 8, ttDepth >= depth - 3, beta ttScore - 16 * depth / 16
+    int negExt;                    // 1: a non-singular TT move whose TT score beats beta gets extension -1 (off in the engine)
+    int dextMargin, dextLimit;     // extension 2 below singular beta - dextMargin, dextLimit times a path (off: limit 0)
+    int contHist;                  // 1: continuation history in quiet-move order (#81; 0: PR #78)
+    int lmpImproving, rfpImproving; // 1: LMP keeps half the quiets when not improving; RFP's margin a ply smaller when improving
+    int lmrImproving;              // 1: LMR reduces one ply more when not improving
+    int histPruneDepth, histPruneMargin; // history pruning: quiets scored below -margin * depth, depth <= (0: off)
+    int qsDelta;                   // delta pruning: quiescence skips captures that miss alpha by more than this over the victim (0: off)
+    int histMul;                   // history bonus min(histMul * depth * depth, histMax) (1: the engine)
     u8 lmr[64][64];                // the reduction: int(0.75 + log(depth) * log(moves) / 2.25)
+};
+
+// Correction history (src/search.cpp): per side to move and pawn structure, and per side to move and
+// each colour's non-pawn pieces, in 1/16 cp.
+#define CORR_SIZE 16384
+#define CORR_LIMIT 1024
+#define CH_BLOCKS (12 * 64 * 12 * 64 / 8) // continuation history in 16-byte blocks of 8 entries
+#define CH_WORDS (CH_BLOCKS / 32)          // the blocks' marks, 32 to a word (see Tables::chMask)
+// What one engine keeps from move to move, and Search::clear() empties: the TT with its generation, and
+// the main thread's correction histories (int in the engine; their values stay within +-CORR_LIMIT). Each
+// game has one; in a match each side has its own, as two engines would.
+struct Tables {
+    TTEntry tt[1 << TT_BITS];
+    short corr[2][CORR_SIZE];
+    short npcorr[2][2][CORR_SIZE]; // [side to move][keyed colour][hash]
+    // Continuation history (the engine's mainContHist, an int table whose gravity keeps it within +-16384):
+    // [earlier piece * 64 + its target][piece * 64 + target], kept for the game and halved at each search
+    short conthist[12 * 64][12 * 64];
+    // One bit per 16-byte block of conthist (8 entries), set whenever an entry of the block is written and
+    // cleared when halving leaves the block all zero. Every non-zero entry's block is marked, so the
+    // halving before each search can skip the rest: halving zero is a no-op, so the values are the same.
+    unsigned chMask[CH_WORDS];
+    unsigned gen, pad[3]; // TT.new_search() at each search; entries keep its low 8 bits, as the engine's uint8_t
 };
 
 struct Game {
@@ -123,11 +160,16 @@ struct Game {
     u16 thinkBest, pad17;
     u16 killers[MAX_PLY + 1][2];
     u16 moveStack[MAX_PLY + 1];
+    u8 pieceStack[MAX_PLY + 1]; // the piece that played moveStack[ply], for continuation history
+    int evalStack[MAX_PLY + 1]; // each ply's static eval (-VALUE_INF in check), for "improving"
+    signed char doubleExt[MAX_PLY + 2]; // double extensions on the path to each ply
     int history[2][64][64];
-    Frame frames[MAX_PLY + 1];
-    u16 moves[MAX_PLY + 1][256];
-    short scores[MAX_PLY + 1][256]; // move order (see score_moves)
-    u16 quiets[MAX_PLY + 1][256];
+    // A singular search runs at its parent's ply while the parent waits, so each ply has two slots for
+    // the calls in flight and their moves: [ply] for ordinary calls, [MAX_PLY + 1 + ply] for singular ones.
+    Frame frames[2 * (MAX_PLY + 1)];
+    u16 moves[2 * (MAX_PLY + 1)][256];
+    int scores[2 * (MAX_PLY + 1)][256]; // move order (see score_moves)
+    u16 quiets[2 * (MAX_PLY + 1)][256];
     // Game loop (src/datagen.cpp)
     int winStreak, ply, done, nsamples;
     float result;
@@ -220,6 +262,69 @@ __device__ bool attacked(const Game* g, int s, int by) {
 }
 __device__ __forceinline__ bool in_check(const Game* g) { return attacked(g, king_sq(g, g->stm), g->stm ^ 1); }
 
+// The line through squares a != b: 1 file, 2 rank, 3 diagonal, 4 anti-diagonal, 0 none.
+__device__ __forceinline__ int line_kind(int a, int b) {
+    int df = (a & 7) - (b & 7), dr = (a >> 3) - (b >> 3);
+    return df == 0 ? 1 : dr == 0 ? 2 : df == dr ? 3 : df == -dr ? 4 : 0;
+}
+__device__ __forceinline__ u64 line_mask(int kind, int s) {
+    return kind == 1 ? file_mask(s) : kind == 2 ? rank_mask(s) : kind == 3 ? diag_mask(s) : anti_mask(s);
+}
+// Color c's sliders that move along lines of this kind.
+__device__ __forceinline__ u64 line_sliders(const Game* g, int c, int kind) {
+    return g->byColor[c] & (g->byType[QUEEN] | g->byType[kind <= 2 ? ROOK : BISHOP]);
+}
+
+// Would the pseudo-legal move m leave the mover's king attacked? Before do_move, so an illegal move is never
+// made; inCheck is whether the side to move is in check now. Not in check, a move other than a king move or en
+// passant is illegal only when it uncovers the king: `from` on a line through it, `to` off that line, and an
+// enemy slider of the line's kind behind `from`. Everything else gets the exact test on the board after the move.
+__device__ bool legal(const Game* g, u16 m, bool inCheck) {
+    int from = m & 63, to = (m >> 6) & 63, type = m & (3 << 14), us = g->stm, them = us ^ 1, k = king_sq(g, us);
+    if (!inCheck && from != k && type != M_EN_PASSANT) {
+        int kind = line_kind(from, k);
+        if (!kind || line_kind(to, k) == kind) return true;
+        u64 mask = line_mask(kind, k), sl = line_sliders(g, them, kind);
+        return !(mask & sl) || !(line_attacks(occupied(g) ^ bit(from), mask, k) & sl);
+    }
+    u64 occ = occupied(g), enemy = g->byColor[them];
+    if (type == M_CASTLING) {
+        bool kingside = to > from;
+        occ ^= bit(from) | bit(to) | bit(kingside ? from + 3 : from - 4) | bit(kingside ? from + 1 : from - 1);
+    } else {
+        int capSq = type == M_EN_PASSANT ? (us == 0 ? to - 8 : to + 8) : to;
+        occ = (occ ^ bit(from) ^ bit(capSq) * (capSq != to)) | bit(to);
+        enemy &= ~bit(capSq);
+    }
+    int s = from == k ? to : k;
+    return !((pawn_att(s, us) & enemy & g->byType[PAWN]) || (knight_att(bit(s)) & enemy & g->byType[KNIGHT])
+          || (king_att(bit(s)) & enemy & g->byType[KING])
+          || (bishop_att(s, occ) & enemy & (g->byType[BISHOP] | g->byType[QUEEN]))
+          || (rook_att(s, occ) & enemy & (g->byType[ROOK] | g->byType[QUEEN])));
+}
+
+// Just after do_move(m): is the side to move in check? Only the piece on `to` can give it directly, and only a
+// line through `from` can open; castling and en passant (rook, captured pawn) take in_check.
+__device__ bool gives_check(const Game* g, u16 m) {
+    int type = m & (3 << 14);
+    if (type == M_CASTLING || type == M_EN_PASSANT) return in_check(g);
+    int from = m & 63, to = (m >> 6) & 63, mover = g->stm ^ 1, k = king_sq(g, g->stm), pt = type_of(g->board[to]);
+    u64 occ = occupied(g);
+    if (pt == PAWN) {
+        if (pawn_att(to, mover) & bit(k)) return true;
+    } else if (pt == KNIGHT) {
+        if (knight_att(bit(to)) & bit(k)) return true;
+    } else if (pt != KING) {
+        int kind = line_kind(to, k);
+        if (kind && (pt == QUEEN || (pt == ROOK) == (kind <= 2)) && (line_attacks(occ, line_mask(kind, k), k) & bit(to)))
+            return true;
+    }
+    int kind = line_kind(from, k);
+    if (!kind || line_kind(to, k) == kind) return false;
+    u64 mask = line_mask(kind, k), sl = line_sliders(g, mover, kind);
+    return (mask & sl) && (line_attacks(occ, mask, k) & sl);
+}
+
 // ---- NNUE (one warp per game; this lane's units) ----
 __device__ __forceinline__ short* acc_slot(short* acc, int slot) { return acc + (size_t)slot * 2 * H; }
 __device__ __forceinline__ int feat(int persp, int p, int s) { // White's view, or Black's (colors swapped, ranks flipped)
@@ -260,6 +365,25 @@ struct Delta {
 };
 __device__ void apply_delta(const Net& net, const short* from, short* to, const Delta& d) {
     int base = lane_id() * UNITS;
+#ifndef JOINT_DELTA
+    // One perspective at a time: half the loads in flight (20 registers instead of 40 at the search's
+    // busiest point), at the cost of a second wait for the weight rows. Measured on the RTX 5060 Ti
+    // (claude-work/2026-10-31/gpu-bench.py, 103,680 searches): spills 104 -> 16 B and 1.5% faster than
+    // JOINT_DELTA, the former way below that loads both perspectives' rows at once.
+    for (int c = 0; c < UNITS; c += 8) {
+#pragma unroll 1
+        for (int persp = 0; persp < 2; ++persp) {
+            uint4 v = load8(from + persp * H + base + c), w[4];
+#pragma unroll
+            for (int k = 0; k < 4; ++k)
+                if (k < d.n) w[k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + base + c);
+#pragma unroll
+            for (int k = 0; k < 4; ++k)
+                if (k < d.n) v = k % 2 ? add8(v, w[k]) : sub8(v, w[k]);
+            store8(to + persp * H + base + c, v);
+        }
+    }
+#else
     for (int c = 0; c < UNITS; c += 8) {
         // Every load first, both perspectives and all (up to 4) features, so their latencies overlap.
         uint4 v[2], w[2][4];
@@ -278,6 +402,7 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
             store8(to + persp * H + base + c, v[persp]);
         }
     }
+#endif
 }
 // NNUE::evaluate: the side to move's view first, SCReLU, int16 v * w times v, truncating divisions.
 __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
@@ -295,8 +420,10 @@ __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
             }
         }
     }
-    long long sum = part;
-    for (int off = 16; off; off >>= 1) sum += __shfl_xor_sync(0xffffffffu, sum, off);
+    // part = hi * 65536 + lo with lo in [0, 65535]: each half's total fits an int, and the sum is exact.
+    int hiSum = __reduce_add_sync(0xffffffffu, part >> 16);
+    unsigned loSum = __reduce_add_sync(0xffffffffu, (unsigned)(part & 0xFFFF));
+    long long sum = ((long long)hiSum << 16) + loSum;
     sum = sum / QA + net.outb;
     return (int)(sum * EVAL_SCALE / (QA * QB));
 }
@@ -332,8 +459,40 @@ __device__ __forceinline__ void b_store(Game* g, const Board& b) {
     g->byColor[1] = b.bc[1];
 }
 
-// Position::do_move: plays a pseudo-legal move and returns whether it was legal.
-__device__ bool do_move(Game* g, u16 m, const Net& net, short* acc) {
+// Prefetching (no value changes, only when data arrives), off unless PREFETCH is defined: measured on the
+// RTX 5060 Ti it made the search 4-11% slower (15 lines a node, most never read before they are evicted).
+// PREFETCH_L1 asks for L1 instead of L2.
+__device__ __forceinline__ void prefetch_line(const void* p) {
+#ifdef PREFETCH_L1
+    asm volatile("prefetch.global.L1 [%0];" ::"l"(p));
+#else
+    asm volatile("prefetch.global.L2 [%0];" ::"l"(p));
+#endif
+}
+__device__ __forceinline__ TTEntry* tt_entry(TTEntry* tt, u64 key);
+__device__ __forceinline__ int pawn_index(const Game* g);
+__device__ __forceinline__ int nonpawn_index(const Game* g, int c);
+enum { PF_NONE, PF_QSEARCH, PF_SEARCH };
+// From the parent's do_move, with the child position already in g: what the child looks up first. Its
+// correction-history entries (both kinds), and in the main search its TT entry and the continuation-history row
+// it scores quiet moves from (the moved piece and its target, 1,536 bytes: 13 lines when not 128-byte aligned).
+// Each lane computes the same indices and takes one address, so one prefetch instruction covers all of them.
+__device__ __forceinline__ void prefetch_child(const Game* g, Tables* tb, u64 key, int piece, int to, int kind) {
+    int lane = lane_id(), us = g->stm;
+    int pi = pawn_index(g), n0 = nonpawn_index(g, 0), n1 = nonpawn_index(g, 1);
+    const char* row = (const char*)&tb->conthist[piece * 64 + to][0];
+    const char* a = lane == 0 ? (const char*)tt_entry(tb->tt, key)
+                  : lane == 1 ? (const char*)&tb->corr[us][pi]
+                  : lane == 2 ? (const char*)&tb->npcorr[us][0][n0]
+                  : lane == 3 ? (const char*)&tb->npcorr[us][1][n1]
+                              : row + (lane - 4) * 128;
+    if (kind == PF_SEARCH ? lane < 17 : lane >= 1 && lane <= 3) prefetch_line(a);
+}
+
+// Position::do_move: plays a pseudo-legal move and returns whether it was legal. With tb and a prefetch kind,
+// it also prefetches what the child will look up first (prefetch_child).
+__device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb = nullptr, int prefetch = PF_NONE,
+                        bool known = false) { // known: legal() said yes
     __syncwarp();
     int n = g->nstates, top = g->accTop, us = g->stm, them = us ^ 1, fm = g->fullmove;
     StateInfo st = g->states[n - 1];
@@ -417,9 +576,12 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc) {
     g->fullmove = fm + (us == 1);
     g->accTop = top + 1;
     __syncwarp();
+#ifdef PREFETCH
+    if (prefetch != PF_NONE) prefetch_child(g, tb, st.key, pc, to, prefetch);
+#endif
     // Legal first: the caller undoes an illegal move at once, and nothing ever reads its
-    // accumulator, so it is only computed for legal ones (about a quarter of updates are not).
-    bool legal = !attacked(g, king_sq(g, us), them);
+    // accumulator, so it is only computed for legal ones. The search checks with legal() before.
+    bool legal = known || !attacked(g, king_sq(g, us), them);
     if (legal) apply_delta(net, acc_slot(acc, top), acc_slot(acc, top + 1), d);
     __syncwarp();
     return legal;
@@ -496,14 +658,6 @@ __device__ void undo_null_move(Game* g) {
     __syncwarp();
 }
 
-// Counters shared by the warp: read, sync, write, sync.
-__device__ __forceinline__ void count_node(Game* g) {
-    __syncwarp();
-    u64 v = g->nodes + 1;
-    __syncwarp();
-    g->nodes = v;
-    __syncwarp();
-}
 
 __device__ bool is_draw(Game* g) {
     __syncwarp();
@@ -530,6 +684,16 @@ __device__ __forceinline__ void add_promotions(u16* list, int& n, int from, int 
         add(list, n, from, to, M_PROMOTION, BISHOP);
     }
 }
+// Appends a move to each square of `to`, in square order, from `from` (or, when from < 0, from the square
+// `delta` behind): lane l writes the moves to squares l and l + 32, each after the targets below it.
+__device__ __forceinline__ void add_set(u16* list, int& n, u64 to, int from, int delta) {
+    int lane = lane_id();
+    unsigned lo = (unsigned)to, hi = (unsigned)(to >> 32), below = (1u << lane) - 1;
+    int nlo = __popc(lo);
+    if ((lo >> lane) & 1) list[n + __popc(lo & below)] = (u16)((from < 0 ? lane - delta : from) | (lane << 6));
+    if ((hi >> lane) & 1) list[n + nlo + __popc(hi & below)] = (u16)((from < 0 ? lane + 32 - delta : from) | ((lane + 32) << 6));
+    n += nlo + __popc(hi);
+}
 __device__ int generate(Game* g, u16* list, bool noisy) {
     int us = g->stm, them = us ^ 1, n = 0;
     u64 pawns = pcs(g, us, PAWN), empty = ~occupied(g), enemies = g->byColor[them];
@@ -538,8 +702,13 @@ __device__ int generate(Game* g, u16* list, bool noisy) {
 #define PUSH(b) (us == 0 ? (b) << 8 : (b) >> 8)
     if (!noisy) {
         u64 single = PUSH(pawns & ~seventh) & empty, twice = PUSH(single & third) & empty;
+#ifndef SERIAL_GEN
+        add_set(list, n, single, -1, up);
+        add_set(list, n, twice, -1, 2 * up);
+#else
         for (; single; single &= single - 1) { int to = lsb(single); add(list, n, to - up, to, 0, KNIGHT); }
         for (; twice; twice &= twice - 1) { int to = lsb(twice); add(list, n, to - 2 * up, to, 0, KNIGHT); }
+#endif
     }
     for (u64 b = PUSH(pawns & seventh) & empty; b; b &= b - 1) { int to = lsb(b); add_promotions(list, n, to - up, to, noisy); }
 #undef PUSH
@@ -555,11 +724,40 @@ __device__ int generate(Game* g, u16* list, bool noisy) {
     if (ep != SQ_NONE)
         for (u64 a = pawn_att(ep, them) & pawns; a; a &= a - 1) add(list, n, lsb(a), ep, M_EN_PASSANT, KNIGHT);
     u64 occ = occupied(g), targets = noisy ? g->byColor[them] : ~g->byColor[us];
+#ifndef SERIAL_GEN
+    {
+        // Lane l: the l-th piece in generation order and its targets (at most 16 pieces).
+        int lane = lane_id(), rank = lane, pt = -1, count = 0;
+        u64 mine = 0;
+        for (int t = KNIGHT; t <= KING; ++t) {
+            u64 bt = pcs(g, us, t);
+            int c = __popcll(bt);
+            if (pt < 0) {
+                if (rank < c) { pt = t; mine = bt; }
+                else rank -= c;
+            }
+            count += c;
+        }
+        u64 att = 0;
+        int from = 0;
+        if (pt >= 0) {
+            for (; rank; --rank) mine &= mine - 1;
+            from = lsb(mine);
+            att = pt == KNIGHT ? knight_att(bit(from)) : pt == KING ? king_att(bit(from)) : 0;
+            if (pt == BISHOP || pt == QUEEN) att |= bishop_att(from, occ);
+            if (pt == ROOK || pt == QUEEN) att |= rook_att(from, occ);
+            att &= targets;
+        }
+        for (int j = 0; j < count; ++j)
+            add_set(list, n, __shfl_sync(0xffffffffu, att, j), __shfl_sync(0xffffffffu, from, j), 0);
+    }
+#else
     for (int pt = KNIGHT; pt <= KING; ++pt)
         for (u64 b = pcs(g, us, pt); b; b &= b - 1) {
             int from = lsb(b);
             for (u64 a = attacks_bb(pt, from, occ) & targets; a; a &= a - 1) add(list, n, from, lsb(a), 0, KNIGHT);
         }
+#endif
     if (!noisy) {
         int base = us == 0 ? 0 : 56, king = base + 4, rights = g->states[g->nstates - 1].castling;
         if ((rights & (us == 0 ? WHITE_OO | WHITE_OOO : BLACK_OO | BLACK_OOO)) && !in_check(g)) {
@@ -573,7 +771,8 @@ __device__ int generate(Game* g, u16* list, bool noisy) {
     return n;
 }
 
-// ---- TT (src/tt.cpp: one entry per index, always replace, keep the old move) ----
+// ---- TT (src/tt.cpp: one entry per index; an entry from the current search stays unless the new one,
+// for another position, is at least as deep; keep the old move) ----
 __device__ __forceinline__ TTEntry* tt_entry(TTEntry* tt, u64 key) { return tt + (key >> (64 - TT_BITS)); }
 __device__ __forceinline__ int score_to_tt(int s, int ply) {
     return s >= VALUE_MATE_IN_MAX_PLY ? s + ply : s <= -VALUE_MATE_IN_MAX_PLY ? s - ply : s;
@@ -581,15 +780,31 @@ __device__ __forceinline__ int score_to_tt(int s, int ply) {
 __device__ __forceinline__ int score_from_tt(int s, int ply) {
     return s >= VALUE_MATE_IN_MAX_PLY ? s - ply : s <= -VALUE_MATE_IN_MAX_PLY ? s + ply : s;
 }
-__device__ void tt_store(TTEntry* tt, u64 key, u16 move, int score, int depth, int bound) {
-    TTEntry* e = tt_entry(tt, key);
+__device__ void tt_store(Tables* tb, u64 key, u16 move, int score, int depth, int bound) {
+    TTEntry* e = tt_entry(tb->tt, key);
     __syncwarp();
     TTEntry old = *e;
+    u8 gen = (u8)tb->gen;
+    // A deeper result for another position, written during this search, stays (every lane agrees).
+    if (old.key != key && old.gen == gen && depth < old.depth) return;
     if (move == MOVE_NONE && old.key == key) move = old.move;
     TTEntry n;
-    n.key = key; n.move = move; n.score = (short)score; n.depth = (signed char)depth; n.bound = (u8)bound; n.pad = 0;
+    n.key = key; n.move = move; n.score = (short)score; n.depth = (signed char)depth; n.bound = (u8)bound; n.gen = gen; n.pad = 0;
     __syncwarp();
     *e = n;
+    __syncwarp();
+}
+// Search::clear(): an empty TT and correction history.
+__device__ void clear_tables(Tables* tb) {
+    TTEntry z;
+    z.key = 0; z.move = 0; z.score = 0; z.depth = 0; z.bound = 0; z.gen = 0; z.pad = 0;
+    for (int i = lane_id(); i < (1 << TT_BITS); i += 32) tb->tt[i] = z;
+    for (int i = lane_id(); i < 2 * CORR_SIZE; i += 32) (&tb->corr[0][0])[i] = 0;
+    for (int i = lane_id(); i < 4 * CORR_SIZE; i += 32) (&tb->npcorr[0][0][0])[i] = 0;
+    int4* ch = reinterpret_cast<int4*>(&tb->conthist[0][0]);
+    for (int i = lane_id(); i < CH_BLOCKS; i += 32) ch[i] = make_int4(0, 0, 0, 0);
+    for (int i = lane_id(); i < CH_WORDS; i += 32) tb->chMask[i] = 0;
+    if (lane_id() == 0) tb->gen = 0;
     __syncwarp();
 }
 
@@ -597,60 +812,128 @@ __device__ void tt_store(TTEntry* tt, u64 key, u16 move, int score, int depth, i
 __constant__ int PIECE_VALUE[7] = {100, 320, 330, 500, 900, 0, 0};
 __constant__ int SEE_VALUE[6] = {100, 320, 330, 500, 900, 20000};
 
-__device__ __forceinline__ void check_limits(Game* g) {
-    if ((g->nodes & 1023) != 0) return;
-    if (g->nodeLimit && g->nodes >= g->nodeLimit) g->stopped = 1;
-}
 __device__ __forceinline__ bool is_quiet(const Game* g, u16 m) {
     int t = m & (3 << 14);
     return g->board[(m >> 6) & 63] == NO_PIECE && t != M_EN_PASSANT && t != M_PROMOTION;
 }
-// Move order as in src/search.cpp, in 16 bits: the same order with the categories moved down, since
-// only the order matters. History stays within +-16384 (its gravity), and above it come the second and
-// first killer (17,000 and 18,000 there, 70,000 and 80,000 in the engine), a queen promotion (19,000;
-// 90,000), captures (20,000 + 10 * victim value - attacker type; 100,000 + ...) and the TT move
-// (32,000; 1,000,000).
-__device__ void score_moves(Game* g, const u16* list, int n, short* scores, u16 ttMove, int ply) {
+__device__ bool see_ge(const Game* g, u16 m, int threshold);
+// The continuation-history entry for quiet move m after the move `back` plies earlier (the engine's
+// cont_entry), or null at the root, after a null move, or with continuation history off.
+__device__ __forceinline__ short* cont_entry(Game* g, Tables* tb, int on, int ply, int back, u16 m) {
+    if (!on || ply < back) return nullptr;
+    u16 prev = g->moveStack[ply - back];
+    if (prev == MOVE_NONE) return nullptr;
+    return &tb->conthist[g->pieceStack[ply - back] * 64 + ((prev >> 6) & 63)][g->board[m & 63] * 64 + ((m >> 6) & 63)];
+}
+// Move order exactly as src/search.cpp scores it: the TT move, captures by MVV-LVA (in the main search those
+// that lose material by SEE go below every quiet move), a queen promotion, the two killers, then quiet moves
+// by history plus their two continuation entries (each within +-16384).
+__device__ void score_moves(Game* g, Tables* tb, int contHist, const u16* list, int n, int* scores, u16 ttMove, int ply) {
     __syncwarp();
     for (int i = lane_id(); i < n; i += 32) { // every lane scores every 32nd move
         u16 m = list[i];
         int from = m & 63, to = (m >> 6) & 63, t = m & (3 << 14), s;
-        if (m == ttMove) s = 32000;
-        else if (t == M_EN_PASSANT) s = 20000 + PIECE_VALUE[PAWN] * 10 - PAWN;
-        else if (g->board[to] != NO_PIECE) s = 20000 + PIECE_VALUE[type_of(g->board[to])] * 10 - type_of(g->board[from]);
-        else if (t == M_PROMOTION && ((m >> 12) & 3) + KNIGHT == QUEEN) s = 19000;
-        else if (ply >= 0 && m == g->killers[ply][0]) s = 18000;
-        else if (ply >= 0 && m == g->killers[ply][1]) s = 17000;
-        else if (ply >= 0) s = g->history[g->stm][from][to];
+        if (m == ttMove) s = 1000000;
+        else if (t == M_EN_PASSANT) s = 100000 + PIECE_VALUE[PAWN] * 10 - PAWN;
+        else if (g->board[to] != NO_PIECE) {
+            int mvvLva = PIECE_VALUE[type_of(g->board[to])] * 10 - type_of(g->board[from]);
+            s = (ply >= 0 && !see_ge(g, m, 0) ? -100000 : 100000) + mvvLva;
+        }
+        else if (t == M_PROMOTION && ((m >> 12) & 3) + KNIGHT == QUEEN) s = 90000;
+        else if (ply >= 0 && m == g->killers[ply][0]) s = 80000;
+        else if (ply >= 0 && m == g->killers[ply][1]) s = 70000;
+        else if (ply >= 0) {
+            s = g->history[g->stm][from][to];
+            if (const short* c = cont_entry(g, tb, contHist, ply, 1, m)) s += *c;
+            if (const short* c = cont_entry(g, tb, contHist, ply, 2, m)) s += *c;
+        }
         else s = 0;
-        scores[i] = (short)s;
+        scores[i] = s;
     }
     __syncwarp();
 }
-__device__ void update_history(Game* g, u16 m, int bonus) {
+// Marks the block of continuation-history entry c as possibly non-zero (see Tables::chMask). Every lane
+// reads the same word, then writes the same value.
+__device__ __forceinline__ void mark_cont(Tables* tb, const short* c) {
+    int block = (int)(c - &tb->conthist[0][0]) >> 3;
+    unsigned* w = &tb->chMask[block >> 5];
+    unsigned v = *w | (1u << (block & 31));
+    __syncwarp();
+    *w = v;
+    __syncwarp();
+}
+// Gravity moves history and both continuation entries toward +-16384 by the same bonus.
+__device__ void update_history(Game* g, Tables* tb, int contHist, int ply, u16 m, int bonus) {
     int& h = g->history[g->stm][m & 63][(m >> 6) & 63];
-    int v = h;
+    short* c1 = cont_entry(g, tb, contHist, ply, 1, m);
+    short* c2 = cont_entry(g, tb, contHist, ply, 2, m);
+    int v = h, v1 = c1 ? *c1 : 0, v2 = c2 ? *c2 : 0;
     v += bonus - v * abs(bonus) / 16384;
+    v1 += bonus - v1 * abs(bonus) / 16384;
+    v2 += bonus - v2 * abs(bonus) / 16384;
     __syncwarp();
     h = v;
+    if (c1) *c1 = (short)v1;
+    if (c2) *c2 = (short)v2;
+    __syncwarp();
+    if (c1) mark_cont(tb, c1);
+    if (c2) mark_cont(tb, c2);
+}
+__device__ __forceinline__ int pawn_index(const Game* g) {
+    u64 h = pcs(g, 0, PAWN) * 0x9E3779B97F4A7C15ULL ^ pcs(g, 1, PAWN) * 0xC2B2AE3D27D4EB4FULL;
+    h ^= h >> 31;
+    h *= 0xBF58476D1CE4E5B9ULL;
+    return (int)(h >> 50); // top 14 bits: 0 to CORR_SIZE - 1
+}
+__device__ __forceinline__ int nonpawn_index(const Game* g, int c) {
+    u64 h = (g->byColor[c] & ~g->byType[PAWN]) * 0x9E3779B97F4A7C15ULL;
+    h ^= pcs(g, c, KNIGHT) * 0xD6E8FEB86659FD93ULL ^ pcs(g, c, BISHOP) * 0xC2B2AE3D27D4EB4FULL
+       ^ pcs(g, c, ROOK) * 0x165667B19E3779F9ULL ^ pcs(g, c, QUEEN) * 0x27D4EB2F165667C5ULL;
+    h ^= h >> 31;
+    h *= 0xBF58476D1CE4E5B9ULL;
+    h ^= h >> 29;
+    return (int)(h >> 50);
+}
+// The network's eval plus what correction history has learned for these pawns and non-pawn pieces.
+__device__ int corrected_eval(const Game* g, const Net& net, const short* acc, const Tables* tb) {
+    int us = g->stm;
+    int nonPawn = tb->npcorr[us][0][nonpawn_index(g, 0)] + tb->npcorr[us][1][nonpawn_index(g, 1)];
+    int e = evaluate(g, net, acc) + (tb->corr[us][pawn_index(g)] + nonPawn / 2) / 16;
+    return min(max(e, -VALUE_MATE_IN_MAX_PLY + 1), VALUE_MATE_IN_MAX_PLY - 1);
+}
+// Moves the entries toward the search result, more for deeper searches; the gravity term keeps them within
+// +-CORR_LIMIT.
+__device__ void update_corrhist(const Game* g, Tables* tb, int diff, int depth) {
+    int us = g->stm;
+    short* e = &tb->corr[us][pawn_index(g)];
+    short* nw = &tb->npcorr[us][0][nonpawn_index(g, 0)];
+    short* nb = &tb->npcorr[us][1][nonpawn_index(g, 1)];
+    __syncwarp();
+    int v = *e, vw = *nw, vb = *nb;
+    int bonus = min(max(diff * depth / 4, -CORR_LIMIT / 4), CORR_LIMIT / 4);
+    v += bonus - v * abs(bonus) / CORR_LIMIT;
+    vw += bonus - vw * abs(bonus) / CORR_LIMIT;
+    vb += bonus - vb * abs(bonus) / CORR_LIMIT;
+    __syncwarp();
+    *e = (short)v;
+    *nw = (short)vw;
+    *nb = (short)vb;
     __syncwarp();
 }
-__device__ u16 pick_move(u16* list, short* scores, int n, int i) {
+__device__ u16 pick_move(u16* list, int* scores, int n, int i) {
     __syncwarp();
-    int bestS = -2147483647 - 1, bestJ = n;
-    for (int j = i + lane_id(); j < n; j += 32) {
-        int sj = scores[j];
-        if (sj > bestS) { bestS = sj; bestJ = j; } // a lane's first maximum: its indices only grow
-    }
-    for (int off = 16; off; off >>= 1) {
-        int s2 = __shfl_xor_sync(0xffffffffu, bestS, off), j2 = __shfl_xor_sync(0xffffffffu, bestJ, off);
-        if (s2 > bestS || (s2 == bestS && j2 < bestJ)) { bestS = s2; bestJ = j2; }
-    }
+    // Scores lie within +-2^21 (TT move 1,000,000; history and continuation entries within +-16,384 each) and
+    // indices below 256, so (score + 2^22) << 8 | (255 - index) fits 32 bits, and its maximum is the best score
+    // at its first index.
+    unsigned key = 0;
+    for (int j = i + lane_id(); j < n; j += 32) key = max(key, ((unsigned)(scores[j] + (1 << 22)) << 8) | (unsigned)(255 - j));
+    key = __reduce_max_sync(0xffffffffu, key);
+    int bestS = (int)(key >> 8) - (1 << 22), bestJ = 255 - (int)(key & 255);
     u16 mi = list[i], mb = list[bestJ];
     int si = scores[i];
     __syncwarp();
     list[i] = mb; list[bestJ] = mi;
-    scores[i] = (short)bestS; scores[bestJ] = (short)si;
+    scores[i] = bestS; scores[bestJ] = si;
     __syncwarp();
     return mb;
 }
@@ -722,10 +1005,15 @@ __device__ bool has_legal_move(Game* g, const Net& net, short* acc, int ply) {
 
 // The states of a call. A search call starts in S_ENTRY, a quiescence call in Q_ENTRY; the others
 // resume a call after the child named by the state returns.
-enum { S_ENTRY, S_NULL_DONE, S_MOVES, S_LOOP, S_FIRST_DONE, S_RED_DONE, S_FULL_DONE, S_PV_DONE, Q_ENTRY, Q_LOOP, Q_DONE };
+enum { S_ENTRY, S_NULL_DONE, S_MOVES, S_LOOP, S_SING_DONE, S_SEARCH_MOVE, S_FIRST_DONE, S_RED_DONE, S_FULL_DONE, S_PV_DONE,
+       Q_ENTRY, Q_LOOP, Q_DONE };
 
-__device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int depth, int ply) {
+// The slot of a call's moves, scores and quiets (see Game::moves).
+__device__ __forceinline__ int move_slot(const Frame& f) { return f.excl ? MAX_PLY + 1 + f.ply : f.ply; }
+
+__device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int depth, int ply, bool inCheck) {
     Frame f = {};
+    f.inCheck = inCheck;
     f.state = state;
     f.alpha = alpha;
     f.beta = beta;
@@ -734,13 +1022,27 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
     return f;
 }
 
-// Call a child at ply + 1 (starting in ENTRY) and resume this call in RESUME when it returns.
-#define CALL(RESUME, ENTRY, A, B, D)                     \
+// Call a child at ply + 1 (starting in ENTRY; CHK: whether it is in check) and resume this call in RESUME
+// when it returns.
+#define CALL(RESUME, ENTRY, A, B, D, CHK)                \
     {                                                     \
+        bool _chk = (CHK);                                \
         f.state = RESUME;                                 \
         __syncwarp();                                     \
         g->frames[sp++] = f;                              \
-        f = new_call(ENTRY, A, B, D, f.ply + 1);          \
+        f = new_call(ENTRY, A, B, D, f.ply + 1, _chk);    \
+        continue;                                         \
+    }
+// Call search(A, B, D, ply) at this call's own ply with move EXCL left out (a singular search), and resume
+// this call in RESUME when it returns.
+#define CALL_EXCLUDING(RESUME, A, B, D, EXCL)            \
+    {                                                     \
+        u16 _excl = (EXCL);                               \
+        f.state = RESUME;                                 \
+        __syncwarp();                                     \
+        g->frames[sp++] = f;                              \
+        f = new_call(S_ENTRY, A, B, D, f.ply, f.inCheck); \
+        f.excl = _excl;                                   \
         continue;                                         \
     }
 // Return V from the running call.
@@ -749,35 +1051,46 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
         ret = (V); \
         break;     \
     }
+// Count a node, and stop at the node limit, checked every 1,024 nodes as src/search.cpp's check_limits.
+#define COUNT_NODE()                                                       \
+    {                                                                      \
+        ++nodes;                                                           \
+        if ((nodes & 1023) == 0 && g->nodeLimit && nodes >= g->nodeLimit)  \
+            stopped = 1;                                                   \
+        if (stopped) RETURN(0)                                             \
+    }
 
 // Runs search(alpha, beta, depth, 0) and everything below it, in the same order as the recursive
 // code, from the root call think_run put in g->cur. Returns true when the root call returns, with its
 // score in *score, or false once the node count reaches stopAt: the running call goes back to g->cur,
 // and the next call carries on from it.
-__device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, u64 stopAt, int* score) {
+__device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc, Tables* tb, u64 stopAt, int* score) {
     __syncwarp();
     Frame f = g->cur;
     int sp = g->sp, ret = 0;
+    // The node count and the stop flag stay in registers until the search pauses or returns (every
+    // lane holds the same values); nothing else reads or writes them meanwhile. The node limit is read
+    // only every 1,024 nodes, so it stays in memory and its registers go to the search.
+    u64 nodes = g->nodes;
+    int stopped = g->stopped;
     while (true) {
-        if (g->nodes >= stopAt) {
+        if (nodes >= stopAt) {
             __syncwarp();
             g->cur = f;
             g->sp = sp;
+            g->nodes = nodes;
+            g->stopped = stopped;
             __syncwarp();
             return false;
         }
         switch (f.state) {
         case S_ENTRY: {
-            PB(8) f.inCheck = in_check(g); PE(8)
-            if (f.inCheck) ++f.depth;
+            if (f.inCheck) ++f.depth; // the caller set inCheck
             if (f.depth <= 0) { // return qsearch(alpha, beta, ply)
                 f.state = Q_ENTRY;
                 continue;
             }
-            count_node(g);
-            check_limits(g);
-            __syncwarp();
-            if (g->stopped) RETURN(0)
+            COUNT_NODE()
             f.root = f.ply == 0;
             f.pvNode = f.beta - f.alpha > 1;
             if (f.root) g->rootPv = 0; // pvLength[0] = 0
@@ -787,28 +1100,38 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 if (f.ply >= MAX_PLY - 1) RETURN(evaluate(g, net, acc))
             }
             f.key = g->states[g->nstates - 1].key;
-            PB(6) TTEntry e = *tt_entry(tt, f.key); PE(6)
-            bool hit = e.key == f.key && e.bound != BOUND_NONE;
-            f.ttMove = hit ? e.move : MOVE_NONE;
-            if (hit && !f.pvNode && e.depth >= f.depth) {
-                int ttScore = score_from_tt(e.score, f.ply);
-                if (e.bound == BOUND_EXACT || (e.bound == BOUND_LOWER && ttScore >= f.beta) || (e.bound == BOUND_UPPER && ttScore <= f.alpha))
-                    RETURN(ttScore)
+            // A singular search (one move excluded) neither reads nor writes this node's TT entry.
+            bool hit = false;
+            TTEntry e = {};
+            if (!f.excl) {
+                PB(6) e = *tt_entry(tb->tt, f.key); PE(6)
+                hit = e.key == f.key && e.bound != BOUND_NONE;
             }
-            PB(5) f.staticEval = f.inCheck ? -VALUE_INF : evaluate(g, net, acc); PE(5)
+            f.ttMove = hit ? e.move : MOVE_NONE;
+            f.ttScore = hit ? score_from_tt(e.score, f.ply) : 0;
+            f.ttDepth = hit ? e.depth : -1;
+            f.ttBound = hit ? e.bound : BOUND_NONE;
+            if (hit && !f.pvNode && f.ttDepth >= f.depth) {
+                if (f.ttBound == BOUND_EXACT || (f.ttBound == BOUND_LOWER && f.ttScore >= f.beta) || (f.ttBound == BOUND_UPPER && f.ttScore <= f.alpha))
+                    RETURN(f.ttScore)
+            }
+            PB(5) f.staticEval = f.inCheck ? -VALUE_INF : corrected_eval(g, net, acc, tb); PE(5)
+            if (!f.excl) g->evalStack[f.ply] = f.staticEval;
+            f.improving = !f.inCheck && f.ply >= 2 && f.staticEval > g->evalStack[f.ply - 2];
             int us = g->stm;
-            if (!f.root && !f.pvNode && !f.inCheck && f.depth <= p.rfpDepth && g->states[g->nstates - 1].rule50 + f.depth < 100
+            if (!f.root && !f.pvNode && !f.inCheck && !f.excl && f.depth <= p.rfpDepth && g->states[g->nstates - 1].rule50 + f.depth < 100
                 && abs(f.beta) < VALUE_MATE_IN_MAX_PLY && (g->byColor[us] & ~(g->byType[PAWN] | g->byType[KING]))) {
-                if (abs(f.staticEval) < VALUE_MATE_IN_MAX_PLY && f.staticEval - p.rfpMargin * f.depth >= f.beta)
+                if (abs(f.staticEval) < VALUE_MATE_IN_MAX_PLY && f.staticEval - p.rfpMargin * (f.depth - (p.rfpImproving && f.improving)) >= f.beta)
                     RETURN(has_legal_move(g, net, acc, f.ply) ? f.staticEval : 0)
             }
             bool hasPieces = (g->byColor[us] & ~g->byType[PAWN] & ~g->byType[KING]) != 0;
-            if (!f.pvNode && !f.inCheck && !f.root && f.depth >= p.nmpDepth && hasPieces && g->moveStack[f.ply - 1] != MOVE_NONE && f.staticEval >= f.beta) {
-                int R = p.nmpBase + f.depth / p.nmpDiv;
+            if (!f.pvNode && !f.inCheck && !f.root && !f.excl && f.depth >= p.nmpDepth && hasPieces && g->moveStack[f.ply - 1] != MOVE_NONE && f.staticEval >= f.beta) {
+                int R = p.nmpBase + f.depth / p.nmpDiv + (p.nmpEvalDiv ? min((f.staticEval - f.beta) / p.nmpEvalDiv, p.nmpEvalMax) : 0);
                 g->moveStack[f.ply] = MOVE_NONE;
+                g->doubleExt[f.ply + 1] = g->doubleExt[f.ply];
                 __syncwarp();
                 do_null_move(g);
-                CALL(S_NULL_DONE, S_ENTRY, -f.beta, -f.beta + 1, f.depth - 1 - R)
+                CALL(S_NULL_DONE, S_ENTRY, -f.beta, -f.beta + 1, f.depth - 1 - R, in_check(g))
             }
             f.state = S_MOVES;
             continue;
@@ -816,15 +1139,19 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         case S_NULL_DONE: {
             int score = -f.childScore;
             undo_null_move(g);
-            if (g->stopped) RETURN(0)
+            if (stopped) RETURN(0)
             if (score >= f.beta) RETURN(score >= VALUE_MATE_IN_MAX_PLY ? f.beta : score)
             f.state = S_MOVES;
             continue;
         }
         case S_MOVES: {
-            PB(0) f.n = generate(g, g->moves[f.ply], false);
+            // Internal iterative reductions: with no TT move the ordering here is poor, so search one ply
+            // shallower. Not in a singular search, whose depth stays as its caller set it.
+            if (!f.root && !f.excl && f.depth >= p.iirDepth && f.ttMove == MOVE_NONE) --f.depth;
+            int slot = move_slot(f);
+            PB(0) f.n = generate(g, g->moves[slot], false);
             __syncwarp(); PE(0)
-            PB(1) score_moves(g, g->moves[f.ply], f.n, g->scores[f.ply], f.ttMove, f.ply); PE(1)
+            PB(1) score_moves(g, tb, p.contHist, g->moves[slot], f.n, g->scores[slot], f.ttMove, f.ply); PE(1)
             f.originalAlpha = f.alpha;
             f.best = -VALUE_INF;
             f.legalMoves = f.quietCount = f.i = 0;
@@ -835,56 +1162,111 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         case S_LOOP: {
             // Make the next legal move that is not pruned, then search it below: CALL can't leave this
             // loop, since its continue would continue the loop.
-            u16* list = g->moves[f.ply];
-            short* scores = g->scores[f.ply];
-            bool found = false;
+            int slot = move_slot(f);
+            u16* list = g->moves[slot];
+            int* scores = g->scores[slot];
+            bool found = false, singular = false;
             while (f.i < f.n) {
                 PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
                 ++f.i;
+                if (m == f.excl) continue;
                 bool quiet = is_quiet(g, m);
-                if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.lmpDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.quietCount >= p.lmpBase + f.depth * f.depth) continue;
+                if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.lmpDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.quietCount >= (p.lmpBase + f.depth * f.depth) / (p.lmpImproving && !f.improving ? 2 : 1)) continue;
                 if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.futDepth && f.best > -VALUE_MATE_IN_MAX_PLY && f.staticEval + p.futMargin * f.depth <= f.alpha) continue;
-                PB(3) bool legal = do_move(g, m, net, acc); PE(3)
-                if (!legal) {
-                    PB(4) undo_move(g, m); PE(4)
-                    continue;
+                if (!f.pvNode && !f.inCheck && quiet && f.depth <= p.histPruneDepth && f.best > -VALUE_MATE_IN_MAX_PLY && scores[f.i - 1] < -p.histPruneMargin * f.depth) continue;
+                if (!f.root && !f.inCheck && f.depth <= p.seeDepth && f.best > -VALUE_MATE_IN_MAX_PLY) {
+                    PB(7) bool seeOk = see_ge(g, m, quiet ? -p.seeQuiet * f.depth : -p.seeCapture * f.depth * f.depth); PE(7)
+                    if (!seeOk) continue;
                 }
-                ++f.legalMoves;
-                g->moveStack[f.ply] = m;
-                __syncwarp();
                 f.m = m;
                 f.quiet = quiet;
+                f.ext = 0;
+                // Singular extension: decided by a search of this node without the TT move (below).
+                if (!f.root && m == f.ttMove && f.depth >= p.singDepth && f.ttDepth >= f.depth - p.singTTMargin && f.ttBound != BOUND_UPPER
+                    && abs(f.ttScore) < VALUE_MATE_IN_MAX_PLY && f.ply < 2 * g->thinkDepth) {
+                    singular = true;
+                    break;
+                }
+                PB(8) bool ok = legal(g, m, f.inCheck); PE(8)
+                if (!ok) continue;
+                u8 moved = g->board[m & 63];
+                PB(3) do_move(g, m, net, acc, tb, PF_SEARCH, true); PE(3)
+                ++f.legalMoves;
+                g->moveStack[f.ply] = m;
+                g->pieceStack[f.ply] = moved;
+                g->doubleExt[f.ply + 1] = g->doubleExt[f.ply] + (f.ext == 2);
+                __syncwarp();
                 found = true;
                 break;
             }
-            if (found) {
-                if (f.legalMoves == 1) CALL(S_FIRST_DONE, S_ENTRY, -f.beta, -f.alpha, f.depth - 1)
-                f.r = 0;
-                PB(8) bool givesCheck = f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && in_check(g); PE(8)
-                if (f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && !givesCheck) {
-                    int r = p.lmr[min(f.depth, 63)][min(f.legalMoves, 63)];
-                    if (f.pvNode) --r;
-                    f.r = max(0, min(r, f.depth - 2));
-                }
-                CALL(S_RED_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, f.depth - 1 - f.r)
+            if (singular) {
+                int singularBeta = f.ttScore - p.singBeta * f.depth / 16;
+                CALL_EXCLUDING(S_SING_DONE, singularBeta - 1, singularBeta, (f.depth - 1) / 2, f.m)
             }
-            if (f.legalMoves == 0) RETURN(f.inCheck ? -VALUE_MATE + f.ply : 0)
-            int bound = f.best >= f.beta ? BOUND_LOWER : f.alpha > f.originalAlpha ? BOUND_EXACT : BOUND_UPPER;
-            { PB(6) tt_store(tt, f.key, f.bestMove, score_to_tt(f.best, f.ply), f.depth, bound); PE(6) }
+            if (found) {
+                f.state = S_SEARCH_MOVE;
+                continue;
+            }
+            // With a move excluded, the excluded move was the only legal one.
+            if (f.legalMoves == 0) RETURN(f.excl ? f.alpha : f.inCheck ? -VALUE_MATE + f.ply : 0)
+            // A search with a move excluded is not this position's result, so neither the table nor the
+            // correction history learns from it.
+            if (!f.excl) {
+                int bound = f.best >= f.beta ? BOUND_LOWER : f.alpha > f.originalAlpha ? BOUND_EXACT : BOUND_UPPER;
+                if (!f.inCheck && (f.bestMove == MOVE_NONE || is_quiet(g, f.bestMove)) && abs(f.best) < VALUE_MATE_IN_MAX_PLY
+                    && !(bound == BOUND_LOWER && f.best <= f.staticEval) && !(bound == BOUND_UPPER && f.best >= f.staticEval))
+                    update_corrhist(g, tb, f.best - f.staticEval, f.depth);
+                PB(6) tt_store(tb, f.key, f.bestMove, score_to_tt(f.best, f.ply), f.depth, bound); PE(6)
+            }
             RETURN(f.best)
         }
+        case S_SING_DONE: { // the singular search (this node without f.m, same side to move) returned
+            int singularBeta = f.ttScore - p.singBeta * f.depth / 16;
+            if (stopped) RETURN(0)
+            // f.m is the only good move: search it a ply deeper (two when far below, dextLimit times a path)
+            if (f.childScore < singularBeta)
+                f.ext = !f.pvNode && f.childScore < singularBeta - p.dextMargin && g->doubleExt[f.ply] < p.dextLimit ? 2 : 1;
+            else if (singularBeta >= f.beta) RETURN(singularBeta) // several moves beat beta: multi-cut
+            else if (p.negExt && f.ttScore >= f.beta) f.ext = -1; // others likely beat beta too: a ply shallower
+            PB(8) bool ok = legal(g, f.m, f.inCheck); PE(8)
+            if (!ok) {
+                f.state = S_LOOP;
+                continue;
+            }
+            u8 moved = g->board[f.m & 63];
+            PB(3) do_move(g, f.m, net, acc, tb, PF_SEARCH, true); PE(3)
+            ++f.legalMoves;
+            g->moveStack[f.ply] = f.m;
+            g->pieceStack[f.ply] = moved;
+            g->doubleExt[f.ply + 1] = g->doubleExt[f.ply] + (f.ext == 2);
+            __syncwarp();
+        }
+        // fall through
+        case S_SEARCH_MOVE: { // search the move just made, f.m
+            int newDepth = f.depth - 1 + f.ext;
+            PB(8) bool givesCheck = gives_check(g, f.m); PE(8)
+            if (f.legalMoves == 1) CALL(S_FIRST_DONE, S_ENTRY, -f.beta, -f.alpha, newDepth, givesCheck)
+            f.r = 0;
+            if (f.depth >= p.lmrDepth && f.legalMoves > p.lmrMoves && f.quiet && !f.inCheck && !givesCheck) {
+                int r = p.lmr[min(f.depth, 63)][min(f.legalMoves, 63)];
+                if (p.lmrImproving && !f.improving) ++r;
+                if (f.pvNode) --r;
+                f.r = max(0, min(r, f.depth - 2));
+            }
+            CALL(S_RED_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, newDepth - f.r, givesCheck)
+        }
         case S_RED_DONE: // the reduced zero-window search returned
-            if (-f.childScore > f.alpha && f.r > 0) CALL(S_FULL_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, f.depth - 1)
+            if (-f.childScore > f.alpha && f.r > 0) CALL(S_FULL_DONE, S_ENTRY, -f.alpha - 1, -f.alpha, f.depth - 1 + f.ext, gives_check(g, f.m))
             // fall through: its score stands as the full-depth one
         case S_FULL_DONE: // the full-depth zero-window search returned
-            if (-f.childScore > f.alpha && -f.childScore < f.beta) CALL(S_PV_DONE, S_ENTRY, -f.beta, -f.alpha, f.depth - 1)
+            if (-f.childScore > f.alpha && -f.childScore < f.beta) CALL(S_PV_DONE, S_ENTRY, -f.beta, -f.alpha, f.depth - 1 + f.ext, gives_check(g, f.m))
             // fall through
         case S_FIRST_DONE:
         case S_PV_DONE: {
             int score = -f.childScore;
             u16 m = f.m;
             PB(4) undo_move(g, m); PE(4)
-            if (g->stopped) RETURN(0)
+            if (stopped) RETURN(0)
             f.state = S_LOOP;
             if (score > f.best) {
                 f.best = score;
@@ -905,10 +1287,10 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                                 g->killers[f.ply][0] = m;
                                 __syncwarp();
                             }
-                            int bonus = min(f.depth * f.depth, p.histMax);
-                            update_history(g, m, bonus);
-                            u16* quiets = g->quiets[f.ply];
-                            for (int j = 0; j < f.quietCount; ++j) update_history(g, quiets[j], -bonus);
+                            int bonus = min(p.histMul * f.depth * f.depth, p.histMax);
+                            update_history(g, tb, p.contHist, f.ply, m, bonus);
+                            u16* quiets = g->quiets[move_slot(f)];
+                            for (int j = 0; j < f.quietCount; ++j) update_history(g, tb, p.contHist, f.ply, quiets[j], -bonus);
                         }
                         f.i = f.n; // break
                         continue;
@@ -916,52 +1298,50 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 }
             }
             if (f.quiet) {
-                g->quiets[f.ply][f.quietCount++] = m;
+                g->quiets[move_slot(f)][f.quietCount++] = m;
                 __syncwarp();
             }
             continue;
         }
         case Q_ENTRY: {
-            count_node(g);
-            check_limits(g);
-            __syncwarp();
-            if (g->stopped) RETURN(0)
-            PB(5) int standPat = evaluate(g, net, acc); PE(5)
+            COUNT_NODE()
+            PB(5) int standPat = corrected_eval(g, net, acc, tb); PE(5)
             if (f.ply >= MAX_PLY - 1 || standPat >= f.beta) RETURN(standPat)
             f.alpha = max(f.alpha, standPat);
-            PB(0) f.n = generate(g, g->moves[f.ply], true);
+            f.staticEval = standPat; // for delta pruning
+            PB(0) f.n = generate(g, g->moves[move_slot(f)], true);
             __syncwarp(); PE(0)
-            PB(1) score_moves(g, g->moves[f.ply], f.n, g->scores[f.ply], MOVE_NONE, -1); PE(1)
+            PB(1) score_moves(g, tb, 0, g->moves[move_slot(f)], f.n, g->scores[move_slot(f)], MOVE_NONE, -1); PE(1)
             f.best = standPat;
             f.i = 0;
             f.state = Q_LOOP;
         }
         // fall through
         case Q_LOOP: {
-            u16* list = g->moves[f.ply];
-            short* scores = g->scores[f.ply];
+            u16* list = g->moves[move_slot(f)];
+            int* scores = g->scores[move_slot(f)];
             bool found = false;
             while (f.i < f.n) {
                 PB(2) u16 m = pick_move(list, scores, f.n, f.i); PE(2)
                 ++f.i;
+                if (p.qsDelta && (m & (3 << 14)) != M_PROMOTION && f.staticEval + p.qsDelta
+                    + PIECE_VALUE[(m & (3 << 14)) == M_EN_PASSANT ? PAWN : type_of(g->board[(m >> 6) & 63])] <= f.alpha) continue;
                 PB(7) bool seeOk = see_ge(g, m, p.qsSee); PE(7)
                 if (!seeOk) continue;
-                PB(3) bool legal = do_move(g, m, net, acc); PE(3)
-                if (!legal) {
-                    PB(4) undo_move(g, m); PE(4)
-                    continue;
-                }
+                PB(8) bool ok = legal(g, m, f.inCheck); PE(8)
+                if (!ok) continue;
+                PB(3) do_move(g, m, net, acc, tb, PF_QSEARCH, true); PE(3)
                 f.m = m;
                 found = true;
                 break;
             }
-            if (found) CALL(Q_DONE, Q_ENTRY, -f.beta, -f.alpha, 0)
+            if (found) CALL(Q_DONE, Q_ENTRY, -f.beta, -f.alpha, 0, gives_check(g, f.m))
             RETURN(f.best)
         }
         case Q_DONE: {
             int score = -f.childScore;
             PB(4) undo_move(g, f.m); PE(4)
-            if (g->stopped) RETURN(0)
+            if (stopped) RETURN(0)
             if (score > f.best) {
                 f.best = score;
                 if (score > f.alpha) {
@@ -975,6 +1355,10 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         }
         // The running call returned ret: resume its caller, or leave if it was the root.
         if (sp == 0) {
+            __syncwarp();
+            g->nodes = nodes;
+            g->stopped = stopped;
+            __syncwarp();
             *score = ret;
             return true;
         }
@@ -985,20 +1369,49 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
 }
 #undef CALL
 #undef RETURN
+#undef COUNT_NODE
 
 // Search::think with a node limit and one thread, over as many kernel launches as it takes.
-// think_start sets up a fresh Searcher (history, killers and the move stack zeroed; the TT is kept),
-// and each think_run searches up to `budget` more nodes. Once it returns true the search is over:
-// the best move is in g->thinkBest and its score in g->thinkScore.
+// think_start sets up a fresh Searcher (history, killers and the move stack zeroed; the TT and the
+// correction history are kept) and starts a new TT generation, and each think_run searches up to
+// `budget` more nodes. Once it returns true the search is over: the best move is in g->thinkBest and
+// its score in g->thinkScore.
 enum { T_IDLE, T_DEPTH, T_SEARCH, T_SEARCHING };
 
-__device__ void think_start(Game* g, u64 nodeLimit) {
+// Two int16 entries in one int, each divided by 2 toward zero (the engine's h /= 2).
+__device__ __forceinline__ int halve2(int v) {
+    short lo = (short)(v & 0xffff), hi = (short)(v >> 16);
+    lo = lo / 2;
+    hi = hi / 2;
+    return (int)(((unsigned)(u16)hi << 16) | (unsigned)(u16)lo);
+}
+__device__ void think_start(Game* g, Tables* tb, u64 nodeLimit) {
     int lane = lane_id();
+    // Search::think halves the continuation history before each search: only the marked blocks, since
+    // the rest are zero. Each lane owns whole words of marks, so no two lanes touch one block.
+    int4* ch = reinterpret_cast<int4*>(&tb->conthist[0][0]);
+    for (int w = lane; w < CH_WORDS; w += 32) {
+        unsigned marks = tb->chMask[w], keep = marks;
+        for (unsigned m = marks; m; m &= m - 1) {
+            int b = __ffs(m) - 1, i = w * 32 + b;
+            int4 v = ch[i];
+            int4 h = make_int4(halve2(v.x), halve2(v.y), halve2(v.z), halve2(v.w));
+            ch[i] = h;
+            if (!(h.x | h.y | h.z | h.w)) keep &= ~(1u << b);
+        }
+        if (keep != marks) tb->chMask[w] = keep;
+    }
+    __syncwarp();
+    for (int i = lane; i < MAX_PLY + 1; i += 32) g->pieceStack[i] = 0;
+    for (int i = lane; i < MAX_PLY + 1; i += 32) g->evalStack[i] = 0;
     for (int i = lane; i < 2 * 64 * 64; i += 32) (&g->history[0][0][0])[i] = 0;
     for (int i = lane; i < (MAX_PLY + 1) * 2; i += 32) (&g->killers[0][0])[i] = 0;
     for (int i = lane; i < MAX_PLY + 1; i += 32) g->moveStack[i] = 0;
+    for (int i = lane; i < MAX_PLY + 2; i += 32) g->doubleExt[i] = 0;
     int stm = g->stm;
+    unsigned gen = tb->gen;
     __syncwarp();
+    tb->gen = gen + 1; // TT.new_search()
     g->nodes = 0;
     g->nodeLimit = nodeLimit;
     g->stopped = 0;
@@ -1012,7 +1425,7 @@ __device__ void think_start(Game* g, u64 nodeLimit) {
     __syncwarp();
 }
 
-__device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, TTEntry* tt, u64 budget) {
+__device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, Tables* tb, u64 budget) {
     __syncwarp();
     u64 stopAt = g->nodes + budget;
     int state = g->thinkState, depth = g->thinkDepth, bestScore = g->thinkScore;
@@ -1031,15 +1444,16 @@ __device__ bool think_run(Game* g, const Net& net, const Params& p, short* acc, 
             state = T_SEARCH;
         }
         if (state == T_SEARCH) { // search(alpha, beta, depth, 0)
-            Frame root = new_call(S_ENTRY, alpha, beta, depth, 0);
+            Frame root = new_call(S_ENTRY, alpha, beta, depth, 0, in_check(g));
             __syncwarp();
             g->cur = root;
             g->sp = 0;
+            g->thinkDepth = depth; // rootDepth: singular extensions stop at twice this ply
             __syncwarp();
             state = T_SEARCHING;
         }
         int score;
-        if (!search_run(g, net, p, acc, tt, stopAt, &score)) {
+        if (!search_run(g, net, p, acc, tb, stopAt, &score)) {
             __syncwarp();
             g->thinkState = state;
             g->thinkDepth = depth;
@@ -1080,16 +1494,15 @@ __device__ bool is_noisy(const Game* g, u16 m) {
     return g->board[(m >> 6) & 63] != NO_PIECE || t == M_EN_PASSANT || t == M_PROMOTION;
 }
 
-// Sets up each game's accumulator and clears its TT (Search::clear()); the host has written the
-// position, its single state and the counters.
+// Sets up each game's accumulator and clears its TT and correction history (Search::clear()); the host
+// has written the position, its single state and the counters.
 extern "C" __global__ void datagen_setup(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
-                                          short* accs, TTEntry* tts) {
+                                          short* accs, Tables* tables) {
     Net net = {ftw, ftb, outw, outb};
-    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= n) return;
     Game* g = games + w;
-    TTEntry* tt = tts + ((size_t)w << TT_BITS);
-    for (int i = lane; i < (1 << TT_BITS); i += 32) tt[i].key = 0, tt[i].move = 0, tt[i].score = 0, tt[i].depth = 0, tt[i].bound = 0, tt[i].pad = 0;
+    clear_tables(tables + w);
     short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
     g->accTop = 0;
     __syncwarp();
@@ -1099,7 +1512,7 @@ extern "C" __global__ void datagen_setup(Game* games, int n, const short* ftw, c
 
 // Plays one ply of every unfinished game.
 extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
-                                         const Params* params, short* accs, TTEntry* tts, unsigned long long nodes,
+                                         const Params* params, short* accs, Tables* tables, unsigned long long nodes,
                                          unsigned long long budget) {
     Net net = {ftw, ftb, outw, outb};
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
@@ -1108,7 +1521,7 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
     if (g->done) return;
     PB(10)
     short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
-    TTEntry* tt = tts + ((size_t)w << TT_BITS);
+    Tables* tb = tables + w;
     if (g->thinkState == T_IDLE) { // a new ply
         if (g->ply >= MAX_PLIES) { g->result = 0.5f; g->done = 1; return; }
         if (first_legal_move(g, net, acc, 0) == MOVE_NONE) {
@@ -1120,9 +1533,9 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
         int ev = evaluate(g, net, acc);
         __syncwarp();
         g->rootEval = g->stm == 0 ? ev : -ev;
-        think_start(g, nodes);
+        think_start(g, tb, nodes);
     }
-    if (!think_run(g, net, *params, acc, tt, budget)) {
+    if (!think_run(g, net, *params, acc, tb, budget)) {
         PE(10)
         return;
     }
@@ -1168,10 +1581,10 @@ extern "C" __global__ void datagen_step(Game* games, int n, const short* ftw, co
 }
 
 // Rescoring (gpu/datagen.py rescore, as gpu/ref.cpp's score mode): one search per position from a cold
-// start: datagen_setup has cleared the game's table, think_start gives a fresh Searcher, and the search's
+// start: datagen_setup has cleared the game's tables, think_start gives a fresh Searcher, and the search's
 // score goes to scores[], White-relative. The game is then done.
 extern "C" __global__ void score_step(Game* games, int n, const short* ftw, const short* ftb, const short* outw, int outb,
-                                      const Params* params, short* accs, TTEntry* tts, unsigned long long nodes,
+                                      const Params* params, short* accs, Tables* tables, unsigned long long nodes,
                                       unsigned long long budget, int* scores) {
     Net net = {ftw, ftb, outw, outb};
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
@@ -1179,9 +1592,9 @@ extern "C" __global__ void score_step(Game* games, int n, const short* ftw, cons
     Game* g = games + w;
     if (g->done) return;
     short* acc = accs + (size_t)w * ACC_SLOTS * 2 * H;
-    TTEntry* tt = tts + ((size_t)w << TT_BITS);
-    if (g->thinkState == T_IDLE) think_start(g, nodes);
-    if (!think_run(g, net, *params, acc, tt, budget)) return;
+    Tables* tb = tables + w;
+    if (g->thinkState == T_IDLE) think_start(g, tb, nodes);
+    if (!think_run(g, net, *params, acc, tb, budget)) return;
     int score = g->thinkScore, white = g->stm == 0 ? score : -score;
     __syncwarp();
     if (lane_id() == 0) scores[w] = white;
@@ -1195,6 +1608,7 @@ extern "C" __global__ void datagen_sizes(int* out) {
     out[1] = sizeof(Sample);
     out[2] = sizeof(TTEntry);
     out[3] = sizeof(Params);
+    out[4] = sizeof(Tables);
 }
 
 // Position::set from a compact start position: 64 piece codes (0-11 as make_piece, 12 empty, a1 first),
@@ -1262,18 +1676,17 @@ __device__ __forceinline__ u64 splitmix64(u64& x) {
 }
 
 // For each listed slot: the start position, then randomPlies random legal moves (as src/datagen.cpp,
-// with its own RNG seeded by the game's id), a fresh accumulator and a cleared TT. A game whose
+// with its own RNG seeded by the game's id), a fresh accumulator and cleared tables. A game whose
 // opening runs out of legal moves is marked done with result -1 and gets no samples.
 extern "C" __global__ void datagen_opening(Game* games, const int* slots, int k, const u8* start, const u64* ids, u64 seed,
                                            int randomPlies, const short* ftw, const short* ftb, const short* outw, int outb,
-                                           short* accs, TTEntry* tts) {
+                                           short* accs, Tables* tables) {
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
     if (w >= k) return;
     Net net = {ftw, ftb, outw, outb};
     int slot = slots[w];
     Game* g = games + slot;
     short* acc = accs + (size_t)slot * ACC_SLOTS * 2 * H;
-    TTEntry* tt = tts + ((size_t)slot << TT_BITS);
     if (lane == 0) init_game(g, start);
     __syncwarp();
     u64 rng = seed ^ (ids[w] * 0xD1B54A32D192ED03ULL);
@@ -1300,11 +1713,7 @@ extern "C" __global__ void datagen_opening(Game* games, const int* slots, int k,
         do_move(g, m, net, acc);
         __syncwarp();
     }
-    for (int i = lane; i < (1 << TT_BITS); i += 32) {
-        TTEntry z; z.key = 0; z.move = 0; z.score = 0; z.depth = 0; z.bound = 0; z.pad = 0;
-        tt[i] = z;
-    }
-    __syncwarp();
+    clear_tables(tables + slot);
     g->accTop = 0;
     __syncwarp();
     refresh(g, net, acc_slot(acc, 0));
@@ -1369,23 +1778,18 @@ extern "C" __global__ void match_init(Game* games, const int* slots, int k, cons
     g->matchResult = -1;
 }
 
-// Clears both sides' TTs in each of k slots (ucinewgame).
-extern "C" __global__ void match_setup(const int* slots, int k, TTEntry* ttsA, TTEntry* ttsB) {
-    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = lane_id();
+// Clears both sides' tables in each of k slots (ucinewgame).
+extern "C" __global__ void match_setup(const int* slots, int k, Tables* tablesA, Tables* tablesB) {
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= k) return;
-    TTEntry* ta = ttsA + ((size_t)slots[w] << TT_BITS);
-    TTEntry* tb = ttsB + ((size_t)slots[w] << TT_BITS);
-    for (int i = lane; i < (1 << TT_BITS); i += 32) {
-        TTEntry z; z.key = 0; z.move = 0; z.score = 0; z.depth = 0; z.bound = 0; z.pad = 0;
-        ta[i] = z; tb[i] = z;
-    }
-    __syncwarp();
+    clear_tables(tablesA + slots[w]);
+    clear_tables(tablesB + slots[w]);
 }
 
 extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, const short* ftbA, const short* outwA, int outbA,
                                       const short* ftwB, const short* ftbB, const short* outwB, int outbB,
                                       const Params* pa, const Params* pb, int perGame,
-                                      short* accs, TTEntry* ttsA, TTEntry* ttsB, unsigned long long nodes,
+                                      short* accs, Tables* tablesA, Tables* tablesB, unsigned long long nodes,
                                       unsigned long long budget) {
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5;
     if (w >= n) return;
@@ -1395,7 +1799,7 @@ extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, con
     bool idle = g->thinkState == T_IDLE; // otherwise a search is under way, in some position of its tree
     bool aToMove = (idle ? g->stm : g->rootStm) == g->aColor;
     Net net = aToMove ? Net{ftwA, ftbA, outwA, outbA} : Net{ftwB, ftbB, outwB, outbB};
-    TTEntry* tt = (aToMove ? ttsA : ttsB) + ((size_t)w << TT_BITS);
+    Tables* tb = (aToMove ? tablesA : tablesB) + w;
     int result = -1;
     if (idle) { // a new ply
         if (first_legal_move(g, net, acc, 0) == MOVE_NONE) result = in_check(g) ? (g->stm == 0 ? 0 : 2) : 1;
@@ -1411,9 +1815,9 @@ extern "C" __global__ void match_step(Game* games, int n, const short* ftwA, con
         __syncwarp();
         refresh(g, net, acc_slot(acc, 0)); // this side's network
         __syncwarp();
-        think_start(g, nodes);
+        think_start(g, tb, nodes);
     }
-    if (!think_run(g, net, (aToMove ? pa : pb)[perGame ? w : 0], acc, tt, budget)) return;
+    if (!think_run(g, net, (aToMove ? pa : pb)[perGame ? w : 0], acc, tb, budget)) return;
     int score = g->thinkScore;
     u16 best = g->thinkBest;
     int whiteScore = g->stm == 0 ? score : -score;
