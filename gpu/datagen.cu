@@ -124,6 +124,8 @@ struct Params {
 // each colour's non-pawn pieces, in 1/16 cp.
 #define CORR_SIZE 16384
 #define CORR_LIMIT 1024
+#define CH_BLOCKS (12 * 64 * 12 * 64 / 8) // continuation history in 16-byte blocks of 8 entries
+#define CH_WORDS (CH_BLOCKS / 32)          // the blocks' marks, 32 to a word (see Tables::chMask)
 // What one engine keeps from move to move, and Search::clear() empties: the TT with its generation, and
 // the main thread's correction histories (int in the engine; their values stay within +-CORR_LIMIT). Each
 // game has one; in a match each side has its own, as two engines would.
@@ -134,6 +136,10 @@ struct Tables {
     // Continuation history (the engine's mainContHist, an int table whose gravity keeps it within +-16384):
     // [earlier piece * 64 + its target][piece * 64 + target], kept for the game and halved at each search
     short conthist[12 * 64][12 * 64];
+    // One bit per 16-byte block of conthist (8 entries), set whenever an entry of the block is written and
+    // cleared when halving leaves the block all zero. Every non-zero entry's block is marked, so the
+    // halving before each search can skip the rest: halving zero is a no-op, so the values are the same.
+    unsigned chMask[CH_WORDS];
     unsigned gen, pad[3]; // TT.new_search() at each search; entries keep its low 8 bits, as the engine's uint8_t
 };
 
@@ -532,14 +538,6 @@ __device__ void undo_null_move(Game* g) {
     __syncwarp();
 }
 
-// Counters shared by the warp: read, sync, write, sync.
-__device__ __forceinline__ void count_node(Game* g) {
-    __syncwarp();
-    u64 v = g->nodes + 1;
-    __syncwarp();
-    g->nodes = v;
-    __syncwarp();
-}
 
 __device__ bool is_draw(Game* g) {
     __syncwarp();
@@ -640,7 +638,8 @@ __device__ void clear_tables(Tables* tb) {
     for (int i = lane_id(); i < 2 * CORR_SIZE; i += 32) (&tb->corr[0][0])[i] = 0;
     for (int i = lane_id(); i < 4 * CORR_SIZE; i += 32) (&tb->npcorr[0][0][0])[i] = 0;
     int4* ch = reinterpret_cast<int4*>(&tb->conthist[0][0]);
-    for (int i = lane_id(); i < 12 * 64 * 12 * 64 / 8; i += 32) ch[i] = make_int4(0, 0, 0, 0);
+    for (int i = lane_id(); i < CH_BLOCKS; i += 32) ch[i] = make_int4(0, 0, 0, 0);
+    for (int i = lane_id(); i < CH_WORDS; i += 32) tb->chMask[i] = 0;
     if (lane_id() == 0) tb->gen = 0;
     __syncwarp();
 }
@@ -649,10 +648,6 @@ __device__ void clear_tables(Tables* tb) {
 __constant__ int PIECE_VALUE[7] = {100, 320, 330, 500, 900, 0, 0};
 __constant__ int SEE_VALUE[6] = {100, 320, 330, 500, 900, 20000};
 
-__device__ __forceinline__ void check_limits(Game* g) {
-    if ((g->nodes & 1023) != 0) return;
-    if (g->nodeLimit && g->nodes >= g->nodeLimit) g->stopped = 1;
-}
 __device__ __forceinline__ bool is_quiet(const Game* g, u16 m) {
     int t = m & (3 << 14);
     return g->board[(m >> 6) & 63] == NO_PIECE && t != M_EN_PASSANT && t != M_PROMOTION;
@@ -693,6 +688,16 @@ __device__ void score_moves(Game* g, Tables* tb, int contHist, const u16* list, 
     }
     __syncwarp();
 }
+// Marks the block of continuation-history entry c as possibly non-zero (see Tables::chMask). Every lane
+// reads the same word, then writes the same value.
+__device__ __forceinline__ void mark_cont(Tables* tb, const short* c) {
+    int block = (int)(c - &tb->conthist[0][0]) >> 3;
+    unsigned* w = &tb->chMask[block >> 5];
+    unsigned v = *w | (1u << (block & 31));
+    __syncwarp();
+    *w = v;
+    __syncwarp();
+}
 // Gravity moves history and both continuation entries toward +-16384 by the same bonus.
 __device__ void update_history(Game* g, Tables* tb, int contHist, int ply, u16 m, int bonus) {
     int& h = g->history[g->stm][m & 63][(m >> 6) & 63];
@@ -707,6 +712,8 @@ __device__ void update_history(Game* g, Tables* tb, int contHist, int ply, u16 m
     if (c1) *c1 = (short)v1;
     if (c2) *c2 = (short)v2;
     __syncwarp();
+    if (c1) mark_cont(tb, c1);
+    if (c2) mark_cont(tb, c2);
 }
 __device__ __forceinline__ int pawn_index(const Game* g) {
     u64 h = pcs(g, 0, PAWN) * 0x9E3779B97F4A7C15ULL ^ pcs(g, 1, PAWN) * 0xC2B2AE3D27D4EB4FULL;
@@ -879,6 +886,14 @@ __device__ __forceinline__ Frame new_call(int state, int alpha, int beta, int de
         ret = (V); \
         break;     \
     }
+// Count a node, and stop at the node limit, checked every 1,024 nodes as src/search.cpp's check_limits.
+#define COUNT_NODE()                                                       \
+    {                                                                      \
+        ++nodes;                                                           \
+        if ((nodes & 1023) == 0 && g->nodeLimit && nodes >= g->nodeLimit)  \
+            stopped = 1;                                                   \
+        if (stopped) RETURN(0)                                             \
+    }
 
 // Runs search(alpha, beta, depth, 0) and everything below it, in the same order as the recursive
 // code, from the root call think_run put in g->cur. Returns true when the root call returns, with its
@@ -888,11 +903,18 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
     __syncwarp();
     Frame f = g->cur;
     int sp = g->sp, ret = 0;
+    // The node count and the stop flag stay in registers until the search pauses or returns (every
+    // lane holds the same values); nothing else reads or writes them meanwhile. The node limit is read
+    // only every 1,024 nodes, so it stays in memory and its registers go to the search.
+    u64 nodes = g->nodes;
+    int stopped = g->stopped;
     while (true) {
-        if (g->nodes >= stopAt) {
+        if (nodes >= stopAt) {
             __syncwarp();
             g->cur = f;
             g->sp = sp;
+            g->nodes = nodes;
+            g->stopped = stopped;
             __syncwarp();
             return false;
         }
@@ -904,10 +926,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
                 f.state = Q_ENTRY;
                 continue;
             }
-            count_node(g);
-            check_limits(g);
-            __syncwarp();
-            if (g->stopped) RETURN(0)
+            COUNT_NODE()
             f.root = f.ply == 0;
             f.pvNode = f.beta - f.alpha > 1;
             if (f.root) g->rootPv = 0; // pvLength[0] = 0
@@ -956,7 +975,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         case S_NULL_DONE: {
             int score = -f.childScore;
             undo_null_move(g);
-            if (g->stopped) RETURN(0)
+            if (stopped) RETURN(0)
             if (score >= f.beta) RETURN(score >= VALUE_MATE_IN_MAX_PLY ? f.beta : score)
             f.state = S_MOVES;
             continue;
@@ -1041,7 +1060,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         }
         case S_SING_DONE: { // the singular search (this node without f.m, same side to move) returned
             int singularBeta = f.ttScore - p.singBeta * f.depth / 16;
-            if (g->stopped) RETURN(0)
+            if (stopped) RETURN(0)
             // f.m is the only good move: search it a ply deeper (two when far below, dextLimit times a path)
             if (f.childScore < singularBeta)
                 f.ext = !f.pvNode && f.childScore < singularBeta - p.dextMargin && g->doubleExt[f.ply] < p.dextLimit ? 2 : 1;
@@ -1085,7 +1104,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             int score = -f.childScore;
             u16 m = f.m;
             PB(4) undo_move(g, m); PE(4)
-            if (g->stopped) RETURN(0)
+            if (stopped) RETURN(0)
             f.state = S_LOOP;
             if (score > f.best) {
                 f.best = score;
@@ -1123,10 +1142,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
             continue;
         }
         case Q_ENTRY: {
-            count_node(g);
-            check_limits(g);
-            __syncwarp();
-            if (g->stopped) RETURN(0)
+            COUNT_NODE()
             PB(5) int standPat = corrected_eval(g, net, acc, tb); PE(5)
             if (f.ply >= MAX_PLY - 1 || standPat >= f.beta) RETURN(standPat)
             f.alpha = max(f.alpha, standPat);
@@ -1165,7 +1181,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         case Q_DONE: {
             int score = -f.childScore;
             PB(4) undo_move(g, f.m); PE(4)
-            if (g->stopped) RETURN(0)
+            if (stopped) RETURN(0)
             if (score > f.best) {
                 f.best = score;
                 if (score > f.alpha) {
@@ -1179,6 +1195,10 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
         }
         // The running call returned ret: resume its caller, or leave if it was the root.
         if (sp == 0) {
+            __syncwarp();
+            g->nodes = nodes;
+            g->stopped = stopped;
+            __syncwarp();
             *score = ret;
             return true;
         }
@@ -1189,6 +1209,7 @@ __device__ bool search_run(Game* g, const Net& net, const Params& p, short* acc,
 }
 #undef CALL
 #undef RETURN
+#undef COUNT_NODE
 
 // Search::think with a node limit and one thread, over as many kernel launches as it takes.
 // think_start sets up a fresh Searcher (history, killers and the move stack zeroed; the TT and the
@@ -1206,12 +1227,21 @@ __device__ __forceinline__ int halve2(int v) {
 }
 __device__ void think_start(Game* g, Tables* tb, u64 nodeLimit) {
     int lane = lane_id();
-    // Search::think halves the continuation history before each search.
+    // Search::think halves the continuation history before each search: only the marked blocks, since
+    // the rest are zero. Each lane owns whole words of marks, so no two lanes touch one block.
     int4* ch = reinterpret_cast<int4*>(&tb->conthist[0][0]);
-    for (int i = lane; i < 12 * 64 * 12 * 64 / 8; i += 32) {
-        int4 v = ch[i];
-        ch[i] = make_int4(halve2(v.x), halve2(v.y), halve2(v.z), halve2(v.w));
+    for (int w = lane; w < CH_WORDS; w += 32) {
+        unsigned marks = tb->chMask[w], keep = marks;
+        for (unsigned m = marks; m; m &= m - 1) {
+            int b = __ffs(m) - 1, i = w * 32 + b;
+            int4 v = ch[i];
+            int4 h = make_int4(halve2(v.x), halve2(v.y), halve2(v.z), halve2(v.w));
+            ch[i] = h;
+            if (!(h.x | h.y | h.z | h.w)) keep &= ~(1u << b);
+        }
+        if (keep != marks) tb->chMask[w] = keep;
     }
+    __syncwarp();
     for (int i = lane; i < MAX_PLY + 1; i += 32) g->pieceStack[i] = 0;
     for (int i = lane; i < MAX_PLY + 1; i += 32) g->evalStack[i] = 0;
     for (int i = lane; i < 2 * 64 * 64; i += 32) (&g->history[0][0][0])[i] = 0;

@@ -1,6 +1,6 @@
 """SPSA tuning of the search's constants at a fixed node count on the GPU (issue #31).
 
-    python gpu/spsa.py <net.nnue> <pairs> [nodes=50000] [games at once=1000] [seed=1] [book]
+    python gpu/spsa.py <net.nnue> <pairs> [nodes=50000] [games at once=1000, or <k>w for k full waves] [seed=1] [book]
 
 The constants are the fields of Params in gpu/datagen.cu, starting from src/search.cpp's values. Each
 game pair plays one opening twice, theta + c * delta against theta - c * delta with the colors swapped,
@@ -59,7 +59,7 @@ def show(theta):
 def main():
     net_path, total = sys.argv[1], int(sys.argv[2])
     nodes = int(sys.argv[3]) if len(sys.argv) > 3 else 50000
-    n = int(sys.argv[4]) if len(sys.argv) > 4 else 1000
+    n = sys.argv[4] if len(sys.argv) > 4 else "1000"  # or "<k>w": k full waves of match_step (gpu/datagen.py)
     seed = int(sys.argv[5]) if len(sys.argv) > 5 else 1
     book = sys.argv[6] if len(sys.argv) > 6 else os.path.join(HERE, "..", "books", "UHO_Lichess_4852_v1.epd")
     rng = random.Random(seed)
@@ -69,7 +69,8 @@ def main():
     c0 = {x: c_end * total ** GAMMA for x, (_, _, c_end) in SPACE.items()}
     a0 = {x: R_END * c_end ** 2 * (big_a + total) ** ALPHA for x, (_, _, c_end) in SPACE.items()}
 
-    dg = GpuDatagen(net_path, n)
+    dg = GpuDatagen(net_path, n, kernel="match_step")
+    n = dg.capacity
     tables_b = cp.zeros(n * dg.tables_bytes, cp.uint8)  # side B's TTs and correction histories
     net = (dg.ftw, dg.ftb, dg.outw, np.int32(dg.outb))
     k = {name: dg.mod.get_function(name) for name in ("match_init", "match_setup", "match_step", "match_results")}

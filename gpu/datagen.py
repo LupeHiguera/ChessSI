@@ -1,6 +1,8 @@
 """Self-play data generation on the GPU (issue #31, stage 2), with gpu/datagen.cu.
 
-    python gpu/datagen.py run <net.nnue> <out.txt> <games> [nodes=5000] [capacity=1024] [seed=1] [random plies=8]
+    python gpu/datagen.py run <net.nnue> <out.txt> <games> [nodes=5000] [capacity=4w] [seed=1] [random plies=8]
+
+capacity is the games in flight, or "<k>w" for k full waves of what the GPU runs at once (see resident_warps).
     python gpu/datagen.py <net.nnue> <file of start FENs> <nodes> [-v]
 
 run: like `chesssi datagen`. Each game opens with random legal plies from the start position, then
@@ -171,8 +173,29 @@ def move_uci(m):
     return out
 
 
+def resident_warps(kernel, block=128):
+    """How many warps of `kernel`, launched in blocks of `block` threads, the GPU runs at once.
+
+    A launch plays one search per game, one game per warp. With R warps resident, a capacity that is not a
+    multiple of R leaves a last, partly filled wave: it keeps the launch open for a whole search while most
+    SMs sit idle (3,072 games on an RTX 5080, which holds 1,008, end with a wave of 48)."""
+    props = cp.cuda.runtime.getDeviceProperties(cp.cuda.Device().id)
+    warps = block // 32
+    per_warp = (kernel.num_regs * 32 + 255) // 256 * 256  # registers are allocated per warp, 256 at a time
+    blocks = min(props["regsPerMultiprocessor"] // (per_warp * warps), props["maxThreadsPerMultiProcessor"] // block,
+                 props["maxBlocksPerMultiProcessor"])
+    return blocks * warps * props["multiProcessorCount"]
+
+
+def parse_capacity(text):
+    """A capacity argument: a number of games, or "<k>w" for k full waves (see resident_warps)."""
+    text = str(text)
+    return ("waves", int(text[:-1])) if text.endswith("w") else ("games", int(text))
+
+
 class GpuDatagen:
-    def __init__(self, net_path, capacity):
+    def __init__(self, net_path, capacity, kernel="datagen_step"):
+        """capacity: games in flight, or "<k>w" for k full waves of `kernel` (match_step for matches and SPSA)."""
         self.h, ftw, ftb, outw, self.outb = load_net(net_path)
         src = open(os.path.join(HERE, "datagen.cu")).read()
         options = ("--std=c++17", f"-DH={self.h}", f"-DTT_BITS={TT_BITS}")
@@ -195,6 +218,14 @@ class GpuDatagen:
         self.budget = np.uint64(int(os.environ.get("GPU_BUDGET", 1 << 62)))
         cp.cuda.runtime.deviceSetLimit(0, 1024)  # cudaLimitStackSize, the default: the search needs about 200 bytes
         self.ftw, self.ftb, self.outw = cp.asarray(ftw), cp.asarray(ftb), cp.asarray(outw)
+        self.resident = resident_warps(self.mod.get_function(kernel))
+        kind, value = parse_capacity(capacity)
+        capacity = value * self.resident if kind == "waves" else value
+        if capacity > self.resident and capacity % self.resident:
+            lo, hi = capacity // self.resident * self.resident, -(-capacity // self.resident) * self.resident
+            print(f"# capacity {capacity} is {capacity / self.resident:.2f} waves of {self.resident} resident warps: the "
+                  f"last wave is {capacity % self.resident / self.resident:.0%} full; {lo} or {hi} would fill it",
+                  file=sys.stderr, flush=True)
         self.capacity = capacity
         self.games = cp.zeros(capacity * self.game_bytes, cp.uint8)
         self.accs = cp.zeros(capacity * (MAX_PLY + 2) * 2 * self.h, cp.int16)
@@ -347,18 +378,21 @@ def rescore(dg, in_path, out_path, nodes, report_lines=1_000_000):
 
 
 def main():
-    if sys.argv[1] == "rescore":  # rescore <net> <in.txt> <out.txt> [nodes=20000] [capacity=3072]
+    if sys.argv[1] == "rescore":  # rescore <net> <in.txt> <out.txt> [nodes=20000] [capacity=4w]
         net, src, dst = sys.argv[2], sys.argv[3], sys.argv[4]
         nodes = int(sys.argv[5]) if len(sys.argv) > 5 else 20000
-        capacity = int(sys.argv[6]) if len(sys.argv) > 6 else 3072
+        capacity = sys.argv[6] if len(sys.argv) > 6 else "4w"
         n = rescore(GpuDatagen(net, capacity), src, dst, nodes)
         print(f"# rescored {n} positions at {nodes} nodes", file=sys.stderr)
         return
-    if sys.argv[1] == "run":
+    if sys.argv[1] == "run":  # run <net> <out.txt> <games> [nodes=5000] [capacity=4w] [seed=1] [random plies=8]
         net, out, games = sys.argv[2], sys.argv[3], int(sys.argv[4])
-        rest = [int(x) for x in sys.argv[5:9]]
-        nodes, capacity, seed, plies = (rest + [5000, 1024, 1, 8][len(rest):])[:4]
-        GpuDatagen(net, capacity).run(out, games, nodes, seed, plies)
+        rest = sys.argv[5:9]
+        nodes, capacity, seed, plies = (rest + ["5000", "4w", "1", "8"][len(rest):])[:4]
+        dg = GpuDatagen(net, capacity)
+        print(f"# capacity {dg.capacity}: {dg.capacity / dg.resident:.2f} waves of {dg.resident} resident warps",
+              file=sys.stderr, flush=True)
+        dg.run(out, games, int(nodes), int(seed), int(plies))
         return
     net, fen_file, nodes = sys.argv[1], sys.argv[2], int(sys.argv[3])
     verbose = "-v" in sys.argv[4:]
