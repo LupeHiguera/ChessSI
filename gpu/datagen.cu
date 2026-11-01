@@ -206,16 +206,38 @@ __device__ __forceinline__ u64 line_attacks(u64 occ, u64 mask, int s) {
 }
 __device__ __forceinline__ u64 file_mask(int s) { return (0x0101010101010101ULL << (s & 7)) ^ bit(s); }
 __device__ __forceinline__ u64 rank_mask(int s) { return (0xFFULL << (s & 56)) ^ bit(s); }
-__device__ __forceinline__ u64 diag_mask(int s) {
+__device__ __forceinline__ u64 diag_mask_calc(int s) {
     int d = (s >> 3) - (s & 7);
     u64 m = 0x8040201008040201ULL;
     return (d >= 0 ? m << (8 * d) : m >> (-8 * d)) ^ bit(s);
 }
-__device__ __forceinline__ u64 anti_mask(int s) {
+__device__ __forceinline__ u64 anti_mask_calc(int s) {
     int d = (s >> 3) + (s & 7) - 7;
     u64 m = 0x0102040810204080ULL;
     return (d >= 0 ? m << (8 * d) : m >> (-8 * d)) ^ bit(s);
 }
+// Single squares' attack sets and line masks: computed (ATTACK_CALC), or one load from tables that
+// attack_tables_init fills with the computed values (6 to 16 instructions each otherwise).
+__device__ __forceinline__ u64 knight_att(u64 b);
+__device__ __forceinline__ u64 king_att(u64 b);
+__device__ __forceinline__ u64 pawn_att_calc(int s, int c);
+__device__ __forceinline__ u64 line_mask_calc(int kind, int s);
+#ifdef ATTACK_CALC
+__device__ __forceinline__ u64 diag_mask(int s) { return diag_mask_calc(s); }
+__device__ __forceinline__ u64 anti_mask(int s) { return anti_mask_calc(s); }
+__device__ __forceinline__ u64 knight_sq(int s) { return knight_att(bit(s)); }
+__device__ __forceinline__ u64 king_att_sq(int s) { return king_att(bit(s)); }
+__device__ __forceinline__ u64 pawn_att(int s, int c) { return pawn_att_calc(s, c); }
+__device__ __forceinline__ u64 line_mask(int kind, int s) { return line_mask_calc(kind, s); }
+#else
+__device__ u64 T_KNIGHT[64], T_KING[64], T_PAWN[2][64], T_LINE[5][64]; // T_LINE[kind]: line_mask's kinds 1-4
+__device__ __forceinline__ u64 diag_mask(int s) { return __ldg(&T_LINE[3][s]); }
+__device__ __forceinline__ u64 anti_mask(int s) { return __ldg(&T_LINE[4][s]); }
+__device__ __forceinline__ u64 knight_sq(int s) { return __ldg(&T_KNIGHT[s]); }
+__device__ __forceinline__ u64 king_att_sq(int s) { return __ldg(&T_KING[s]); }
+__device__ __forceinline__ u64 pawn_att(int s, int c) { return __ldg(&T_PAWN[c][s]); }
+__device__ __forceinline__ u64 line_mask(int kind, int s) { return __ldg(&T_LINE[kind][s]); }
+#endif
 __device__ __forceinline__ u64 rook_att(int s, u64 occ) { return line_attacks(occ, file_mask(s), s) | line_attacks(occ, rank_mask(s), s); }
 __device__ __forceinline__ u64 bishop_att(int s, u64 occ) { return line_attacks(occ, diag_mask(s), s) | line_attacks(occ, anti_mask(s), s); }
 __device__ __forceinline__ u64 knight_att(u64 b) {
@@ -227,17 +249,17 @@ __device__ __forceinline__ u64 king_att(u64 b) {
     return lr | (row << 8) | (row >> 8);
 }
 // PawnAttacks[c][s] in src/bitboard: squares a pawn of color c on s attacks.
-__device__ __forceinline__ u64 pawn_att(int s, int c) {
+__device__ __forceinline__ u64 pawn_att_calc(int s, int c) {
     u64 b = bit(s);
     return c == 0 ? ((b << 9) & NOT_A) | ((b << 7) & NOT_H) : ((b >> 7) & NOT_A) | ((b >> 9) & NOT_H);
 }
 __device__ __forceinline__ u64 attacks_bb(int pt, int s, u64 occ) {
     switch (pt) {
-        case KNIGHT: return knight_att(bit(s));
+        case KNIGHT: return knight_sq(s);
         case BISHOP: return bishop_att(s, occ);
         case ROOK: return rook_att(s, occ);
         case QUEEN: return bishop_att(s, occ) | rook_att(s, occ);
-        default: return king_att(bit(s));
+        default: return king_att_sq(s);
     }
 }
 
@@ -255,8 +277,8 @@ __device__ __forceinline__ int castling_mask(int s) {
 
 __device__ bool attacked(const Game* g, int s, int by) {
     u64 occ = occupied(g);
-    return (pawn_att(s, by ^ 1) & pcs(g, by, PAWN)) || (knight_att(bit(s)) & pcs(g, by, KNIGHT))
-        || (king_att(bit(s)) & pcs(g, by, KING))
+    return (pawn_att(s, by ^ 1) & pcs(g, by, PAWN)) || (knight_sq(s) & pcs(g, by, KNIGHT))
+        || (king_att_sq(s) & pcs(g, by, KING))
         || (bishop_att(s, occ) & (pcs(g, by, BISHOP) | pcs(g, by, QUEEN)))
         || (rook_att(s, occ) & (pcs(g, by, ROOK) | pcs(g, by, QUEEN)));
 }
@@ -267,8 +289,20 @@ __device__ __forceinline__ int line_kind(int a, int b) {
     int df = (a & 7) - (b & 7), dr = (a >> 3) - (b >> 3);
     return df == 0 ? 1 : dr == 0 ? 2 : df == dr ? 3 : df == -dr ? 4 : 0;
 }
-__device__ __forceinline__ u64 line_mask(int kind, int s) {
-    return kind == 1 ? file_mask(s) : kind == 2 ? rank_mask(s) : kind == 3 ? diag_mask(s) : anti_mask(s);
+__device__ __forceinline__ u64 line_mask_calc(int kind, int s) {
+    return kind == 1 ? file_mask(s) : kind == 2 ? rank_mask(s) : kind == 3 ? diag_mask_calc(s) : anti_mask_calc(s);
+}
+// Fills the attack tables (one block of 64 threads, a square each); empty with ATTACK_CALC.
+extern "C" __global__ void attack_tables_init() {
+#ifndef ATTACK_CALC
+    int s = threadIdx.x;
+    T_KNIGHT[s] = knight_att(bit(s));
+    T_KING[s] = king_att(bit(s));
+    T_PAWN[0][s] = pawn_att_calc(s, 0);
+    T_PAWN[1][s] = pawn_att_calc(s, 1);
+    T_LINE[0][s] = 0;
+    for (int kind = 1; kind <= 4; ++kind) T_LINE[kind][s] = line_mask_calc(kind, s);
+#endif
 }
 // Color c's sliders that move along lines of this kind.
 __device__ __forceinline__ u64 line_sliders(const Game* g, int c, int kind) {
@@ -297,8 +331,8 @@ __device__ bool legal(const Game* g, u16 m, bool inCheck) {
         enemy &= ~bit(capSq);
     }
     int s = from == k ? to : k;
-    return !((pawn_att(s, us) & enemy & g->byType[PAWN]) || (knight_att(bit(s)) & enemy & g->byType[KNIGHT])
-          || (king_att(bit(s)) & enemy & g->byType[KING])
+    return !((pawn_att(s, us) & enemy & g->byType[PAWN]) || (knight_sq(s) & enemy & g->byType[KNIGHT])
+          || (king_att_sq(s) & enemy & g->byType[KING])
           || (bishop_att(s, occ) & enemy & (g->byType[BISHOP] | g->byType[QUEEN]))
           || (rook_att(s, occ) & enemy & (g->byType[ROOK] | g->byType[QUEEN])));
 }
@@ -313,7 +347,7 @@ __device__ bool gives_check(const Game* g, u16 m) {
     if (pt == PAWN) {
         if (pawn_att(to, mover) & bit(k)) return true;
     } else if (pt == KNIGHT) {
-        if (knight_att(bit(to)) & bit(k)) return true;
+        if (knight_sq(to) & bit(k)) return true;
     } else if (pt != KING) {
         int kind = line_kind(to, k);
         if (kind && (pt == QUEEN || (pt == ROOK) == (kind <= 2)) && (line_attacks(occ, line_mask(kind, k), k) & bit(to)))
@@ -747,7 +781,7 @@ __device__ int generate(Game* g, u16* list, bool noisy) {
         if (pt >= 0) {
             for (; rank; --rank) mine &= mine - 1;
             from = lsb(mine);
-            att = pt == KNIGHT ? knight_att(bit(from)) : pt == KING ? king_att(bit(from)) : 0;
+            att = pt == KNIGHT ? knight_sq(from) : pt == KING ? king_att_sq(from) : 0;
             if (pt == BISHOP || pt == QUEEN) att |= bishop_att(from, occ);
             if (pt == ROOK || pt == QUEEN) att |= rook_att(from, occ);
             att &= targets;
@@ -951,7 +985,7 @@ __device__ bool see_ge(const Game* g, u16 m, int threshold) {
     u64 occ = occupied(g) ^ bit(from) ^ bit(to);
     u64 bishops = g->byType[BISHOP] | g->byType[QUEEN], rooks = g->byType[ROOK] | g->byType[QUEEN];
     u64 attackers = (pawn_att(to, 1) & pcs(g, 0, PAWN)) | (pawn_att(to, 0) & pcs(g, 1, PAWN))
-                  | (knight_att(bit(to)) & g->byType[KNIGHT]) | (king_att(bit(to)) & g->byType[KING])
+                  | (knight_sq(to) & g->byType[KNIGHT]) | (king_att_sq(to) & g->byType[KING])
                   | (bishop_att(to, occ) & bishops) | (rook_att(to, occ) & rooks);
     int stm = color_of(g->board[from]);
     bool result = true;
@@ -997,7 +1031,7 @@ __device__ bool has_legal_move(Game* g, const Net& net, short* acc, int ply) {
                 targets = (pawn_att(s, us) & g->byColor[us ^ 1]) | (g->board[push] == NO_PIECE ? bit(push) : 0);
                 break;
             }
-            case KNIGHT: targets = knight_att(bit(s)) & ~own; break;
+            case KNIGHT: targets = knight_sq(s) & ~own; break;
             case BISHOP: targets = bishop_att(s, occ) & ~own; break;
             case ROOK: targets = rook_att(s, occ) & ~own; break;
             default: targets = (bishop_att(s, occ) | rook_att(s, occ)) & ~own; break;

@@ -220,6 +220,7 @@ def build_module(h):
     mod = cp.RawModule(code=src, options=options)
     for name, arr in zip(("Z_PSQ", "Z_CASTLING", "Z_EP", "Z_SIDE"), zobrist()):
         cp.ndarray(arr.shape, arr.dtype, mod.get_global(name))[...] = cp.asarray(arr)
+    mod.get_function("attack_tables_init")((1,), (64,), ())  # single squares' attack sets, from the device's own code
     return mod
 
 
