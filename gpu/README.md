@@ -82,7 +82,11 @@ python gpu/bench.py gpu <net.nnue> bench-positions.txt auto 5000
 
 Tried and dropped, all exact: prefetching the child's TT entry and history rows (4-11% slower), a
 16-byte-aligned frame (+3%), lane-parallel pawn captures (+2%), and several games per warp (`GPU_GS`, branch
-`claude/gpu-multigame`: 10 to 21% fewer searches a second). With 4, 8 and 12 warps per SM giving 14.1, 24.0 and 29.6M nodes a
+`claude/gpu-multigame`: 10 to 21% fewer searches a second). Also dropped: computing quiescence's SEE test in
+`score_moves`, one move per lane, and keeping it in a spare bit of the move's score, plus skipping SEE pruning's
+second test for captures already scored good. It was exact only once the picker compared scores with that bit masked
+off, since `pick_move` is an unstable selection sort and any change to which tied move comes first reorders the rest.
+It saved 0.85% of the time, not worth the extra invariant. With 4, 8 and 12 warps per SM giving 14.1, 24.0 and 29.6M nodes a
 second, the SMs are limited by the instructions they issue, not by memory latency: what helps is fewer
 instructions per node, above all fewer serial loops that every lane runs together.
 
