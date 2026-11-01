@@ -590,6 +590,9 @@ def train_streaming(args):
         torch.save({"net": net.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(), "epoch": epoch,
                     "args": vars(args)}, state_path + ".tmp")
         os.replace(state_path + ".tmp", state_path)
+        if args.stop_after and epoch >= args.stop_after:
+            print(f"stopped after epoch {epoch} (--stop-after); continue with --resume", flush=True)
+            return
 
     export(net, args.out)
     print(f"wrote {args.out}")
@@ -603,6 +606,7 @@ def main():
     ap.add_argument("--group", type=int, default=8, help="with --shards: shards shuffled together in memory at once")
     ap.add_argument("--val-max", type=int, default=20_000_000, help="with --shards: validation positions kept")
     ap.add_argument("--resume", action="store_true", help="with --shards: continue from <out>.pt")
+    ap.add_argument("--stop-after", type=int, help="with --shards: stop after this epoch (the schedule still spans --epochs)")
     ap.add_argument("--hidden", type=int, default=128)
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--batch", type=int, default=16384)
