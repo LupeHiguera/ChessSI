@@ -109,6 +109,7 @@ struct Searcher {
     Piece pieceStack[MAX_PLY + 1] = {}; // piece that played it
     int evalStack[MAX_PLY + 1] = {};    // static eval at each ply of the current line; -VALUE_INF in check
     int (*contHist)[ContHistStride] = nullptr; // the main thread's points to mainContHist
+    uint64_t rootNodes[64][64] = {}; // [from][to]: nodes spent under each root move, this whole search
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
 
@@ -479,6 +480,7 @@ struct Searcher {
             ++legalMoves;
             moveStack[ply] = m;
             pieceStack[ply] = moved;
+            uint64_t nodesBefore = nodes;
 
             int newDepth = depth - 1 + extension;
             int score;
@@ -501,6 +503,8 @@ struct Searcher {
                     score = -search(-beta, -alpha, newDepth, ply + 1);
             }
             pos.undo_move(m);
+            if (ply == 0)
+                rootNodes[from_sq(m)][to_sq(m)] += nodes - nodesBefore;
             if (stopped)
                 return 0;
 
@@ -719,6 +723,12 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
             double scale = StabilityScale[stability];
             if (depth > 1) // a 100 cp drop doubles the time, a 100 cp rise halves it
                 scale *= std::exp2(std::clamp(prevScore - score, -100, 100) / 100.0);
+            // Node-based (after Alexandria and Ethereal): the share of this search's nodes spent under
+            // the best move. A clear choice takes most of them and stops sooner, a close one takes
+            // longer. 1.0 at a share of 0.7, about the mean from depth 8 in the bench positions at
+            // depth 14 (median 0.83, lower quartile 0.54), so the average time stays about the same.
+            if (depth > 7 && s.nodes && result.best != MOVE_NONE)
+                scale *= (1.5 - double(s.rootNodes[from_sq(result.best)][to_sq(result.best)]) / double(s.nodes)) * 1.25;
             s.softLimit = std::max<int64_t>(1, std::min(s.hardLimit, int64_t(double(s.baseSoft) * scale)));
         }
 
