@@ -7,6 +7,52 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net22-h768.nnue
+
+- **SHA-256:** `ece7a6df577290df6eb87ae12b430fd39101245463e09e25fcda70eecdd07ba8`
+- **Data:** all of generation 10 (net14's self-play on the GPUs, net19b's and net20's source), 977,136,732
+  unique training positions and 19,961,243 validation positions. That is 997,097,975 before deduplication,
+  1.9× net20's 520.9M.
+- **Training:** net20's network and recipe, on the streaming trainer (PR #98, `claude/streaming-trainer`,
+  `2eb0d3a`):
+  - Shards: `shards.cpp` conversion, then `shards.py finalize --future-plies 4`.
+  - `shards.py dedup --bits 37` over generations 8-10, generation 10's shards first, so its keep marks equal
+    a generation-10-only deduplication.
+  - `shards.py scatter`.
+  - Then `train.py --shards <g10s> net22-h768.nnue --hidden 768 --epochs 20 --seed 1 --aux-weight 1.0
+    --future-plies 4`.
+  - Validation loss 0.00784, against net20's 0.00806 on the same held-out games. 5 h 32 min on an RTX 5080;
+    peak RSS 11.7 GB.
+- **Speed:** the same architecture as net20, so the same speed.
+- **Result:** replaced net20.
+  - **SPRT:** +16.8 ± 7.5 Elo, [0, 5] at 10+0.1, H1 after 2,602 games. Both networks were loaded in one
+    binary built from `005fc57`, 4 concurrent on cores 1-4. Pentanomial [19, 262, 623, 368, 29].
+  - **GPU matches** (another Claude session, 1,024 pairs each): +28.6 ± 11.0 and +30.4 ± 11.1 at 20,000
+    nodes; +16.0 ± 9.6 at 100,000 nodes.
+  - **Related networks:**
+    - **net22-h512** (the same data at 512 units): +7.8, +8.0 and +13.6 against net19b on the same three
+      GPU matches.
+    - **net23-h768** (generation 11 alone, 417M positions labelled by net19b): −18.7 and −15.1 at 20,000
+      nodes and −5.6 ± 9.7 at 100,000 against net22-h768. At this size, twice the data beat a newer
+      teacher.
+
+## net20-h768.nnue
+
+- **SHA-256:** `89422f2c41df8827dbcf07144fd5a367115c283b62b2b08f02c58fefb44dd873`
+- **Data:** net19b's (and net18's): 520,936,189 unique generation-10 positions from 6,652,053 games, the
+  same thirty pieces, split and validation games.
+- **Training:** net19b's recipe at 768 hidden units instead of 512: `train.py <30 pieces> net20-h768.nnue
+  --hidden 768 --epochs 20 --seed 1 --cache-dir <dir> --aux-weight 1.0 --future-plies 4 --gpu-data-gb 0`
+  with the trainer of PR #79 (`327f561`). Validation loss 0.00794 against net19b's 0.00811 (same data,
+  split and recipe). 3 h 10 min on an RTX 5080 after 22 min of loading from the cache; peak RSS 31.1 GB.
+- **Speed:** about 11% slower than net19b: 0.894 of its nodes a second (depth 15 on three positions, the
+  two networks alternating three times on one core).
+- **Result:** replaced net19b, +19.1 ± 8.2 Elo, SPRT [0, 5] at 10+0.1, H1 after 2,362 games (both
+  networks loaded in one binary built from `8912405`, 4 concurrent). GPU matches (another Claude session,
+  1,024 pairs each): +18.7 ± 10.7 and +33.7 ± 10.8 at 20,000 nodes each; +0.3 ± 10.8 and −7.0 ± 11.1
+  with net20 at 17,880 nodes against 20,000 to charge for its speed; +12.0 ± 9.8 at 89,400 against
+  100,000. At equal data, 768 units gained about a third of what 512 gained over 256 (net19b: +56.6).
+
 ## net19b-h512.nnue
 
 - **SHA-256:** `7b03d70cbf03f81595b9a1c1ad2d43659a4b89c560dfdc6e00cff1881f2ff34b`
