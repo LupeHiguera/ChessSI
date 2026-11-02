@@ -492,6 +492,8 @@ struct Searcher {
                     r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
                     if (pvNode)
                         --r;
+                    if (!improving)
+                        ++r;
                     r = std::clamp(r, 0, depth - 2);
                 }
                 score = -search(-alpha - 1, -alpha, newDepth - r, ply + 1);
