@@ -86,7 +86,7 @@ class Sides:
                   for name in ("match_init", "match_setup", "match_step", "match_side", "match_results")}
         self.split = hb != dg.h or self.nodes_a != self.nodes_b or os.environ.get("GPU_MATCH_SPLIT") == "1"
         if self.split:
-            mod_b = dg.mod if hb == dg.h else build_module(hb, "match_side")
+            mod_b = dg.mod if hb == dg.h else build_module(hb)
             assert module_sizes(mod_b) == module_sizes(dg.mod), "both builds must lay out a game the same way"
             self.side_b = mod_b.get_function("match_side")
             self.accs_b = cp.zeros(n * (MAX_PLY + 2) * 2 * hb, cp.int16)
