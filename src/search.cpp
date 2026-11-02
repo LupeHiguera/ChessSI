@@ -436,9 +436,9 @@ struct Searcher {
 
             // Late move pruning: near the leaves, quiet moves this far down
             // the ordering almost never matter, so skip them once a move has
-            // kept us out of a mate score.
+            // kept us out of a mate score. Half as many when the eval is not improving.
             if (!pvNode && !inCheck && quiet && depth <= 7 && best > -VALUE_MATE_IN_MAX_PLY
-                && quietCount >= 6 + depth * depth)
+                && quietCount >= (6 + depth * depth) / (improving ? 1 : 2))
                 continue;
 
             // Futility pruning: if even a generous margin over the static
