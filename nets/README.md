@@ -7,6 +7,23 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net20-h768.nnue
+
+- **SHA-256:** `89422f2c41df8827dbcf07144fd5a367115c283b62b2b08f02c58fefb44dd873`
+- **Data:** net19b's (and net18's): 520,936,189 unique generation-10 positions from 6,652,053 games, the
+  same thirty pieces, split and validation games.
+- **Training:** net19b's recipe at 768 hidden units instead of 512: `train.py <30 pieces> net20-h768.nnue
+  --hidden 768 --epochs 20 --seed 1 --cache-dir <dir> --aux-weight 1.0 --future-plies 4 --gpu-data-gb 0`
+  with the trainer of PR #79 (`327f561`). Validation loss 0.00794 against net19b's 0.00811 (same data,
+  split and recipe). 3 h 10 min on an RTX 5080 after 22 min of loading from the cache; peak RSS 31.1 GB.
+- **Speed:** about 11% slower than net19b: 0.894 of its nodes a second (depth 15 on three positions, the
+  two networks alternating three times on one core).
+- **Result:** replaced net19b, +19.1 ± 8.2 Elo, SPRT [0, 5] at 10+0.1, H1 after 2,362 games (both
+  networks loaded in one binary built from `8912405`, 4 concurrent). GPU matches (another Claude session,
+  1,024 pairs each): +18.7 ± 10.7 and +33.7 ± 10.8 at 20,000 nodes each; +0.3 ± 10.8 and −7.0 ± 11.1
+  with net20 at 17,880 nodes against 20,000 to charge for its speed; +12.0 ± 9.8 at 89,400 against
+  100,000. At equal data, 768 units gained about a third of what 512 gained over 256 (net19b: +56.6).
+
 ## net19b-h512.nnue
 
 - **SHA-256:** `7b03d70cbf03f81595b9a1c1ad2d43659a4b89c560dfdc6e00cff1881f2ff34b`
