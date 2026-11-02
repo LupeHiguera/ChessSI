@@ -219,23 +219,35 @@ int NNUE::evaluate(const Position& pos) {
 #if defined(__AVX2__)
     // The same integer sum, vectorized by hand: v * w with vpmullw, then (v * w) * v added in pairs
     // into int32 lanes with vpmaddwd (vpdpwssd with AVX-VNNI). A product is at most 255 * 32640, so
-    // a block of 256 values sums to under 2^31 in int32 before it is widened.
+    // a block of 256 values sums to under 2^31 in int32 before it is widened. Four accumulators keep
+    // four independent chains in flight; with one, each vpdpwssd waited for the previous.
     const __m256i lo = _mm256_setzero_si256(), hi = _mm256_set1_epi16(QA);
+    auto term = [&](const int16_t* x, const int16_t* w, int i, __m256i acc) {
+        __m256i xv = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x + i));
+        __m256i v = _mm256_min_epi16(_mm256_max_epi16(xv, lo), hi);
+        __m256i vw = _mm256_mullo_epi16(v, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(w + i)));
+#if defined(__AVXVNNI__)
+        return _mm256_dpwssd_avx_epi32(acc, vw, v);
+#else
+        return _mm256_add_epi32(acc, _mm256_madd_epi16(vw, v));
+#endif
+    };
     for (int half = 0; half < 2; ++half) {
         const int16_t* x = halves[half];
         const int16_t* w = &net.outWeights[size_t(half) * h];
         for (int b = 0; b < h; b += 256) {
-            __m256i lanes = _mm256_setzero_si256();
-            for (int i = b, end = std::min(h, b + 256); i < end; i += 16) {
-                __m256i xv = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(x + i));
-                __m256i v = _mm256_min_epi16(_mm256_max_epi16(xv, lo), hi);
-                __m256i vw = _mm256_mullo_epi16(v, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(w + i)));
-#if defined(__AVXVNNI__)
-                lanes = _mm256_dpwssd_avx_epi32(lanes, vw, v);
-#else
-                lanes = _mm256_add_epi32(lanes, _mm256_madd_epi16(vw, v));
-#endif
+            __m256i a0 = _mm256_setzero_si256(), a1 = a0, a2 = a0, a3 = a0;
+            int i = b;
+            const int end = std::min(h, b + 256);
+            for (; i + 64 <= end; i += 64) {
+                a0 = term(x, w, i, a0);
+                a1 = term(x, w, i + 16, a1);
+                a2 = term(x, w, i + 32, a2);
+                a3 = term(x, w, i + 48, a3);
             }
+            for (; i < end; i += 16)
+                a0 = term(x, w, i, a0);
+            __m256i lanes = _mm256_add_epi32(_mm256_add_epi32(a0, a1), _mm256_add_epi32(a2, a3));
             __m128i s = _mm_add_epi32(_mm256_castsi256_si128(lanes), _mm256_extracti128_si256(lanes, 1));
             s = _mm_add_epi32(s, _mm_shuffle_epi32(s, 0x4E));
             s = _mm_add_epi32(s, _mm_shuffle_epi32(s, 0xB1));

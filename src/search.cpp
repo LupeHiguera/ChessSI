@@ -2,11 +2,16 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <memory>
 #include <sstream>
 #include <thread>
 #include <vector>
+
+#if defined(__AVX2__)
+#include <immintrin.h>
+#endif
 
 #include "eval.h"
 #include "movegen.h"
@@ -47,20 +52,21 @@ const ReductionTable Reductions;
 // Entries are in 1/16 cp, so a correction never exceeds 64 cp.
 constexpr int CorrHistSize = 16384;
 constexpr int CorrHistLimit = 1024;
-int mainCorrHist[2][CorrHistSize];
+int16_t mainCorrHist[2][CorrHistSize];
 // Non-pawn correction history (Alexandria, Stockfish): the same idea keyed by one side's
 // non-pawn pieces (knights, bishops, rooks, queens and king), one table per keyed colour.
-int mainNonPawnCorrHist[2][2][CorrHistSize]; // [side to move][keyed colour][hash]
+int16_t mainNonPawnCorrHist[2][2][CorrHistSize]; // [side to move][keyed colour][hash]
 
 // Continuation history: how a quiet move fared immediately after the move one ply back and the move
 // two plies back. Both distances share one table, indexed
 // [earlier piece * 64 + its target][moved piece * 64 + its target]. The main thread keeps it for
 // the game and halves it at each new search. Zeroing it on every `go` was the first try, and that
 // pre-screen failed: the table never held more than one search. Helper threads leave it unused
-// (about 2.4 MB each).
+// (about 1.2 MB each). Entries are int16_t: gravity keeps them within +/-16,384, and half the
+// footprint of int leaves more of a core's L2 to the network and the TT.
 constexpr int ContHistStride = 12 * 64;
 static_assert(NO_PIECE == 12, "continuation history is indexed by piece 0..11");
-int mainContHist[ContHistStride][ContHistStride];
+int16_t mainContHist[ContHistStride][ContHistStride];
 
 int pawn_index(const Position& pos) {
     uint64_t h = pos.pieces(WHITE, PAWN) * 0x9E3779B97F4A7C15ull ^ pos.pieces(BLACK, PAWN) * 0xC2B2AE3D27D4EB4Full;
@@ -98,16 +104,17 @@ struct Searcher {
     Move pv[MAX_PLY + 1][MAX_PLY + 1];
     int pvLength[MAX_PLY + 1];
     Move killers[MAX_PLY + 1][2] = {};
-    int history[2][64][64] = {}; // [side to move][from][to], quiet moves only
-    int ownCorrHist[2][CorrHistSize] = {};
-    int (*corrHist)[CorrHistSize] = ownCorrHist; // the main thread's points to mainCorrHist
-    int ownNonPawnCorrHist[2][2][CorrHistSize] = {};
-    int (*nonPawnCorrHist)[2][CorrHistSize] = ownNonPawnCorrHist; // main thread: mainNonPawnCorrHist
+    int16_t history[2][64][64] = {}; // [side to move][from][to], quiet moves only
+    int16_t ownCorrHist[2][CorrHistSize] = {};
+    int16_t (*corrHist)[CorrHistSize] = ownCorrHist; // the main thread's points to mainCorrHist
+    int16_t ownNonPawnCorrHist[2][2][CorrHistSize] = {};
+    int16_t (*nonPawnCorrHist)[2][CorrHistSize] = ownNonPawnCorrHist; // main thread: mainNonPawnCorrHist
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
     Move excluded[MAX_PLY + 1] = {};  // move a singular search leaves out at each ply
     int rootDepth = 0;
     Piece pieceStack[MAX_PLY + 1] = {}; // piece that played it
-    int (*contHist)[ContHistStride] = nullptr; // the main thread's points to mainContHist
+    int evalStack[MAX_PLY + 1] = {};    // static eval at each ply of the current line; -VALUE_INF in check
+    int16_t (*contHist)[ContHistStride] = nullptr; // the main thread's points to mainContHist
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
 
@@ -171,16 +178,21 @@ struct Searcher {
             else if (ply >= 0) {
                 scores[i] = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
                 for (int back = 1; back <= 2; ++back)
-                    if (const int* c = cont_entry(ply, back, m))
+                    if (const int16_t* c = cont_entry(ply, back, m))
                         scores[i] += *c;
             } else
                 scores[i] = 0;
         }
+        for (int i = list.size; i < list.size + ScorePad; ++i) // pick_move reads eight at a time
+            scores[i] = INT_MIN;
     }
+
+    // score_moves fills this many INT_MIN scores past the list; score arrays hold MaxMoves + ScorePad.
+    static constexpr int ScorePad = 8;
 
     // The continuation-history entry for quiet move m after the move `back`
     // plies earlier, or null at the root, after a null move, or in a helper.
-    int* cont_entry(int ply, int back, Move m) {
+    int16_t* cont_entry(int ply, int back, Move m) {
         if (!contHist || ply < back || moveStack[ply - back] == MOVE_NONE)
             return nullptr;
         return &contHist[pieceStack[ply - back] * 64 + to_sq(moveStack[ply - back])]
@@ -196,10 +208,16 @@ struct Searcher {
     }
 
     void update_history(int ply, Move m, int bonus) {
-        gravity(history[pos.side_to_move()][from_sq(m)][to_sq(m)], bonus);
+        int16_t& e = history[pos.side_to_move()][from_sq(m)][to_sq(m)];
+        int h = e;
+        gravity(h, bonus);
+        e = int16_t(h);
         for (int back = 1; back <= 2; ++back)
-            if (int* c = cont_entry(ply, back, m))
-                gravity(*c, bonus);
+            if (int16_t* c = cont_entry(ply, back, m)) {
+                int h = *c;
+                gravity(h, bonus);
+                *c = int16_t(h);
+            }
     }
 
     // The network's eval plus what correction history has learned for these pawns.
@@ -214,12 +232,12 @@ struct Searcher {
     // Moves the entry toward the search result, more for deeper searches; the gravity term
     // keeps it within +/-CorrHistLimit.
     void update_corrhist(int diff, int depth) {
-        int& e = corrHist[pos.side_to_move()][pawn_index(pos)];
+        int16_t& e = corrHist[pos.side_to_move()][pawn_index(pos)];
         int bonus = std::clamp(diff * depth / 4, -CorrHistLimit / 4, CorrHistLimit / 4);
-        e += bonus - e * std::abs(bonus) / CorrHistLimit;
+        e = int16_t(e + bonus - e * std::abs(bonus) / CorrHistLimit);
         for (Color c : {WHITE, BLACK}) {
-            int& n = nonPawnCorrHist[pos.side_to_move()][c][nonpawn_index(pos, c)];
-            n += bonus - n * std::abs(bonus) / CorrHistLimit;
+            int16_t& n = nonPawnCorrHist[pos.side_to_move()][c][nonpawn_index(pos, c)];
+            n = int16_t(n + bonus - n * std::abs(bonus) / CorrHistLimit);
         }
     }
 
@@ -275,12 +293,31 @@ struct Searcher {
         return result;
     }
 
-    // Selection sort step: brings the best remaining move to index i.
+    // Selection sort step: brings the best remaining move to index i, the first of the highest scores
+    // from i on. With AVX2: their maximum eight at a time, then the first index holding it (the
+    // INT_MIN padding past the list never wins: every real score is far above it).
     static Move pick_move(MoveList& list, int* scores, int i) {
         int best = i;
+#if defined(__AVX2__)
+        __m256i top = _mm256_set1_epi32(INT_MIN);
+        for (int j = i; j < list.size; j += 8)
+            top = _mm256_max_epi32(top, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(scores + j)));
+        __m128i t = _mm_max_epi32(_mm256_castsi256_si128(top), _mm256_extracti128_si256(top, 1));
+        t = _mm_max_epi32(t, _mm_shuffle_epi32(t, 0x4E));
+        t = _mm_max_epi32(t, _mm_shuffle_epi32(t, 0xB1));
+        top = _mm256_broadcastd_epi32(t);
+        for (int j = i;; j += 8) {
+            __m256i eq = _mm256_cmpeq_epi32(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(scores + j)), top);
+            if (int mask = _mm256_movemask_ps(_mm256_castsi256_ps(eq))) {
+                best = j + __builtin_ctz(unsigned(mask));
+                break;
+            }
+        }
+#else
         for (int j = i + 1; j < list.size; ++j)
             if (scores[j] > scores[best])
                 best = j;
+#endif
         std::swap(list.moves[i], list.moves[best]);
         std::swap(scores[i], scores[best]);
         return list.moves[i];
@@ -300,7 +337,7 @@ struct Searcher {
 
         MoveList list;
         generate(pos, list, NOISY_MOVES);
-        int scores[256];
+        int scores[256 + ScorePad];
         score_moves(list, scores, MOVE_NONE, -1);
 
         int best = standPat;
@@ -366,14 +403,25 @@ struct Searcher {
         }
 
         int staticEval = inCheck ? -VALUE_INF : corrected_eval();
+        evalStack[ply] = staticEval;
+        // Improving: the static eval is above the one at our previous move (two plies back, or four
+        // when that node was in check; true when neither is known), as in Stockfish.
+        bool improving = false;
+        if (!inCheck) {
+            int prev = ply >= 2 ? evalStack[ply - 2] : -VALUE_INF;
+            if (prev == -VALUE_INF)
+                prev = ply >= 4 ? evalStack[ply - 4] : -VALUE_INF;
+            improving = prev == -VALUE_INF || staticEval > prev;
+        }
 
         // Reverse futility pruning: at shallow null-window nodes, a large
-        // static advantage may make the remaining search unnecessary.
+        // static advantage may make the remaining search unnecessary. The
+        // margin is a ply smaller when the eval is improving.
         if (!root && !pvNode && !inCheck && !excludedMove && depth <= 5
             && pos.rule50() + depth < 100
             && std::abs(beta) < VALUE_MATE_IN_MAX_PLY
             && (pos.pieces(pos.side_to_move()) & ~(pos.pieces(PAWN) | pos.pieces(KING)))) {
-            if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 77 * depth >= beta)
+            if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 77 * (depth - improving) >= beta)
                 // A static advantage cannot override stalemate.
                 return has_legal_move() ? staticEval : 0;
         }
@@ -406,7 +454,7 @@ struct Searcher {
 
         MoveList list;
         generate(pos, list, ALL_MOVES);
-        int scores[256];
+        int scores[256 + ScorePad];
         score_moves(list, scores, ttMove, ply);
 
         int originalAlpha = alpha;
@@ -643,7 +691,7 @@ void Search::set_threads(int n) {
 SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbose) {
     TT.new_search();
     for (auto& prev : mainContHist)
-        for (int& h : prev)
+        for (int16_t& h : prev)
             h /= 2;
     Searcher s(pos, limits);
     s.contHist = mainContHist;
