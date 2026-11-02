@@ -87,6 +87,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-11-02 | Claude Opus 5.5 | Known | net22-h512: net19b's network and recipe on all of generation 10 (977.1M unique positions, 1.9× net19b's; net14's labels only), 20 epochs on the streaming trainer with scattered shards (PR #98). Validation 0.00804 | Superseded by net22-h768 (GPU screens only; no CPU SPRT) | Not run | 6,144 GPU games | GPU screens against net19b (chesssi-2d, 1,024 pairs each, equal size): +7.8 ± 11.0 and +8.0 ± 11.0 at 20k nodes each, +13.6 ± 10.0 at 100k |
 | 2026-11-02 | Claude Opus 5.5 | Known | net22-h768: the same generation-10 data at 768 units, net20's size, 20 epochs (5 h 32 min on an RTX 5080). Validation 0.00784 against net20's 0.00806 on the same held-out games. Both networks in one binary built from `005fc57`. Pentanomial [19, 262, 623, 368, 29] | Passed | +16.8 ± 7.5 | 2,602 (4 concurrent, cores 1-4) | GPU screens against net20 (chesssi-2d, 1,024 pairs each): +28.6 ± 11.0 and +30.4 ± 11.1 at 20k nodes each, +16.0 ± 9.6 at 100k |
 | 2026-11-02 | Claude Opus 5.5 | Known | net23-h768: generation 11 alone (net19b's self-play on the GPUs, 417M unique positions), net22-h768's recipe, to test a newer teacher against more data. Validation 0.00792 on its own held-out games | Failed (GPU screens; no CPU SPRT) | Not run | 6,144 GPU games | GPU screens against net22-h768 (chesssi-2d, 1,024 pairs each): −18.7 ± 10.8 and −15.1 ± 10.9 at 20k nodes each, −5.6 ± 9.7 at 100k. At this size, 2.3× the data beat the newer teacher |
+| 2026-11-02 | Claude Opus 5.5 | Known | Speed series with an identical search (`claude/hist16`, against `005fc57`, net19b-h512), three commits found with a sampling profile of bench: history tables in int16_t (continuation history 2.36 MB to 1.18 MB; +4.4% nps with net20-h768, +5.9% with net19b-h512), four accumulators in the NNUE output layer instead of one dependency chain (+9.0%, +5.2%), and move picking with AVX2 instead of a mispredicting scalar scan (+14.6%, +11.5%). Together +28.5% nps with net20-h768 and +26.8% with net19b-h512 (bench 15, 12 alternating pairs each); bench 62252 in native, x86-64-v3 and x86-64-v2 builds | Passed | +36.7 ± 10.8 | 1,074 (6 concurrent, cores 8-13, lent by chesssi-86) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -215,6 +216,23 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
   but the +18% from the output layer alone implies its true share was higher: sampling profilers
   overcharge many small calls. The accumulator update is already vectorized (vpaddw and vpsubw on
   ymm), so lazy updates are the remaining NNUE lever.
+- **History tables in int16_t** (*Claude Code, passed 2026-11-02 in one SPRT with the next two items, +36.7 ± 10.8*, `claude/hist16`). Known (Stockfish
+  stores its histories in int16_t). Continuation history is 768 × 768 ints, 2.36 MB, more than a
+  P-core's L2 beside the network and the TT; gravity keeps every entry within ±16,384 (correction
+  histories within ±1,024), so int16_t holds them exactly and the bench is unchanged. A sampling
+  profile of bench put move scoring and picking at about 15% of search time. Tested in one SPRT
+  with the next item, as a speed series with an identical search.
+- **Four accumulators in the NNUE output layer** (*Claude Code, passed 2026-11-02 in the same SPRT*, on
+  `claude/hist16`). The output layer summed each 256-value block into one vector, so every
+  vpdpwssd waited for the previous one; four independent chains are exact (integer sums) and
+  leave the bench unchanged.
+- **Branch-free move picking with AVX2** (*Claude Code, passed 2026-11-02 in the same SPRT*, on `claude/hist16`).
+  The selection sort's scan (`scores[j] > scores[best]`) mispredicted; the same index, the first
+  of the highest scores, comes from a vector maximum and a vector compare. Bench unchanged.
+- Measured, not pursued (2026-11-02, Claude Code): the TT in transparent huge pages, +2.7% nps
+  under WSL2 (the host still maps the guest in small pages), and on Windows large pages need a
+  privilege most testers don't grant; static eval stored in the TT, which could skip only 6.1% of
+  bench evaluations (qsearch makes up half of them and never probes the TT).
 - Datagen records the static eval before each search as a fourth field (`claude/datagen-eval`):
   same games with the same seed, and the trainer reads old and new files alike. Several queued ideas
   need it, so PC 2's first generation should use it.
