@@ -25,6 +25,7 @@ scale 400 (format in `nnue/train.py`).
   networks loaded in one binary built from `8912405`, 4 concurrent). GPU matches (another Claude session,
   `claude/gpu-sides`, 2 × 1,024 pairs each): +73 ± 8 at 20,000 nodes each, +37 ± 8 with net19b at
   17,000 nodes against 20,000 to charge for its speed, +46.4 ± 10.3 at 85,000 against 100,000.
+  At 60+0.6: +49.4 ± 13.0, SPRT [0, 5], H1 after 906 games (same binary, 4 concurrent).
 
 ## net14-h256.nnue
 
