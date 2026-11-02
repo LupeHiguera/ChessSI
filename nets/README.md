@@ -7,6 +7,35 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net22-h768.nnue
+
+- **SHA-256:** `ece7a6df577290df6eb87ae12b430fd39101245463e09e25fcda70eecdd07ba8`
+- **Data:** all of generation 10 (net14's self-play on the GPUs, net19b's and net20's source), 977,136,732
+  unique training positions and 19,961,243 validation positions. That is 997,097,975 before deduplication,
+  1.9× net20's 520.9M.
+- **Training:** net20's network and recipe, on the streaming trainer (PR #98, `claude/streaming-trainer`,
+  `2eb0d3a`):
+  - Shards: `shards.cpp` conversion, then `shards.py finalize --future-plies 4`.
+  - `shards.py dedup --bits 37` over generations 8-10, generation 10's shards first, so its keep marks equal
+    a generation-10-only deduplication.
+  - `shards.py scatter`.
+  - Then `train.py --shards <g10s> net22-h768.nnue --hidden 768 --epochs 20 --seed 1 --aux-weight 1.0
+    --future-plies 4`.
+  - Validation loss 0.00784, against net20's 0.00806 on the same held-out games. 5 h 32 min on an RTX 5080;
+    peak RSS 11.7 GB.
+- **Speed:** the same architecture as net20, so the same speed.
+- **Result:** replaced net20.
+  - **SPRT:** +16.8 ± 7.5 Elo, [0, 5] at 10+0.1, H1 after 2,602 games. Both networks were loaded in one
+    binary built from `005fc57`, 4 concurrent on cores 1-4. Pentanomial [19, 262, 623, 368, 29].
+  - **GPU matches** (another Claude session, 1,024 pairs each): +28.6 ± 11.0 and +30.4 ± 11.1 at 20,000
+    nodes; +16.0 ± 9.6 at 100,000 nodes.
+  - **Related networks:**
+    - **net22-h512** (the same data at 512 units): +7.8, +8.0 and +13.6 against net19b on the same three
+      GPU matches.
+    - **net23-h768** (generation 11 alone, 417M positions labelled by net19b): −18.7 and −15.1 at 20,000
+      nodes and −5.6 ± 9.7 at 100,000 against net22-h768. At this size, twice the data beat a newer
+      teacher.
+
 ## net20-h768.nnue
 
 - **SHA-256:** `89422f2c41df8827dbcf07144fd5a367115c283b62b2b08f02c58fefb44dd873`
