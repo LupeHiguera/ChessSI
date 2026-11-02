@@ -211,7 +211,12 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
   stores its histories in int16_t). Continuation history is 768 × 768 ints, 2.36 MB, more than a
   P-core's L2 beside the network and the TT; gravity keeps every entry within ±16,384 (correction
   histories within ±1,024), so int16_t holds them exactly and the bench is unchanged. A sampling
-  profile of bench put move scoring and picking at about 15% of search time.
+  profile of bench put move scoring and picking at about 15% of search time. Tested in one SPRT
+  with the next item, as a speed series with an identical search.
+- **Four accumulators in the NNUE output layer** (*Claude Code, testing 2026-11-02*, on
+  `claude/hist16`). The output layer summed each 256-value block into one vector, so every
+  vpdpwssd waited for the previous one; four independent chains are exact (integer sums) and
+  leave the bench unchanged.
 - Datagen records the static eval before each search as a fourth field (`claude/datagen-eval`):
   same games with the same seed, and the trainer reads old and new files alike. Several queued ideas
   need it, so PC 2's first generation should use it.
