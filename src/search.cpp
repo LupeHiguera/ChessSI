@@ -107,6 +107,7 @@ struct Searcher {
     Move excluded[MAX_PLY + 1] = {};  // move a singular search leaves out at each ply
     int rootDepth = 0;
     Piece pieceStack[MAX_PLY + 1] = {}; // piece that played it
+    int evalStack[MAX_PLY + 1] = {};    // static eval at each ply of the current line; -VALUE_INF in check
     int (*contHist)[ContHistStride] = nullptr; // the main thread's points to mainContHist
 
     Searcher(Position& p, const SearchLimits& l) : pos(p), limits(l) {}
@@ -366,14 +367,25 @@ struct Searcher {
         }
 
         int staticEval = inCheck ? -VALUE_INF : corrected_eval();
+        evalStack[ply] = staticEval;
+        // Improving: the static eval is above the one at our previous move (two plies back, or four
+        // when that node was in check; true when neither is known), as in Stockfish.
+        bool improving = false;
+        if (!inCheck) {
+            int prev = ply >= 2 ? evalStack[ply - 2] : -VALUE_INF;
+            if (prev == -VALUE_INF)
+                prev = ply >= 4 ? evalStack[ply - 4] : -VALUE_INF;
+            improving = prev == -VALUE_INF || staticEval > prev;
+        }
 
         // Reverse futility pruning: at shallow null-window nodes, a large
-        // static advantage may make the remaining search unnecessary.
+        // static advantage may make the remaining search unnecessary. The
+        // margin is a ply smaller when the eval is improving.
         if (!root && !pvNode && !inCheck && !excludedMove && depth <= 5
             && pos.rule50() + depth < 100
             && std::abs(beta) < VALUE_MATE_IN_MAX_PLY
             && (pos.pieces(pos.side_to_move()) & ~(pos.pieces(PAWN) | pos.pieces(KING)))) {
-            if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 77 * depth >= beta)
+            if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 77 * (depth - improving) >= beta)
                 // A static advantage cannot override stalemate.
                 return has_legal_move() ? staticEval : 0;
         }
