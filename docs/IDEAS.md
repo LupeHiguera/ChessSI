@@ -79,6 +79,7 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-10-31 | Claude Opus 5.5 | Known | Null-move reduction that grows with eval − beta (`claude/nmp-eval`, `f31a7da`, against `0b201b5`, both with net14): R = 3 + depth / 4 + min((static eval − beta) / 200, 3), as in Stockfish and most engines. Tested before continuation history was accepted, then stacked on it (`claude/nmp-eval2`) | Passed | +7.9 ± 4.8 | 5,800 (8 concurrent, cores 1-4 and 6-9) | Not run |
 | 2026-11-01 | Claude Opus 5.5 | Known | net19b: net18's recipe and data (520.9M unique generation-10 positions) at 512 hidden units instead of 256, to test whether capacity had become the limit after net15-net18 stalled at net14's level. Validation 0.00811 against net18's 0.00849 on the same split; about 15% slower (2.43M against 2.86M nps). Both networks in one binary built from `8912405` | Passed | +56.6 ± 14.1 | 824 (4 concurrent, cores 1-4) | GPU screens (chesssi-2d, 2 × 1,024 pairs): +73 ± 8 at 20k nodes each, +37 ± 8 at 17k:20k node odds, +46.4 ± 10.3 at 85k:100k |
 | 2026-11-01 | Claude Opus 5.5 | Known | History bonus linear in depth, min(300·depth − 250, 1600), Stockfish 15's shape, instead of min(depth², 1239) (`claude/history-scale`, `a8a6bfe`, against `8912405`, net14). Found by reading the search: the old bonus was 100 at depth 10 against the 16,384 history limit, and butterfly history restarts on every `go`, so history stayed near zero, gravity never acted, and history thresholds (the earlier LMR-history test, +0.4 over 28,070 games) almost never fired. Tested with non-regression bounds, as a base for history-driven reductions and pruning; node counts within 2% of main at depths 12-14 | Passed (SPRT [−5, 0]) | +21.2 ± 9.0 | 1,776 (6 concurrent, cores 8-13) | Not run |
+| 2026-11-02 | Claude Opus 5.5 | Known | Speed series with an identical search (`claude/hist16`, against `005fc57`, net19b-h512), three commits found with a sampling profile of bench: history tables in int16_t (continuation history 2.36 MB to 1.18 MB; +4.4% nps with net20-h768, +5.9% with net19b-h512), four accumulators in the NNUE output layer instead of one dependency chain (+9.0%, +5.2%), and move picking with AVX2 instead of a mispredicting scalar scan (+14.6%, +11.5%). Together +28.5% nps with net20-h768 and +26.8% with net19b-h512 (bench 15, 12 alternating pairs each); bench 62252 in native, x86-64-v3 and x86-64-v2 builds | Passed | +36.7 ± 10.8 | 1,074 (6 concurrent, cores 8-13, lent by chesssi-86) | Not run |
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
@@ -207,17 +208,17 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
   but the +18% from the output layer alone implies its true share was higher: sampling profilers
   overcharge many small calls. The accumulator update is already vectorized (vpaddw and vpsubw on
   ymm), so lazy updates are the remaining NNUE lever.
-- **History tables in int16_t** (*Claude Code, testing 2026-11-02*, `claude/hist16`). Known (Stockfish
+- **History tables in int16_t** (*Claude Code, passed 2026-11-02 in one SPRT with the next two items, +36.7 ± 10.8*, `claude/hist16`). Known (Stockfish
   stores its histories in int16_t). Continuation history is 768 × 768 ints, 2.36 MB, more than a
   P-core's L2 beside the network and the TT; gravity keeps every entry within ±16,384 (correction
   histories within ±1,024), so int16_t holds them exactly and the bench is unchanged. A sampling
   profile of bench put move scoring and picking at about 15% of search time. Tested in one SPRT
   with the next item, as a speed series with an identical search.
-- **Four accumulators in the NNUE output layer** (*Claude Code, testing 2026-11-02*, on
+- **Four accumulators in the NNUE output layer** (*Claude Code, passed 2026-11-02 in the same SPRT*, on
   `claude/hist16`). The output layer summed each 256-value block into one vector, so every
   vpdpwssd waited for the previous one; four independent chains are exact (integer sums) and
   leave the bench unchanged.
-- **Branch-free move picking with AVX2** (*Claude Code, testing 2026-11-02*, on `claude/hist16`).
+- **Branch-free move picking with AVX2** (*Claude Code, passed 2026-11-02 in the same SPRT*, on `claude/hist16`).
   The selection sort's scan (`scores[j] > scores[best]`) mispredicted; the same index, the first
   of the highest scores, comes from a vector maximum and a vector compare. Bench unchanged.
 - Measured, not pursued (2026-11-02, Claude Code): the TT in transparent huge pages, +2.7% nps
