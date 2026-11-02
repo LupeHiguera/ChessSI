@@ -2,11 +2,16 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <memory>
 #include <sstream>
 #include <thread>
 #include <vector>
+
+#if defined(__AVX2__)
+#include <immintrin.h>
+#endif
 
 #include "eval.h"
 #include "movegen.h"
@@ -177,7 +182,12 @@ struct Searcher {
             } else
                 scores[i] = 0;
         }
+        for (int i = list.size; i < list.size + ScorePad; ++i) // pick_move reads eight at a time
+            scores[i] = INT_MIN;
     }
+
+    // score_moves fills this many INT_MIN scores past the list; score arrays hold MaxMoves + ScorePad.
+    static constexpr int ScorePad = 8;
 
     // The continuation-history entry for quiet move m after the move `back`
     // plies earlier, or null at the root, after a null move, or in a helper.
@@ -282,12 +292,31 @@ struct Searcher {
         return result;
     }
 
-    // Selection sort step: brings the best remaining move to index i.
+    // Selection sort step: brings the best remaining move to index i, the first of the highest scores
+    // from i on. With AVX2: their maximum eight at a time, then the first index holding it (the
+    // INT_MIN padding past the list never wins: every real score is far above it).
     static Move pick_move(MoveList& list, int* scores, int i) {
         int best = i;
+#if defined(__AVX2__)
+        __m256i top = _mm256_set1_epi32(INT_MIN);
+        for (int j = i; j < list.size; j += 8)
+            top = _mm256_max_epi32(top, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(scores + j)));
+        __m128i t = _mm_max_epi32(_mm256_castsi256_si128(top), _mm256_extracti128_si256(top, 1));
+        t = _mm_max_epi32(t, _mm_shuffle_epi32(t, 0x4E));
+        t = _mm_max_epi32(t, _mm_shuffle_epi32(t, 0xB1));
+        top = _mm256_broadcastd_epi32(t);
+        for (int j = i;; j += 8) {
+            __m256i eq = _mm256_cmpeq_epi32(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(scores + j)), top);
+            if (int mask = _mm256_movemask_ps(_mm256_castsi256_ps(eq))) {
+                best = j + __builtin_ctz(unsigned(mask));
+                break;
+            }
+        }
+#else
         for (int j = i + 1; j < list.size; ++j)
             if (scores[j] > scores[best])
                 best = j;
+#endif
         std::swap(list.moves[i], list.moves[best]);
         std::swap(scores[i], scores[best]);
         return list.moves[i];
@@ -307,7 +336,7 @@ struct Searcher {
 
         MoveList list;
         generate(pos, list, NOISY_MOVES);
-        int scores[256];
+        int scores[256 + ScorePad];
         score_moves(list, scores, MOVE_NONE, -1);
 
         int best = standPat;
@@ -413,7 +442,7 @@ struct Searcher {
 
         MoveList list;
         generate(pos, list, ALL_MOVES);
-        int scores[256];
+        int scores[256 + ScorePad];
         score_moves(list, scores, ttMove, ply);
 
         int originalAlpha = alpha;

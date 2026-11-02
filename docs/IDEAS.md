@@ -217,6 +217,13 @@ NNUE track (each is a trainer or data change, measured by an SPRT of the resulti
   `claude/hist16`). The output layer summed each 256-value block into one vector, so every
   vpdpwssd waited for the previous one; four independent chains are exact (integer sums) and
   leave the bench unchanged.
+- **Branch-free move picking with AVX2** (*Claude Code, testing 2026-11-02*, on `claude/hist16`).
+  The selection sort's scan (`scores[j] > scores[best]`) mispredicted; the same index, the first
+  of the highest scores, comes from a vector maximum and a vector compare. Bench unchanged.
+- Measured, not pursued (2026-11-02, Claude Code): the TT in transparent huge pages, +2.7% nps
+  under WSL2 (the host still maps the guest in small pages), and on Windows large pages need a
+  privilege most testers don't grant; static eval stored in the TT, which could skip only 6.1% of
+  bench evaluations (qsearch makes up half of them and never probes the TT).
 - Datagen records the static eval before each search as a fourth field (`claude/datagen-eval`):
   same games with the same seed, and the trainer reads old and new files alike. Several queued ideas
   need it, so PC 2's first generation should use it.
