@@ -478,9 +478,12 @@ struct Searcher {
                 continue;
 
             // Futility pruning: if even a generous margin over the static
-            // eval cannot reach alpha, a quiet move will not either.
-            if (!pvNode && !inCheck && quiet && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
-                && staticEval + 127 * depth <= alpha)
+            // eval cannot reach alpha, a quiet move will not either. The margin
+            // is for the depth the move would be searched to after its late
+            // move reduction (as in Stockfish), so late moves are pruned sooner.
+            int lmrDepth = legalMoves + 1 > 4 ? depth - Reductions.r[std::min(depth, 63)][std::min(legalMoves + 1, 63)] : depth;
+            if (!pvNode && !inCheck && quiet && lmrDepth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
+                && staticEval + 127 * std::max(lmrDepth, 1) <= alpha)
                 continue;
 
             // SEE pruning: near the leaves, skip a move that loses more material in the exchange
