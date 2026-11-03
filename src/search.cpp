@@ -330,25 +330,35 @@ struct Searcher {
         if (stopped)
             return 0;
 
-        int standPat = corrected_eval();
-        if (ply >= MAX_PLY - 1 || standPat >= beta)
-            return standPat;
-        alpha = std::max(alpha, standPat);
+        // In check there is no stand pat: every evasion is searched, and none means mate.
+        bool inCheck = pos.in_check();
+        int best = -VALUE_INF;
+        if (inCheck) {
+            if (ply >= MAX_PLY - 1)
+                return corrected_eval();
+        } else {
+            int standPat = corrected_eval();
+            if (ply >= MAX_PLY - 1 || standPat >= beta)
+                return standPat;
+            alpha = std::max(alpha, standPat);
+            best = standPat;
+        }
 
         MoveList list;
-        generate(pos, list, NOISY_MOVES);
+        generate(pos, list, inCheck ? ALL_MOVES : NOISY_MOVES);
         int scores[256 + ScorePad];
         score_moves(list, scores, MOVE_NONE, -1);
 
-        int best = standPat;
+        int legalMoves = 0;
         for (int i = 0; i < list.size; ++i) {
             Move m = pick_move(list, scores, i);
-            if (!see_ge(m, 0)) // losing captures cannot raise the stand-pat score
+            if (!inCheck && !see_ge(m, 0)) // losing captures cannot raise the stand-pat score
                 continue;
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
             }
+            ++legalMoves;
             int score = -qsearch(-beta, -alpha, ply + 1);
             pos.undo_move(m);
             if (stopped)
@@ -363,6 +373,8 @@ struct Searcher {
                 }
             }
         }
+        if (inCheck && legalMoves == 0)
+            return -VALUE_MATE + ply;
         return best;
     }
 
