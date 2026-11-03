@@ -139,7 +139,9 @@ top one, test it, log it, then move on.
 7. Late move pruning and futility pruning - *Claude Code*
 8. Static exchange evaluation (SEE) for capture ordering and quiescence pruning - *Claude Code*
 9. Check evasions in quiescence search - *Astra / GPT-6 (Codex)*
-10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud); quiescence part taken over by Claude Code. The replacement change passed on 2026-10-26, +5.0 ± 3.6*
+10. TT replacement by depth and age, and TT cutoffs in quiescence - *Claude Code (cloud); quiescence part taken over by Claude Code. The replacement change passed on 2026-10-26, +5.0 ± 3.6.* Then four-entry buckets
+    (one 64-byte cache line, the same replacement rule applied to the least valuable entry) - *Claude
+    Code, claimed 2026-11-02 (`claude/tt-buckets`)*
 11. Internal iterative reductions when there is no TT move - *Claude Code (ready on `claude/iir`: depth ≥ 4, one ply)*
 12. Mate distance pruning; insufficient-material draws
 13. Time management: stop early when the best move is stable - *Claude Code (ready on `claude/tm-stability`: Stash's best-move stability and score-trend scaling of the soft limit)*
