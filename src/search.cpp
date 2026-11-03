@@ -508,6 +508,7 @@ struct Searcher {
             }
 
             Piece moved = pos.piece_on(from_sq(m));
+            bool losingCapture = !quiet && depth >= 3 && legalMoves >= 4 && pos.piece_on(to_sq(m)) != NO_PIECE && !see_ge(m, 0);
             if (!pos.do_move(m)) {
                 pos.undo_move(m);
                 continue;
@@ -524,7 +525,8 @@ struct Searcher {
                 // Late quiet moves are searched shallower first, and only
                 // re-searched at full depth if they beat alpha.
                 int r = 0;
-                if (depth >= 3 && legalMoves > 4 && quiet && !inCheck && !pos.in_check()) {
+                // Captures that lose material by SEE are reduced like quiet moves.
+                if (depth >= 3 && legalMoves > 4 && (quiet || losingCapture) && !inCheck && !pos.in_check()) {
                     r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
                     if (pvNode)
                         --r;
