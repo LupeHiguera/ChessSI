@@ -437,6 +437,15 @@ struct Searcher {
             improving = prev == -VALUE_INF || staticEval > prev;
         }
 
+        // The TT score, where its bound allows, is a sharper estimate than the static eval: an exact
+        // score, a lower bound above it or an upper bound below it replaces it for reverse futility and
+        // null-move pruning (as in Stockfish and most engines). Improving still uses the static eval.
+        int eval = staticEval;
+        if (!inCheck && std::abs(ttScore) < VALUE_MATE_IN_MAX_PLY
+            && (ttBound == BOUND_EXACT || (ttBound == BOUND_LOWER && ttScore > eval)
+                || (ttBound == BOUND_UPPER && ttScore < eval)))
+            eval = ttScore;
+
         // Reverse futility pruning: at shallow null-window nodes, a large
         // static advantage may make the remaining search unnecessary. The
         // margin is a ply smaller when the eval is improving.
@@ -444,9 +453,9 @@ struct Searcher {
             && pos.rule50() + depth < 100
             && std::abs(beta) < VALUE_MATE_IN_MAX_PLY
             && (pos.pieces(pos.side_to_move()) & ~(pos.pieces(PAWN) | pos.pieces(KING)))) {
-            if (std::abs(staticEval) < VALUE_MATE_IN_MAX_PLY && staticEval - 77 * (depth - improving) >= beta)
+            if (std::abs(eval) < VALUE_MATE_IN_MAX_PLY && eval - 77 * (depth - improving) >= beta)
                 // A static advantage cannot override stalemate.
-                return has_legal_move() ? staticEval : 0;
+                return has_legal_move() ? eval : 0;
         }
 
         // Null-move pruning: if passing the turn still fails high, a real move
@@ -456,8 +465,8 @@ struct Searcher {
         Color us = pos.side_to_move();
         bool hasPieces = pos.pieces(us) & ~pos.pieces(PAWN) & ~pos.pieces(KING);
         if (!pvNode && !inCheck && !root && !excludedMove && depth >= 3 && hasPieces && moveStack[ply - 1] != MOVE_NONE
-            && staticEval >= beta) {
-            int R = 3 + depth / 4 + std::min((staticEval - beta) / 200, 3);
+            && eval >= beta) {
+            int R = 3 + depth / 4 + std::min((eval - beta) / 200, 3);
             moveStack[ply] = MOVE_NONE;
             pos.do_null_move();
             int score = -search(-beta, -beta + 1, depth - 1 - R, ply + 1);
