@@ -3,8 +3,9 @@
 Instructions for any AI coding agent working on this repo (Claude Code, Astra, or another). Read this file
 first, then `docs/PLAN.md` for the why and `docs/IDEAS.md` for what to try next.
 
-ChessSI is a chess engine built mostly by AI, used as a benchmark of what AI can do in research. The
-code matters, but so does the record: **every idea is measured and logged, including the failures.**
+ChessSI is a chess engine developed mostly with AI assistance, used to study AI-assisted research.
+It builds on established computer-chess work; see `CREDITS.md`. The code matters, but so does the
+record: **log every experiment, including failures, offline gates and tests stopped without a result.**
 
 ## Commands
 
@@ -88,6 +89,24 @@ check that a binary matches its source.
   The opponent's evaluations are never used (owner's decision, 2026-10-23). A new network is tested
   like any other change, by SPRT against the current default, and gets an entry in `nets/README.md`
   (data, training command, result).
+
+## Attribution and public claims
+
+- Read `CREDITS.md` and `docs/ATTRIBUTION_REVIEW.md` before adding externally sourced work.
+- For each borrowed technique, record its source and authors. For copied or adapted code, tables,
+  data or assets, also record the exact upstream revision/path, what changed, license and required
+  notices. Add the credit beside the relevant code or documentation and to `CREDITS.md`.
+- Distinguish an idea/reference from copied or adapted material. Renaming, translating or having
+  an AI rewrite material does not establish independent authorship. Do not assume a permissive
+  license because a source is public or another engine uses it. Record unresolved provenance.
+- Model attribution records who proposed/wrote the ChessSI change. It does not replace credit to
+  the original method's authors. Preserve other contributors' experiment rows and numerical results;
+  add dated corrections when an interpretation or prior-art classification changes.
+- “Novel” is provisional: record the precise proposed difference, sources searched, date and gaps.
+  An SPRT proves neither priority nor transfer to other engines. Prefer “adaptation” when appropriate.
+- Public strength claims must identify the tested revision/network, conditions, games and uncertainty.
+  Do not add SPRT gains to infer a rating, label a local estimate an official CCRL result, or present
+  the experiment log as a controlled comparison of AI models.
 
 ## Sharing the PC
 

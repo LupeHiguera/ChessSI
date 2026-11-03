@@ -1,5 +1,12 @@
 # Novel Elo ideas for ChessSI (research, 2026-10-24)
 
+**Correction added 2026-11-02:** this is a historical research proposal, not a current status report.
+Its “proven novel idea” wording overstates the evidence: the auxiliary-head gains were measured,
+but auxiliary learning has KataGo/Lc0 precedents and priority in NNUE was not established. Treat
+the Elo forecasts as hypotheses, and the dated prior-art search as incomplete. The original text
+is retained below for the research record. See [the attribution review](../../ATTRIBUTION_REVIEW.md)
+and [current experiment log](../../IDEAS.md).
+
 A deep-research pass made in a cloud Claude Code session: five research agents covered NNUE training
 methods, self-play data, search, testing efficiency and network architecture, and a sixth wrote the
 combined report. It proposes experiments; nothing here has been tested in games.

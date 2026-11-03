@@ -1,5 +1,11 @@
 # Plan of attack
 
+**Updated interpretation and owner constraints, 2026-11-02:** the roadmap and original hardware
+estimates below are historical planning assumptions, not measured forecasts. Current scope is two
+PCs with two GPUs total. The owner is deferring promotional outreach until a reproducible 3700+
+estimate on a stated rating scale; this is not a CCRL entry requirement. See the current
+[README](../README.md), [experiment log](IDEAS.md) and [credits](../CREDITS.md).
+
 Repo copy of the "Chess Engine Plan of Attack" doc (2026-10-21), so every agent can read it.
 
 ## Goal and success criteria
@@ -10,14 +16,15 @@ can actually do in research.
 - **Reproducing the state of the art:** getting close to top engines with known techniques (neural
   evaluation, modern search pruning). This shows AI can implement known methods quickly, not that it found
   new ones.
-- **A genuinely new method:** outscoring Stockfish over a full match at a fixed time control, or finding an
-  idea that still gains Elo when added to Stockfish itself.
-- **What counts as proof:** one game proves nothing. A claim needs hundreds to thousands of games at a fixed
-  time control with balanced openings.
+- **A research contribution:** identify a precise difference from prior work, document the search for
+  precedents, and test the mechanism with appropriate controls. A gain in another strong engine would
+  support transfer, but would not by itself prove novelty. Outscoring Stockfish is a separate strength goal.
+- **Evidence:** use the documented SPRT for strength changes and report its conditions and uncertainty.
+  Single wins and short match anecdotes do not establish a reliable advantage.
 
-Stockfish is the bar. It absorbs every good idea, tests each change over tens of thousands of games, and
-combines deep search with NNUE. It won the TCEC Season 29 superfinal 59–41 against Reckless, but Reckless
-still won 23 games: single wins happen, and outscoring Stockfish over a match is the hard part.
+Stockfish is a comparison target and an important source of prior work, alongside other engines.
+Credit the developers and researchers whose methods make this project possible; implementation
+speed does not establish independent invention or general AI capability.
 
 ## Roadmap
 
@@ -50,7 +57,9 @@ At 60 hours a week the 265K plays about 100,000–150,000 fast games (10+0.1) or
 - **Self-play SPRT** of each change against the previous version at 10+0.1; confirm winners at 60+0.6.
 - **OpenBench** to pool every machine once more than one is testing.
 - **Consistent hardware:** one machine and core type per test, or fixed node counts.
-- **Balanced openings:** always use an opening book (UHO_Lichess_4852_v1).
+- **Paired openings:** play each opening with colors reversed. UHO deliberately uses unbalanced
+  positions; color pairing does not make the positions themselves balanced. The rating gauntlet
+  uses the separate 8moves_v3 book. Record the book and settings for each test.
 - **Right opponents:** engines near our level, or Stockfish with limited strength, until we are close.
 
 ## Next steps

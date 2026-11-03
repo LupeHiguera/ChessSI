@@ -18,16 +18,22 @@ make test           # last line must end "0 failed"
 ./chesssi bench     # last line: "<nodes> nodes <nps> nps"
 ```
 
-If the bench node count differs from the one in `README.md`, the build is not the same engine: stop and
-find out why before testing anything.
+Compare the bench with the recorded signature for the same source revision, default network and
+bench settings (see the commit's `Bench:` line). README snapshots can lag development. Investigate
+a mismatch before treating the binaries as the same engine.
 
 ## 3. Coding agents
 
 Install Claude Code and Astra on the PC and open them in the repo folder. Claude Code reads `CLAUDE.md`,
 which imports `AGENTS.md`. If Astra does not pick up `AGENTS.md` by itself, tell it to read that file
-first. Both follow the same loop, so their results go in the same log and can be compared.
+first. Both follow the same loop and record their work in the same log. Different tasks and budgets
+mean the log alone is not a controlled comparison of model capabilities.
 
 ## 4. Testing tools
+
+Authors, source links and provenance questions are in [CREDITS.md](../CREDITS.md).
+Downloaded engines, opening books and Python packages retain their own terms; setup does not
+relicense them under ChessSI's MIT notice. Record versions/hashes when archiving a test or release.
 
 - **fastchess:** download a release binary from https://github.com/Disservin/fastchess/releases and put
   it on your `PATH`, or set `FASTCHESS=/path/to/fastchess`.
@@ -36,8 +42,8 @@ first. Both follow the same loop, so their results go in the same log and can be
 - **Pipeline check:** `scripts/sprt.sh` with no changes plays the engine against itself. Let it run a few
   hundred games: Elo should hover around 0. Stop it with Ctrl+C.
 
-The 265K has 8 P-cores and 12 E-cores. For tests that must be comparable, set `CONCURRENCY=8` and keep
-the machine otherwise idle.
+Follow the current core allocations in [AGENTS.md](../AGENTS.md), including builds. Record
+concurrency and other load; under WSL, CPU affinity may not isolate Windows scheduling by core type.
 
 ## 5. Play it
 

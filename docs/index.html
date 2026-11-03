@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ChessSI Rating Bulletin — UCI chess engine, ~3430 Elo (est.)</title>
-<meta name="description" content="ChessSI is an open-source UCI chess engine (NNUE, Lazy SMP, MIT). Rating bulletin: net12 estimated ~3430 Elo on the CCRL Blitz scale; last measured 3284 ± 21. Source, build steps, rating history and research results.">
+<title>ChessSI — local rating results and research record</title>
+<meta name="description" content="ChessSI is an experimental UCI engine developed with AI assistance. Local rating estimate: 3420 ± 21 for build 8912405, not an official CCRL rating. Results, methods and upstream credits.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
@@ -43,20 +43,20 @@ footer{margin-top:14px;border-top:3px double #111;padding-top:4px;font-size:11.5
 </head>
 <body>
 <header>
-<div class="kicker"><span>Engine Rating Bulletin</span><span>as of 2026-10-28</span></div>
+<div class="kicker"><span>Engine Rating Bulletin</span><span>as of 2026-11-02</span></div>
 <h1>ChessSI Rating Bulletin</h1>
-<p class="pitch">An open-source UCI chess engine, written mostly by AI, where every idea lives or dies by measured Elo.</p>
+<p class="pitch">An experimental UCI engine developed mostly with AI assistance, building on established computer-chess work and recording successes and failures.</p>
 </header>
 
 <div class="cols">
 <main>
 <section>
-<h2>Current rating</h2>
+<h2>Latest local rating estimate</h2>
 <div class="scroll"><table class="big">
 <thead><tr><th>Engine</th><th class="n">Elo</th><th class="n">Range</th><th>Basis</th><th class="n">Phase</th><th>Protocol</th><th>Threads</th><th>License</th><th>Started</th></tr></thead>
-<tbody><tr><td><b>ChessSI net12</b></td><td class="n"><b>~3430</b></td><td class="n">3400–3460</td><td class="est">est.</td><td class="n">4/5</td><td>UCI</td><td>Lazy SMP</td><td>MIT</td><td class="n">2026-10-22</td></tr></tbody>
+<tbody><tr><td><b>ChessSI 8912405 (net14)</b></td><td class="n"><b>3420 ± 21</b></td><td class="n">3399–3441</td><td class="est">local gauntlet</td><td class="n">4/5</td><td>UCI</td><td>Lazy SMP</td><td>MIT</td><td class="n">2026-10-22</td></tr></tbody>
 </table></div>
-<p class="note">Last measured rating: <b class="mono">3284 ± 21</b> (net10, 2026-10-24).</p>
+<p class="note">Measured locally on 2026-11-01: 1,260 games against seven CCRL-rated engines, 80.71+0.673, Hash 128, one thread per engine, no tablebases. <b>This is not a rating issued by CCRL.</b> The newer net22-h768 build has no rating recorded here.</p>
 </section>
 
 <section>
@@ -68,20 +68,22 @@ footer{margin-top:14px;border-top:3px double #111;padding-top:4px;font-size:11.5
 <tr><td class="n">2</td><td class="n">2026-10-23</td><td>net7 + pruning</td><td class="n">3150</td><td class="n">26</td><td><span class="mono">959</span> vs Stash 19–36</td><td>measured</td></tr>
 <tr><td class="n">3</td><td class="n">2026-10-23</td><td>net8 + SEE qs</td><td class="n">3176</td><td class="n">29</td><td><span class="mono">600</span> vs Stash 27–36</td><td>measured</td></tr>
 <tr><td class="n">4</td><td class="n">2026-10-24</td><td>net10 + faster search</td><td class="n"><b>3284</b></td><td class="n"><b>21</b></td><td><span class="mono">1,200</span> vs Stash 27–36</td><td>measured</td></tr>
-<tr><td class="n">5</td><td class="n">2026-10-27</td><td>net12 path</td><td class="n">~3430</td><td class="n">—</td><td>self-play projection†</td><td class="est"><b>est.</b></td></tr>
+<tr><td class="n">5</td><td class="n">2026-10-31</td><td>da0d59c, net14</td><td class="n">3499</td><td class="n">23</td><td>1,200 vs Stash 30–37, 10+0.1</td><td>local estimate</td></tr>
+<tr><td class="n">6</td><td class="n">2026-11-01</td><td>8912405, net14</td><td class="n">3420</td><td class="n">21</td><td>1,260 vs seven engines, 80.71+0.673</td><td>local estimate</td></tr>
 </tbody></table></div>
-<p class="note">Gauntlets at 10+0.1 against Stash versions with known CCRL ratings; CCRL Blitz scale; figures are approximate. †Net12 ≈ +216 self-play Elo after net10, with 55–81% historical retention vs other engines; next gauntlet needs opponents &gt;3400.</p>
+<p class="note">Local estimates use CCRL Blitz opponent ratings as anchors. Earlier tests used Stash versions at 10+0.1; the Nov 1 test changed both time control and opponent pool. These figures are not directly interchangeable. Individual self-play gains cannot be added to establish a rating. Full conditions and results are in the experiment log.</p>
 </section>
 
 <section>
-<h2>Roadmap vs plan</h2>
+<h2>Progress against the original plan</h2>
+<p class="note">Original timelines were speculative estimates, not a measured human baseline or evidence of an AI speedup.</p>
 <div class="scroll"><table>
 <thead><tr><th class="n">Phase</th><th>Goal</th><th class="n">Band</th><th>Planned</th><th>Actual</th></tr></thead>
 <tbody>
 <tr><td class="n">1</td><td>Working engine</td><td class="n">~2000</td><td>Weeks 1–2</td><td>2026-10-22: 2440, measured</td></tr>
 <tr><td class="n">2</td><td>Classical engine</td><td class="n">2800–3000</td><td>Months 1–2</td><td>Search work done 2026-10-22; NNUE replaced PeSTO 2026-10-23, band passed with NNUE</td></tr>
 <tr><td class="n">3</td><td>Neural evaluation</td><td class="n">3200–3400</td><td>Months 2–5</td><td>2026-10-23: 3150; 2026-10-24: 3284, measured</td></tr>
-<tr><td class="n">4</td><td>Refinement</td><td class="n">3400–3500+</td><td>Months 6–12+</td><td>2026-10-27: ~3430, estimated</td></tr>
+<tr><td class="n">4</td><td>Refinement</td><td class="n">3400–3500+</td><td>Months 6–12+</td><td>2026-11-01: 3420 ± 21, local estimate</td></tr>
 <tr><td class="n">5</td><td>The final gap</td><td class="n">Stockfish level</td><td>A year or more</td><td>Not started</td></tr>
 </tbody></table></div>
 </section>
@@ -91,10 +93,11 @@ footer{margin-top:14px;border-top:3px double #111;padding-top:4px;font-size:11.5
 <div class="scroll"><table>
 <thead><tr><th>Idea</th><th>Novelty</th><th class="n">Elo (self-play)</th></tr></thead>
 <tbody>
-<tr><td>GPU SPSA tuning</td><td>Novel</td><td class="n">+40.4 ± 11.7</td></tr>
-<tr><td>Auxiliary head</td><td>Partially known</td><td class="n">+53.2 ± 15.6 / +34.6 ± 12.2</td></tr>
-<tr><td>Newer data beat more data (net12)</td><td>—</td><td class="n">+32.1 ± 10.8</td></tr>
+<tr><td>GPU SPSA tuning (2026-10-25)</td><td>Established SPSA; GPU workflow priority unproven</td><td class="n">+40.4 ± 11.7</td></tr>
+<tr><td>Auxiliary head</td><td>KataGo / Lc0 precedents</td><td class="n">+53.2 ± 15.6 / +34.6 ± 12.2</td></tr>
+<tr><td>net12 data change</td><td>Teacher and data age both changed</td><td class="n">+32.1 ± 10.8</td></tr>
 </tbody></table></div>
+<p class="note">Results concern the specific ChessSI comparisons in the log. They do not prove novelty or gains in another engine. Later GPU tuning did not transfer to CPU tests; search tuning on the GPU was paused on Oct 31.</p>
 </section>
 </main>
 
@@ -104,10 +107,9 @@ footer{margin-top:14px;border-top:3px double #111;padding-top:4px;font-size:11.5
 <div class="get">
 <div class="lbl">Archive · ChessSI · source</div>
 <dl>
-<dt>Releases</dt><dd>none yet</dd>
-<dt>PC build</dt><dd>offline</dd>
+<dt>Source snapshot</dt><dd class="mono">014dd979</dd>
 <dt>License</dt><dd>MIT</dd>
-<dt>Bench</dt><dd class="mono">69980 nodes</dd>
+<dt>Bench</dt><dd class="mono">50868 nodes</dd>
 </dl>
 <p>Build from source:</p>
 <pre>git clone https://github.com/LupeHiguera/ChessSI.git
@@ -123,18 +125,24 @@ cd ChessSI &amp;&amp; make &amp;&amp; ./chesssi bench</pre>
 <tr><td>Moves</td><td>magic bitboards, perft-verified</td></tr>
 <tr><td>Protocol</td><td>UCI; Threads = Lazy SMP</td></tr>
 <tr><td>Search</td><td>PVS, TT, LMR, NMP, SEE</td></tr>
-<tr><td>Eval</td><td><span class="mono">NNUE (768→256)×2</span> SCReLU</td></tr>
-<tr><td>Net</td><td>net12, own data, <span class="mono">436.4M</span> positions</td></tr>
-<tr><td>GPU</td><td>CUDA search, byte-identical</td></tr>
-<tr><td>Tuning</td><td>SPSA</td></tr>
-<tr><td>Bench</td><td class="n">69980</td></tr>
+<tr><td>Eval</td><td><span class="mono">NNUE (768→768)×2</span> SCReLU</td></tr>
+<tr><td>Net</td><td>net22-h768, <span class="mono">977.1M</span> unique own-game training positions</td></tr>
+<tr><td>GPU</td><td>CUDA search; parity checked for specified runs</td></tr>
+<tr><td>Tuning</td><td>SPSA; GPU path paused</td></tr>
+<tr><td>Bench</td><td class="n">50868</td></tr>
 </tbody></table>
+</section>
+<section>
+<h2>Credits and provenance</h2>
+<p>PeSTO tables: Ronald Friederich. NNUE: Yu Nasu, nodchip and the shogi/chess contributors. Search references include Stockfish, Stash, Caissa and Alexandria. Testing relies on fastchess and community opening books.</p>
+<p><a href="https://github.com/LupeHiguera/ChessSI/blob/main/CREDITS.md">Full credits and source links</a> · <a href="https://github.com/LupeHiguera/ChessSI/blob/main/docs/ATTRIBUTION_REVIEW.md">Attribution review and open license questions</a></p>
+<p class="note">Project license: MIT; third-party material retains its own terms. PeSTO reuse terms still need resolution. No upstream or tester endorsement is implied.</p>
 </section>
 </aside>
 </div>
 
 <footer>
-MIT · Guadalupe Higuera · Phoenix, AZ · as of 2026-10-28 ·
+MIT · Guadalupe Higuera · Phoenix, AZ · as of 2026-11-02 ·
 <a href="https://github.com/LupeHiguera/ChessSI/blob/main/README.md">README</a> /
 <a href="https://github.com/LupeHiguera/ChessSI/blob/main/AGENTS.md">AGENTS.md</a> /
 <a href="https://github.com/LupeHiguera/ChessSI/blob/main/docs/PLAN.md">docs/PLAN.md</a> /

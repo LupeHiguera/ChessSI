@@ -1,5 +1,9 @@
 # ChessSI on the GPU
 
+Credits for NNUE, SPSA/fishtest, GPU prior art and CUDA/CuPy are in [CREDITS.md](../CREDITS.md).
+“Exact” and “byte-identical” below describe the reported tests at their specified revisions and
+configurations; they do not certify every input or guarantee parity with later CPU changes.
+
 Research into running ChessSI's CPU work on GPUs (issue #31). Everything here is CUDA C++ compiled
 at run time with NVRTC through CuPy (`pip install cupy-cuda12x`), with Python as the host; no `nvcc`
 is needed. The engine itself is unchanged.
@@ -8,7 +12,7 @@ is needed. The engine itself is unchanged.
 | --- | --- |
 | `chess.cu`, `perft.py` | Move generation and perft. Exact on `tests/perft.epd` to depth 5; Kiwipete depth 5 runs at 5.4 billion nodes per second on an RTX 5080 |
 | `nnue.cu`, `nnue_check.py` | NNUE evaluation, one warp per position. Bit-exact with the engine on 100,000 positions |
-| `datagen.cu`, `datagen.py` | Self-play data generation: an exact port of `src/search.cpp`, the move order of `src/movegen.cpp`, the Zobrist keys and the datagen game loop |
+| `datagen.cu`, `datagen.py` | Self-play data generation: a port of ChessSI search, move ordering, Zobrist keys and the datagen game loop; parity is checked against a specific CPU revision |
 | `ref.cpp` | CPU reference: `Datagen::play_game` from given positions with a 1 MB TT, to check `datagen.py` line for line |
 | `match.py` | Fixed-node matches between two networks, both sides on the GPU, of one size or two, with optional node odds |
 | `sprt.py` | The same games as an SPRT: pairs streamed through the GPU until the LLR crosses a bound |
@@ -24,15 +28,16 @@ It writes the same lines as `chesssi datagen`: `<fen> | <score> | <result> | <ev
 the network's hidden size, any multiple of 256: with net19b-h512 and with seeded synthetic 768- and 1024-unit
 networks it plays the same 200 games as `ref.cpp` built with each (`claude-work/2026-11-01/parity-h.sh`). Every game opens
 with random legal plies, then plays at a fixed node count, and a finished game's slot is refilled at
-once. From the same start positions it writes byte-identical lines to `ref.cpp`, so its data is as good
-as the CPU's. The one difference is a 1 MB TT per game instead of 16 MB, which makes little difference at
-5,000 nodes. Each game's pawn correction history (64 KB) sits beside its TT, and both are cleared at the
+once. The reported checks produced byte-identical lines to `ref.cpp` from matching start positions.
+They establish agreement for those runs, not equal training utility for every workload. The reference
+uses the GPU's 1 MB TT per game; ordinary CPU datagen uses 16 MB, so parity with that reference does not
+measure the effect of reducing the TT. Each game's pawn correction history (64 KB) sits beside its TT, and both are cleared at the
 start of a game, as `Search::clear()` clears them in the engine.
 
 Design: one game per warp. All 32 lanes run the same scalar search on one copy of the game in global
 memory. Same-address reads are broadcast, and every shared update goes snapshot, `__syncwarp`, write,
-since a warp's lanes are not guaranteed to stay in lockstep. Each lane owns 8 of the network's 256
-hidden units. The search is not recursive: it runs from an explicit stack of frames, one per game,
+since a warp's lanes are not guaranteed to stay in lockstep. Each lane owns a share of the hidden units (8 per lane
+for a 256-unit network). The search is not recursive: it runs from an explicit stack of frames, one per game,
 because a recursive call saves every lane's registers at each level. A kernel launch plays one ply of
 every game, which keeps kernels well under the Windows GPU watchdog. For longer searches, `GPU_BUDGET`
 caps the nodes a search runs per launch: it then pauses, with its state in the game, and carries on
@@ -179,7 +184,7 @@ python gpu/spsa.py <net.nnue> <pairs> [nodes=50000] [games at once=1000] [seed=1
 The 20 constants that `src/search.cpp` writes inline are fields of `Params` in `datagen.cu`. They
 cover the pruning margins and depths, the null-move reduction, the LMR table, the history bonus cap,
 the aspiration windows, and the SEE thresholds in quiescence and in the main search. A match can give each side its own set, per
-game. `spsa.py` runs fishtest's SPSA with them. Each game pair plays one opening twice, theta + c*delta
+game. `spsa.py` follows fishtest's SPSA update rules and schedules with them. Each game pair plays one opening twice, theta + c*delta
 against theta - c*delta, and theta moves as each pair ends. A finished game's slot takes the next
 game at once. On an RTX 5080, 800 games at once at 50,000 nodes play about 5.8 pairs a second.
 

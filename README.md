@@ -1,13 +1,23 @@
 # ChessSI
-My own personal benchmark of AGI, building the best possible chess engine.
+An experimental UCI chess engine developed mostly with AI assistance, with a public record of
+experiments, including failures. The aim is to build a stronger engine and study what AI-assisted
+development can contribute to computer-chess research.
 
-AI writes most of the code. Every idea is tested with thousands of games and logged, so the log measures
-what each AI model can actually do in research.
+ChessSI implements established methods developed by the computer-chess community. Its NNUE networks
+are trained on ChessSI's own games and search labels under the project's data policy; its fallback
+uses Ronald Friederich's published PeSTO tables. See [credits and provenance](CREDITS.md) for the
+people, engines, research and tools behind this work, including unresolved attribution/license items.
+
+Ideas may stop at an offline gate or a screen; accepted strength changes require the recorded SPRT.
+The log attributes work to the models involved, but differing tasks, baselines, compute and human
+guidance prevent a controlled comparison between models. This project does not establish AGI.
 
 ## Status
 
-Phase 4 of 5 (refinement: tuning, more data and bigger networks), ten days after the project
-started on 2026-10-22. Measured rating, on the CCRL Blitz scale:
+Snapshot: 2026-11-02, main `014dd979`. The default is **net22-h768**; the recorded default-depth
+bench is **50868** (merge validation in `3bbb99d6`). This newer build has no gauntlet rating recorded
+below. The latest local estimate, **3420 ± 21**, belongs to the older build `8912405` with net14.
+These are local estimates anchored to CCRL Blitz opponent ratings, not ratings issued by CCRL:
 
 | Date | Engine | Rating | Games |
 | --- | --- | --- | --- |
@@ -25,10 +35,12 @@ conditions as far as one PC can: 2'+1" scaled to this machine by CCRL's Stockfis
 + 0.67 s here), Hash 128, and single-CPU opponents with CCRL ratings above and below ChessSI (Stash 36
 and 37, Stockfish 10, Viridithas 10, Koivisto 9, Stormphrax 6, Halogen 16). It is an estimate under
 those conditions, not a CCRL rating: CCRL also gives its engines endgame tablebases, which ChessSI does
-not use. At the longer time control ChessSI rates 79 points lower than at 10+0.1. Details are in
+not use. The two estimates differ by 79 points, but both time control and opponent pool changed, so this
+is not an isolated measurement of time-control scaling. Details are in
 [docs/IDEAS.md](docs/IDEAS.md).
 
-Against the [original plan](docs/PLAN.md), which expected this level after six months to a year:
+Progress against the [original plan](docs/PLAN.md). Its timelines were speculative planning estimates,
+not a measured human-development baseline or evidence of a particular AI speedup:
 
 | Phase | Planned | Reached |
 | --- | --- | --- |
@@ -38,13 +50,13 @@ Against the [original plan](docs/PLAN.md), which expected this level after six m
 | 4 · Refinement, 3400-3500+ | Months 6-12+ | 2026-10-30: 3452, measured; 2026-10-31: 3499, measured; 2026-11-01: 3420 under CCRL-style conditions |
 | 5 · The final gap, Stockfish level | A year or more | Not started |
 
-The plan expected compute to set the pace from phase 3 on. The GPU tools below changed how much there
-is: the GPUs now generate the training data and play the tuning games.
+The GPU tools generate training data and screen networks. GPU search tuning is paused after later
+settings failed to transfer to CPU time-based tests; see [gpu/README.md](gpu/README.md).
 
 The engine:
 
 - **Moves:** magic-bitboard move generation, verified against known perft counts.
-- **Interface:** UCI, so it plays in any chess GUI. `Threads` runs Lazy SMP.
+- **Interface:** UCI, for compatible chess GUIs. `Threads` runs Lazy SMP.
 - **Search:** iterative deepening, principal variation search with aspiration windows, a
   transposition table (prefetched; entries replaced by depth and age), check extension, singular
   extensions with multi-cut, and quiescence search with SEE pruning. The time limit adapts to how
@@ -55,35 +67,41 @@ The engine:
   with constants tuned by SPSA.
 - **Move ordering:** killer moves, a history heuristic with continuation history (how a move fared
   after the previous move and the one before), and losing captures after the quiet moves.
-- **Evaluation:** NNUE, (768 → 256) × 2 → SCReLU → 1, compiled into the binary, plus correction
+- **Evaluation:** NNUE, (768 → 768) × 2 → SCReLU → 1, compiled into the binary, plus correction
   history, which learns during a game how far the network is off for each pawn structure and for each
   side's non-pawn pieces.
-  - The network is trained only on ChessSI's own games. The default, net14, is net12 trained further
-    on 402.3M positions of net12's self-play on the GPUs; the history is in [nets/README.md](nets/README.md).
+  - The default, net22-h768, was trained on 977.1M unique generation-10 positions from net14's
+    GPU self-play. Training commands, hashes and results are in [nets/README.md](nets/README.md).
+    External opening books are testing/start-position resources, not imported evaluation labels;
+    the own-data policy does not claim independence from established evaluation methods.
   - The output layer is vectorized by hand (AVX2 and AVX-VNNI).
-  - PeSTO tables are the fallback.
-- **GPU tools:** a CUDA port of an earlier version of the search (`gpu/`, byte-identical to that
-  version on the CPU; draft PR #74 brings it up to 2026-10-28's search) plays thousands of games at
-  once. It generates training data at about 13,000 positions a second on an RTX 5080, 1.6×
-  the 13 CPU cores ([gpu/README.md](gpu/README.md)); it made all of net12's data. It also plays
-  fixed-node matches between networks and tunes search constants by SPSA.
-- **Bench:** `64462` nodes.
+  - Ronald Friederich's PeSTO tables are the fallback; see [CREDITS.md](CREDITS.md).
+- **GPU tools:** a CUDA port plays many independent games and generates training data. CPU/GPU
+  output parity has been checked for particular revisions, networks and configurations; it is not
+  a permanent guarantee that the two searches match. Historical throughput and calibration results
+  are in [gpu/README.md](gpu/README.md). Fixed-node network screens still require CPU confirmation.
+- **Bench:** `50868` nodes for the default build at the snapshot above. Match the source revision,
+  network and bench settings when using this signature.
 
 Research so far:
 
-- **A novel method passed: search tuning on the GPU.** SPSA on the CUDA search port tuned 17 search
-  constants in 90 minutes of games at 50,000 nodes a move, worth **+40.4 ± 11.7** Elo in CPU games
-  at 10+0.1. Logged as Novel: the prior-art check found no tuning games run on a GPU, and no GPU port
-  of an engine's search checked byte for byte against the CPU.
+- **GPU SPSA produced one successful set of search constants.** The 2026-10-25 experiment tuned
+  17 constants in 90 minutes at 50,000 nodes a move; the resulting settings passed a CPU SPRT at
+  10+0.1, **+40.4 ± 11.7** Elo in 1,046 games. SPSA, its chess adaptation and fishtest's schedules
+  are prior work. The log's historical “Novel” label refers to a candidate GPU workflow whose
+  priority is unproven. This test does not establish an advantage over equal-cost CPU tuning or
+  a gain in another engine. Later tuning did not transfer, and this path was paused on 2026-10-31.
 - **An idea from Go transferred.** A training-only auxiliary head, dropped when the network is
   exported, gained **+53.2 ± 15.6** Elo and **+34.6 ± 12.2** on a second data snapshot. Ablations
-  show it works as an extra low-noise target for the network (the search score), not as lookahead.
-  First logged as Novel, it was relabelled Partially known on 2026-10-25: KataGo has trained
-  auxiliary value heads since 2020, though no strong chess engine was found using one.
+  support the interpretation that an additional pure-search-score target helps; they do not
+  establish a lookahead benefit. Originally labelled Novel, this was reclassified Partially known:
+  KataGo and Lc0 provide auxiliary-learning precedents, including training-only Lc0 heads.
+  The [research notes](docs/IDEAS.md#novel-ideas) describe the narrower proposed NNUE distinction
+  and the limits of the prior-art search.
 - **Newer data beat more data.** net12 trained only on net11's games, on 19% fewer positions than
   net11, and still gained **+32.1 ± 10.8** Elo over it. It changed both the data's age and its
   teacher, so it does not isolate recency.
-- **Every idea is logged, pass or fail,** with the AI model that proposed it. Claude Code and Astra
+- **The experiment log records passes, failures and inconclusive work,** with model attribution. Claude Code and Astra
   (GPT-6) have tested ideas side by side on the same PC, and Grok 4.7 (via Cursor) reviews plans
   on the coordination issue.
 
@@ -95,6 +113,14 @@ make test         # move generation correctness
 ./chesssi bench   # speed and node-count signature
 ./chesssi         # UCI mode
 ```
+
+## Credits and license
+
+Read [CREDITS.md](CREDITS.md) for specific upstream contributions and
+[the attribution review](docs/ATTRIBUTION_REVIEW.md) for unresolved provenance questions.
+The project has an [MIT license](LICENSE); third-party material and dependencies retain their own
+terms. The PeSTO source/license trail still needs resolution before claiming the whole distribution
+is covered solely by MIT.
 
 ## Docs
 

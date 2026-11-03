@@ -1,5 +1,12 @@
 # Networks
 
+The NNUE method and training references are credited in [CREDITS.md](../CREDITS.md). “Own data”
+describes the games and evaluation labels, not invention of NNUE or independence from all external
+resources: early teachers used Ronald Friederich's PeSTO values, and testing uses external opening
+books. No external network weights, training datasets or opponent evaluations are permitted. For
+games against other engines, retain only ChessSI-to-move positions labelled by its own search and
+the game result (`extract_pgn.py --engine` selects by PGN engine-name prefix; verify the names).
+
 Every network ChessSI has used as its default, newest first. All are trained only on ChessSI's own
 games and searches (see the rules in `AGENTS.md`). The default is the Makefile's `EVALFILE`; any file
 here can also be loaded with `setoption name EvalFile value <path>`.

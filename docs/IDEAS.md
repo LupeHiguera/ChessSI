@@ -2,9 +2,18 @@
 
 ## Benchmark log
 
-Every idea tested, newest first, pass or fail. **Model** is the AI that proposed and wrote the change.
-**Kind** is Known (an existing technique, reimplemented) or Novel (not found in prior art: the
-chessprogramming wiki, TalkChess, Stockfish's fishtest). Novel ideas are the real benchmark signal.
+The experiment record, including failures, offline gates, screens and unfinished tests.
+**Model** identifies who proposed and wrote the ChessSI change; it does not claim invention of the
+underlying technique. **Kind** is Known (an existing technique), Partially known (an adaptation with
+identified precedents), or provisionally Novel (no match found in the recorded, limited prior-art
+search). See [CREDITS.md](../CREDITS.md) for sources and upstream authors.
+
+**Interpretation correction, 2026-11-02:** historical rows and numerical results below are retained.
+“Novel” and “Known + Novel” are not established priority claims. In particular, net7–net10's auxiliary
+recipe has KataGo/Lc0 precedents; GPU SPSA uses established SPSA/fishtest methods. Its successful
+CPU test validates those settings in ChessSI, not a new optimizer or superiority to equal-cost CPU
+tuning. Later GPU search-tuning results did not transfer; see [the GPU calibration](../gpu/README.md#matches).
+The dated [attribution review](ATTRIBUTION_REVIEW.md) also applies to older research reports.
 **Pre-screen** is the verdict and game count from `scripts/prescreen.sh` (2+0.02, loose SPRT); logging
 it next to the full result shows whether the pre-screen can be trusted to drop ideas on its own.
 **Result** is Passed, Failed or Inconclusive. **Elo** is the SPRT estimate with its error bar.
@@ -118,11 +127,13 @@ Baseline before the first idea: bench `20648203`.
 
 What to watch over time:
 
-- **Hit rate:** the share of ideas that pass. A rising hit rate means better judgment, not just faster code.
-- **Elo per accepted idea** and **games per accepted change** show how efficient each model is.
-- **New models:** when one ships, run the same loop and compare these numbers with earlier models.
-- **Novel ideas:** how many are proposed, how many pass, and their Elo. This is the closest measure of
-  research ability rather than implementation speed.
+- **Hit rate, Elo per accepted idea and games per change:** useful descriptions of the work under
+  its recorded conditions. Task selection, engine maturity, compute, screening and human guidance
+  confound comparisons between models and dates.
+- **New models:** retain accurate attribution and comparable conditions where possible; a fair
+  capability comparison needs matched tasks/budgets and controls beyond this development log.
+- **Research candidates:** track proposed differences from prior art, negative results, replications
+  and matched-cost ablations. An Elo gain alone does not establish novelty or general research ability.
 
 ## Queue
 
