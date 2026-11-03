@@ -112,6 +112,7 @@ struct Searcher {
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
     Move excluded[MAX_PLY + 1] = {};  // move a singular search leaves out at each ply
     int rootDepth = 0;
+    int doubleExt[MAX_PLY + 2] = {};    // double extensions on the line to each ply
     Piece pieceStack[MAX_PLY + 1] = {}; // piece that played it
     int evalStack[MAX_PLY + 1] = {};    // static eval at each ply of the current line; -VALUE_INF in check
     int16_t (*contHist)[ContHistStride] = nullptr; // the main thread's points to mainContHist
@@ -501,8 +502,10 @@ struct Searcher {
                 excluded[ply] = MOVE_NONE;
                 if (stopped)
                     return 0;
+                // Far below: the TT move is the only move by a wide margin, so two plies deeper,
+                // at most 10 times on one line (as in Stockfish).
                 if (singularScore < singularBeta)
-                    extension = 1;
+                    extension = !pvNode && singularScore < singularBeta - 30 && doubleExt[ply] < 10 ? 2 : 1;
                 else if (singularBeta >= beta)
                     return singularBeta;
             }
@@ -517,6 +520,7 @@ struct Searcher {
             pieceStack[ply] = moved;
 
             int newDepth = depth - 1 + extension;
+            doubleExt[ply + 1] = doubleExt[ply] + (extension == 2);
             int score;
             if (legalMoves == 1)
                 score = -search(-beta, -alpha, newDepth, ply + 1);
