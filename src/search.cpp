@@ -155,6 +155,28 @@ struct Searcher {
         return pos.piece_on(to_sq(m)) == NO_PIECE && move_type(m) != EN_PASSANT && move_type(m) != PROMOTION;
     }
 
+    // Whether quiet move m gives check: directly from its new square, or by uncovering one of our
+    // sliders on the enemy king. Castling checks only through the rook's new square.
+    bool quiet_gives_check(Move m) const {
+        Color us = pos.side_to_move();
+        Square ksq = pos.king_square(~us), from = from_sq(m), to = to_sq(m);
+        Bitboard occ = (pos.pieces() ^ square_bb(from)) | square_bb(to);
+        if (move_type(m) == CASTLING) {
+            bool kingside = to > from;
+            Square rookFrom = kingside ? from + 3 : from - 4, rookTo = kingside ? from + 1 : from - 1;
+            occ = (occ ^ square_bb(rookFrom)) | square_bb(rookTo);
+            return rook_attacks(rookTo, occ) & square_bb(ksq);
+        }
+        PieceType pt = type_of(pos.piece_on(from));
+        Bitboard direct = pt == PAWN ? PawnAttacks[us][to] : pt == KING ? 0 : attacks_bb(pt, to, occ);
+        if (direct & square_bb(ksq))
+            return true;
+        Bitboard sliders = ((bishop_attacks(ksq, occ) & (pos.pieces(us, BISHOP) | pos.pieces(us, QUEEN)))
+                            | (rook_attacks(ksq, occ) & (pos.pieces(us, ROOK) | pos.pieces(us, QUEEN))))
+                           & ~square_bb(from);
+        return sliders != 0;
+    }
+
     // Assigns each move an ordering score, best first.
     void score_moves(MoveList& list, int* scores, Move ttMove, int ply) {
         for (int i = 0; i < list.size; ++i) {
@@ -474,14 +496,15 @@ struct Searcher {
             // Late move pruning: near the leaves, quiet moves this far down
             // the ordering almost never matter, so skip them once a move has
             // kept us out of a mate score. Half as many when the eval is not improving.
+            // Moves that give check are kept.
             if (!pvNode && !inCheck && quiet && depth <= 7 && best > -VALUE_MATE_IN_MAX_PLY
-                && quietCount >= (6 + depth * depth) / (improving ? 1 : 2))
+                && quietCount >= (6 + depth * depth) / (improving ? 1 : 2) && !quiet_gives_check(m))
                 continue;
 
             // Futility pruning: if even a generous margin over the static
-            // eval cannot reach alpha, a quiet move will not either.
+            // eval cannot reach alpha, a quiet move will not either, unless it gives check.
             if (!pvNode && !inCheck && quiet && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
-                && staticEval + 127 * depth <= alpha)
+                && staticEval + 127 * depth <= alpha && !quiet_gives_check(m))
                 continue;
 
             // SEE pruning: near the leaves, skip a move that loses more material in the exchange
