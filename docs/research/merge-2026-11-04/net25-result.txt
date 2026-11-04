@@ -1,0 +1,18 @@
+Finished game 6359 (net25-h1024 vs net24-h768): 1/2-1/2 {Draw by adjudication}
+Started game 6363 of 15000 (net25-h1024 vs net24-h768)
+Finished game 6361 (net25-h1024 vs net24-h768): 1-0 {White wins by adjudication}
+Started game 6364 of 15000 (net24-h768 vs net25-h1024)
+Finished game 6362 (net24-h768 vs net25-h1024): 0-1 {Black wins by adjudication}
+--------------------------------------------------
+Results of net25-h1024 vs net24-h768 (10+0.1, 1t, 16MB, UHO_Lichess_4852_v1.epd):
+Elo: 7.70 +/- 4.78, nElo: 13.78 +/- 8.54
+LOS: 99.92 %, DrawRatio: 46.86 %, PairsRatio: 1.16
+Games: 6360, Wins: 1772, Losses: 1631, Draws: 2957, Points: 3250.5 (51.11 %)
+Ptnml(0-2): [44, 737, 1490, 852, 57], WL/DD Ratio: 1.18
+LLR: 2.97 (100.8%) (-2.94, 2.94) [0.00, 5.00]
+--------------------------------------------------
+SPRT ([0.00, 5.00]) completed - H1 was accepted
+Finished match
+Total Time: 04:51:46 (hours:minutes:seconds)
+
+exit 0 2026-11-04 00:04:17
