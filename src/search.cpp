@@ -112,6 +112,7 @@ struct Searcher {
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
     Move excluded[MAX_PLY + 1] = {};  // move a singular search leaves out at each ply
     int rootDepth = 0;
+    int doubleExt[MAX_PLY + 2] = {};    // double extensions on the line to each ply
     Piece pieceStack[MAX_PLY + 1] = {}; // piece that played it
     int evalStack[MAX_PLY + 1] = {};    // static eval at each ply of the current line; -VALUE_INF in check
     int16_t (*contHist)[ContHistStride] = nullptr; // the main thread's points to mainContHist
@@ -152,6 +153,28 @@ struct Searcher {
 
     bool is_quiet(Move m) const {
         return pos.piece_on(to_sq(m)) == NO_PIECE && move_type(m) != EN_PASSANT && move_type(m) != PROMOTION;
+    }
+
+    // Whether quiet move m gives check: directly from its new square, or by uncovering one of our
+    // sliders on the enemy king. Castling checks only through the rook's new square.
+    bool quiet_gives_check(Move m) const {
+        Color us = pos.side_to_move();
+        Square ksq = pos.king_square(~us), from = from_sq(m), to = to_sq(m);
+        Bitboard occ = (pos.pieces() ^ square_bb(from)) | square_bb(to);
+        if (move_type(m) == CASTLING) {
+            bool kingside = to > from;
+            Square rookFrom = kingside ? from + 3 : from - 4, rookTo = kingside ? from + 1 : from - 1;
+            occ = (occ ^ square_bb(rookFrom)) | square_bb(rookTo);
+            return rook_attacks(rookTo, occ) & square_bb(ksq);
+        }
+        PieceType pt = type_of(pos.piece_on(from));
+        Bitboard direct = pt == PAWN ? PawnAttacks[us][to] : pt == KING ? 0 : attacks_bb(pt, to, occ);
+        if (direct & square_bb(ksq))
+            return true;
+        Bitboard sliders = ((bishop_attacks(ksq, occ) & (pos.pieces(us, BISHOP) | pos.pieces(us, QUEEN)))
+                            | (rook_attacks(ksq, occ) & (pos.pieces(us, ROOK) | pos.pieces(us, QUEEN))))
+                           & ~square_bb(from);
+        return sliders != 0;
     }
 
     // Assigns each move an ordering score, best first.
@@ -472,15 +495,16 @@ struct Searcher {
 
             // Late move pruning: near the leaves, quiet moves this far down
             // the ordering almost never matter, so skip them once a move has
-            // kept us out of a mate score.
+            // kept us out of a mate score. Half as many when the eval is not improving.
+            // Moves that give check are kept.
             if (!pvNode && !inCheck && quiet && depth <= 7 && best > -VALUE_MATE_IN_MAX_PLY
-                && quietCount >= 6 + depth * depth)
+                && quietCount >= (6 + depth * depth) / (improving ? 1 : 2) && !quiet_gives_check(m))
                 continue;
 
             // Futility pruning: if even a generous margin over the static
-            // eval cannot reach alpha, a quiet move will not either.
+            // eval cannot reach alpha, a quiet move will not either, unless it gives check.
             if (!pvNode && !inCheck && quiet && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
-                && staticEval + 127 * depth <= alpha)
+                && staticEval + 127 * depth <= alpha && !quiet_gives_check(m))
                 continue;
 
             // SEE pruning: near the leaves, skip a move that loses more material in the exchange
@@ -501,8 +525,10 @@ struct Searcher {
                 excluded[ply] = MOVE_NONE;
                 if (stopped)
                     return 0;
+                // Far below: the TT move is the only move by a wide margin, so two plies deeper,
+                // at most 10 times on one line (as in Stockfish).
                 if (singularScore < singularBeta)
-                    extension = 1;
+                    extension = !pvNode && singularScore < singularBeta - 30 && doubleExt[ply] < 10 ? 2 : 1;
                 else if (singularBeta >= beta)
                     return singularBeta;
             }
@@ -517,6 +543,7 @@ struct Searcher {
             pieceStack[ply] = moved;
 
             int newDepth = depth - 1 + extension;
+            doubleExt[ply + 1] = doubleExt[ply] + (extension == 2);
             int score;
             if (legalMoves == 1)
                 score = -search(-beta, -alpha, newDepth, ply + 1);
