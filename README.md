@@ -6,8 +6,8 @@ what each AI model can actually do in research.
 
 ## Status
 
-Phase 4 of 5 (refinement: tuning, more data and bigger networks), ten days after the project
-started on 2026-10-22. Measured rating, on the CCRL Blitz scale:
+Phase 4 of 5 (refinement: tuning, more data and bigger networks). The project started on
+2026-10-22. Measured rating estimates, on the CCRL Blitz scale:
 
 | Date | Engine | Rating | Games |
 | --- | --- | --- | --- |
@@ -18,6 +18,7 @@ started on 2026-10-22. Measured rating, on the CCRL Blitz scale:
 | 2026-10-30 | net14, singular extensions and internal iterative reductions | 3452 ± 24 | 1,200 vs Stash 27-36 |
 | 2026-10-31 | Non-pawn correction history, continuation history, a null-move reduction that grows with eval − beta | 3499 ± 23 | 1,200 vs Stash 30-37 at 10+0.1 |
 | 2026-11-01 | The same engine, under CCRL-style conditions | **3420 ± 21** | 1,260 vs seven engines rated 3375-3720 |
+| 2026-11-03 | Main `014dd979`: net22-h768, RFP improving and speedups, under CCRL-style conditions | **3482 ± 21** | 1,260 against the same seven-engine pool, PC2 E-cores |
 
 Until 2026-10-31, gauntlets were played at 10+0.1 against Stash versions with known CCRL ratings, the
 strongest of them 3417, so the figures were extrapolations. The 2026-11-01 gauntlet copies CCRL Blitz's
@@ -25,7 +26,9 @@ conditions as far as one PC can: 2'+1" scaled to this machine by CCRL's Stockfis
 + 0.67 s here), Hash 128, and single-CPU opponents with CCRL ratings above and below ChessSI (Stash 36
 and 37, Stockfish 10, Viridithas 10, Koivisto 9, Stormphrax 6, Halogen 16). It is an estimate under
 those conditions, not a CCRL rating: CCRL also gives its engines endgame tablebases, which ChessSI does
-not use. At the longer time control ChessSI rates 79 points lower than at 10+0.1. Details are in
+not use. The 2026-11-01 build rated 79 points lower at the longer time control than at 10+0.1.
+On 2026-11-03, current main reached 3482 ± 21 against the same pool on PC2, at 80.65+0.672,
+with no time forfeits. These runs estimate a 62-point improvement against outside engines. Details are in
 [docs/IDEAS.md](docs/IDEAS.md).
 
 Against the [original plan](docs/PLAN.md), which expected this level after six months to a year:
@@ -35,11 +38,11 @@ Against the [original plan](docs/PLAN.md), which expected this level after six m
 | 1 · Working engine, ~2000 | Weeks 1-2 | 2026-10-22: 2440, measured |
 | 2 · Classical engine, 2800-3000 | Months 1-2 | Its search work was done on 2026-10-22; the network replaced PeSTO on 2026-10-23, so this band was passed with NNUE |
 | 3 · Neural evaluation, 3200-3400 | Months 2-5 | 2026-10-23: 3150, measured; 2026-10-24: 3284, measured |
-| 4 · Refinement, 3400-3500+ | Months 6-12+ | 2026-10-30: 3452, measured; 2026-10-31: 3499, measured; 2026-11-01: 3420 under CCRL-style conditions |
+| 4 · Refinement, 3400-3500+ | Months 6-12+ | 2026-10-30: 3452, measured; 2026-10-31: 3499, measured; CCRL-style estimates: 3420 on 2026-11-01, 3482 on 2026-11-03 |
 | 5 · The final gap, Stockfish level | A year or more | Not started |
 
-The plan expected compute to set the pace from phase 3 on. The GPU tools below changed how much there
-is: the GPUs now generate the training data and play the tuning games.
+The plan expected compute to set the pace from phase 3 on. The GPU tools below expand training-data
+generation and screen candidate networks. Search changes are tested by CPU SPRT; GPU SPSA is paused.
 
 The engine:
 
@@ -55,19 +58,19 @@ The engine:
   with constants tuned by SPSA.
 - **Move ordering:** killer moves, a history heuristic with continuation history (how a move fared
   after the previous move and the one before), and losing captures after the quiet moves.
-- **Evaluation:** NNUE, (768 → 256) × 2 → SCReLU → 1, compiled into the binary, plus correction
+- **Evaluation:** NNUE, (768 → 768) × 2 → SCReLU → 1, compiled into the binary, plus correction
   history, which learns during a game how far the network is off for each pawn structure and for each
   side's non-pawn pieces.
-  - The network is trained only on ChessSI's own games. The default, net14, is net12 trained further
-    on 402.3M positions of net12's self-play on the GPUs; the history is in [nets/README.md](nets/README.md).
+  - The network is trained only on ChessSI's own games. The default, net22-h768, was trained for 20
+    epochs on 977.1M unique generation-10 positions labelled by net14, using the streaming trainer
+    and scattered shards; the history is in [nets/README.md](nets/README.md).
   - The output layer is vectorized by hand (AVX2 and AVX-VNNI).
   - PeSTO tables are the fallback.
-- **GPU tools:** a CUDA port of an earlier version of the search (`gpu/`, byte-identical to that
-  version on the CPU; draft PR #74 brings it up to 2026-10-28's search) plays thousands of games at
-  once. It generates training data at about 13,000 positions a second on an RTX 5080, 1.6×
-  the 13 CPU cores ([gpu/README.md](gpu/README.md)); it made all of net12's data. It also plays
-  fixed-node matches between networks and tunes search constants by SPSA.
-- **Bench:** `64462` nodes.
+- **GPU tools:** a CUDA search port (`gpu/`), checked against its CPU reference, generates self-play
+  data and plays fixed-node matches between candidate networks. CPU SPRTs decide whether a network
+  becomes the default. GPU search-change testing and SPSA were paused after calibration disagreed
+  with CPU results; their earlier measurements remain in the benchmark log.
+- **Bench:** `50868` nodes on main `014dd979`.
 
 Research so far:
 
