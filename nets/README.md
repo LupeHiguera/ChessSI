@@ -7,6 +7,37 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net25-h1024.nnue
+
+- **SHA-256:** `b5ee8ed96d066db6c00a7e168142647ef27c245a30fcc4de5670d51385c1bb93`.
+- **Data:** the same scattered generation-10 and generation-11 shards as net24: 1,394,103,116 unique training positions from ChessSI's own games/search scores. Validation holds out games; 20,000,000 positions used.
+- **Training:** Claude Code's streaming trainer, 16 epochs, hidden size 1024 instead of 768, seed 1, aux-weight 1.0, future-plies 4. Command: `train.py --shards <g10s> --shards <g11s> net25-h1024.nnue --hidden 1024 --epochs 16 --seed 1 --aux-weight 1.0 --future-plies 4`. Original [launcher](../docs/research/merge-2026-11-04/net25-training.sh). Validation loss 0.00772.
+- **CPU speed:** 0.952 times net24 in Claude's alternating benchmark.
+- **Result:** replaced net24. **+7.70 ±4.78 Elo**, 6,360 games, SPRT [0,5], H1 accepted at LLR 2.97 on 2026-11-04 00:04 Arizona. Both networks in binary `014dd979`, TC 10+0.1, Threads 1, Hash 16, UHO paired openings, 4 concurrent on PC1 cores 1–4. Pentanomial [44,737,1490,852,57]. [Original terminal result](../docs/research/merge-2026-11-04/net25-result.txt).
+- **Credit:** Claude Code proposed/trained the network and started the match; GPT-6 (Codex) recovered and integrated the completed result. Combined strength with the newly merged search changes is not measured yet.
+
+## net24-h768.nnue
+
+- **SHA-256:** `63108bb8f3b1bc76b651d4aa2b7322d2dfce8574b95e65410787799f90dcc84e`
+- **Data:** generations 10 and 11 together, 1,394,103,116 unique training positions (1,422,576,296 before
+  deduplication) and 28,473,180 validation positions, 20,000,000 of them used.
+  - Generation 10 is net22-h768's data, net14's self-play.
+  - Generation 11 is net19b's self-play on the GPUs, 489.3M positions; its shards are `g11s`.
+  - Each generation was deduplicated on its own and scattered.
+- **Training:** net22-h768's network and recipe, 16 epochs, on the streaming trainer with both shard sets:
+  `train.py --shards <g10s> --shards <g11s> net24-h768.nnue --hidden 768 --epochs 16 --seed 1 --aux-weight 1.0
+  --future-plies 4`.
+  - Validation 0.00784 on its own held-out games, which also include generation 11's, so not comparable with
+    net22's figure.
+  - 6 h 28 min on an RTX 5080; peak RSS 12.2 GB.
+- **Speed:** the same architecture as net22, so the same speed.
+- **Result:** replaced net22-h768.
+  - **SPRT:** +10.5 ± 5.7 Elo, [0, 5] at 10+0.1, H1 after 4,422 games. Both networks were loaded in one
+    binary built from `005fc57`, 4 concurrent on cores 1-4. Pentanomial [31, 494, 1035, 613, 38].
+  - **GPU matches** (another Claude session, 1,024 pairs each): +10.4 ± 10.6 and +12.4 ± 10.8 at 20,000
+    nodes, +8.0 ± 9.6 at 100,000.
+  - Generation 11 alone (net23) had lost to net22-h768. Added to generation 10, it helped.
+
 ## net22-h768.nnue
 
 - **SHA-256:** `ece7a6df577290df6eb87ae12b430fd39101245463e09e25fcda70eecdd07ba8`
