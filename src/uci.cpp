@@ -135,6 +135,10 @@ void set_option(std::istringstream& is) {
                                     : "info string could not load network " + value);
     else if (name == "Threads" && !value.empty())
         Search::set_threads(std::clamp(std::stoi(value), 1, MaxThreads));
+#ifdef TUNE
+    else if (!value.empty())
+        Search::tune_set(name, std::stoi(value));
+#endif
 }
 
 } // namespace
@@ -185,9 +189,16 @@ int UCI::loop(int argc, char* argv[]) {
             send("option name Hash type spin default " + std::to_string(DefaultHashMB) + " min 1 max 65536");
             send("option name Threads type spin default 1 min 1 max " + std::to_string(MaxThreads));
             send(std::string("option name EvalFile type string default ") + (NNUE::has_embedded() ? "<embedded>" : "<empty>"));
+#ifdef TUNE
+            std::cout << Search::tune_list(true);
+#endif
             send("uciok");
         } else if (token == "isready")
             send("readyok");
+#ifdef TUNE
+        else if (token == "tune")
+            std::cout << Search::tune_list(false) << std::flush;
+#endif
         else if (token == "ucinewgame") {
             wait_for_search();
             Search::clear();

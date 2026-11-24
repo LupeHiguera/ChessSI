@@ -13,6 +13,11 @@ endif
 
 CXXFLAGS ?= -std=c++20 -O3 $(ARCHFLAG) -DNDEBUG -Wall -Wextra
 
+# `make TUNE=1`: the search constants become UCI options for scripts/spsa.py.
+ifdef TUNE
+    CXXFLAGS += -DTUNE
+endif
+
 # The network compiled in as the default evaluation (OpenBench passes EVALFILE too). Empty: PeSTO.
 # nets/README.md records where each network came from.
 EVALFILE ?= nets/net27-h1536.nnue

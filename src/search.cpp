@@ -35,16 +35,68 @@ using Clock = std::chrono::steady_clock;
 
 constexpr int PieceValue[7] = {100, 320, 330, 500, 900, 0, 0};
 
+// Search constants. A normal build compiles them in. `make TUNE=1` turns each into a UCI spin option
+// (name, default, min, max) so scripts/spsa.py can tune them; the `tune` command lists them.
+#ifdef TUNE
+struct TuneParam {
+    const char* name;
+    int* value;
+    int def, lo, hi;
+};
+std::vector<TuneParam>& tune_params() {
+    static std::vector<TuneParam> params;
+    return params;
+}
+struct TuneRegistration {
+    TuneRegistration(const char* name, int* value, int lo, int hi) { tune_params().push_back({name, value, *value, lo, hi}); }
+};
+#define PARAM(name, def, lo, hi) \
+    int name = def;              \
+    const TuneRegistration tuneRegistration##name(#name, &name, lo, hi);
+#else
+#define PARAM(name, def, lo, hi) constexpr int name = def;
+#endif
+
+PARAM(RfpMargin, 77, 30, 200)
+PARAM(RfpDepth, 5, 2, 10)
+PARAM(NmpBase, 3, 1, 6)
+PARAM(NmpDepthDiv, 4, 2, 8)
+PARAM(NmpEvalDiv, 200, 50, 600)
+PARAM(NmpEvalMax, 3, 0, 6)
+PARAM(IirDepth, 4, 2, 8)
+PARAM(LmpBase, 6, 2, 16)
+PARAM(LmpDepth, 7, 3, 12)
+PARAM(FutMargin, 127, 40, 300)
+PARAM(FutDepth, 6, 2, 12)
+PARAM(SeeQuiet, 60, 10, 150)
+PARAM(SeeCapture, 30, 5, 90)
+PARAM(SeeDepth, 6, 2, 12)
+PARAM(SingDepth, 8, 4, 12)
+PARAM(SingMargin, 16, 4, 64) // sixteenths of a point per ply of depth
+PARAM(DextMargin, 30, 5, 120)
+PARAM(HistMul, 300, 100, 600)
+PARAM(HistOff, 250, 0, 600)
+PARAM(HistMax, 1600, 600, 4000)
+PARAM(LmrBase, 82, 20, 160) // hundredths
+PARAM(LmrDiv, 172, 100, 320) // hundredths
+PARAM(LmrMoves, 4, 1, 10)
+PARAM(AspDelta, 22, 8, 60)
+
 // Late move reduction in plies, by depth and move number (both capped at 63).
 struct ReductionTable {
     int r[64][64] = {};
-    ReductionTable() {
+    ReductionTable() { fill(); }
+    void fill() {
         for (int d = 1; d < 64; ++d)
             for (int n = 1; n < 64; ++n)
-                r[d][n] = int(0.82 + std::log(d) * std::log(n) / 1.72);
+                r[d][n] = int(LmrBase / 100.0 + std::log(d) * std::log(n) / (LmrDiv / 100.0));
     }
 };
+#ifdef TUNE
+ReductionTable Reductions;
+#else
 const ReductionTable Reductions;
+#endif
 
 // Correction history (Caissa 2023, then Alexandria and Stockfish): how far the static eval has
 // been off from search results in positions with the same pawns and side to move. The main
@@ -449,11 +501,11 @@ struct Searcher {
         // Reverse futility pruning: at shallow null-window nodes, a large
         // static advantage may make the remaining search unnecessary. The
         // margin is a ply smaller when the eval is improving.
-        if (!root && !pvNode && !inCheck && !excludedMove && depth <= 5
+        if (!root && !pvNode && !inCheck && !excludedMove && depth <= RfpDepth
             && pos.rule50() + depth < 100
             && std::abs(beta) < VALUE_MATE_IN_MAX_PLY
             && (pos.pieces(pos.side_to_move()) & ~(pos.pieces(PAWN) | pos.pieces(KING)))) {
-            if (std::abs(eval) < VALUE_MATE_IN_MAX_PLY && eval - 77 * (depth - improving) >= beta)
+            if (std::abs(eval) < VALUE_MATE_IN_MAX_PLY && eval - RfpMargin * (depth - improving) >= beta)
                 // A static advantage cannot override stalemate.
                 return has_legal_move() ? eval : 0;
         }
@@ -466,7 +518,7 @@ struct Searcher {
         bool hasPieces = pos.pieces(us) & ~pos.pieces(PAWN) & ~pos.pieces(KING);
         if (!pvNode && !inCheck && !root && !excludedMove && depth >= 3 && hasPieces && moveStack[ply - 1] != MOVE_NONE
             && eval >= beta) {
-            int R = 3 + depth / 4 + std::min((eval - beta) / 200, 3);
+            int R = NmpBase + depth / NmpDepthDiv + std::min((eval - beta) / NmpEvalDiv, NmpEvalMax);
             moveStack[ply] = MOVE_NONE;
             pos.do_null_move();
             int score = -search(-beta, -beta + 1, depth - 1 - R, ply + 1);
@@ -481,7 +533,7 @@ struct Searcher {
         // poor, so search one ply shallower. Skipped in a singular search
         // (a move excluded): there the TT is not probed, so ttMove is always
         // none and the verification depth must stay as the caller set it.
-        if (!root && !excludedMove && depth >= 4 && ttMove == MOVE_NONE)
+        if (!root && !excludedMove && depth >= IirDepth && ttMove == MOVE_NONE)
             --depth;
 
         MoveList list;
@@ -506,29 +558,29 @@ struct Searcher {
             // the ordering almost never matter, so skip them once a move has
             // kept us out of a mate score. Half as many when the eval is not improving.
             // Moves that give check are kept.
-            if (!pvNode && !inCheck && quiet && depth <= 7 && best > -VALUE_MATE_IN_MAX_PLY
-                && quietCount >= (6 + depth * depth) / (improving ? 1 : 2) && !quiet_gives_check(m))
+            if (!pvNode && !inCheck && quiet && depth <= LmpDepth && best > -VALUE_MATE_IN_MAX_PLY
+                && quietCount >= (LmpBase + depth * depth) / (improving ? 1 : 2) && !quiet_gives_check(m))
                 continue;
 
             // Futility pruning: if even a generous margin over the static
             // eval cannot reach alpha, a quiet move will not either, unless it gives check.
-            if (!pvNode && !inCheck && quiet && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
-                && staticEval + 127 * depth <= alpha && !quiet_gives_check(m))
+            if (!pvNode && !inCheck && quiet && depth <= FutDepth && best > -VALUE_MATE_IN_MAX_PLY
+                && staticEval + FutMargin * depth <= alpha && !quiet_gives_check(m))
                 continue;
 
             // SEE pruning: near the leaves, skip a move that loses more material in the exchange
             // on its target square than a depth-scaled margin (wider for captures).
-            if (!root && !inCheck && depth <= 6 && best > -VALUE_MATE_IN_MAX_PLY
-                && !see_ge(m, quiet ? -60 * depth : -30 * depth * depth))
+            if (!root && !inCheck && depth <= SeeDepth && best > -VALUE_MATE_IN_MAX_PLY
+                && !see_ge(m, quiet ? -SeeQuiet * depth : -SeeCapture * depth * depth))
                 continue;
 
             // Singular extension: when a reduced search without the TT move cannot get near
             // its TT score, that move is the only good one here, so search it a ply deeper.
             // When even the reduced search beats beta, several moves do: cut (multi-cut).
             int extension = 0;
-            if (!root && m == ttMove && depth >= 8 && ttDepth >= depth - 3 && ttBound != BOUND_UPPER
+            if (!root && m == ttMove && depth >= SingDepth && ttDepth >= depth - 3 && ttBound != BOUND_UPPER
                 && std::abs(ttScore) < VALUE_MATE_IN_MAX_PLY && ply < 2 * rootDepth) {
-                int singularBeta = ttScore - depth;
+                int singularBeta = ttScore - depth * SingMargin / 16;
                 excluded[ply] = m;
                 int singularScore = search(singularBeta - 1, singularBeta, (depth - 1) / 2, ply);
                 excluded[ply] = MOVE_NONE;
@@ -537,7 +589,7 @@ struct Searcher {
                 // Far below: the TT move is the only move by a wide margin, so two plies deeper,
                 // at most 10 times on one line (as in Stockfish).
                 if (singularScore < singularBeta)
-                    extension = !pvNode && singularScore < singularBeta - 30 && doubleExt[ply] < 10 ? 2 : 1;
+                    extension = !pvNode && singularScore < singularBeta - DextMargin && doubleExt[ply] < 10 ? 2 : 1;
                 else if (singularBeta >= beta)
                     return singularBeta;
             }
@@ -560,7 +612,7 @@ struct Searcher {
                 // Late quiet moves are searched shallower first, and only
                 // re-searched at full depth if they beat alpha.
                 int r = 0;
-                if (depth >= 3 && legalMoves > 4 && quiet && !inCheck && !pos.in_check()) {
+                if (depth >= 3 && legalMoves > LmrMoves && quiet && !inCheck && !pos.in_check()) {
                     r = Reductions.r[std::min(depth, 63)][std::min(legalMoves, 63)];
                     if (pvNode)
                         --r;
@@ -594,7 +646,7 @@ struct Searcher {
                             // Linear in depth and capped, as in Stockfish 15. The old depth² bonus
                             // (100 at depth 10 against the 16,384 limit) never let gravity act, and
                             // kept history too small for any threshold on it to matter.
-                            int bonus = std::min(300 * depth - 250, 1600);
+                            int bonus = std::min(HistMul * depth - HistOff, HistMax);
                             update_history(ply, m, bonus);
                             for (int j = 0; j < quietCount; ++j)
                                 update_history(ply, quietsTried[j], -bonus);
@@ -628,7 +680,7 @@ struct Searcher {
     // around the last score and widen whichever side fails until the score
     // lands inside it.
     int search_root(int depth, int prevScore) {
-        int delta = 22;
+        int delta = AspDelta;
         int alpha = -VALUE_INF, beta = VALUE_INF;
         if (depth >= 4) {
             alpha = std::max(prevScore - delta, -VALUE_INF);
@@ -712,6 +764,29 @@ struct Searcher {
 };
 
 } // namespace
+
+#ifdef TUNE
+std::string Search::tune_list(bool uci) {
+    std::ostringstream out;
+    for (const TuneParam& p : tune_params()) {
+        if (uci)
+            out << "option name " << p.name << " type spin default " << p.def << " min " << p.lo << " max " << p.hi << "\n";
+        else
+            out << p.name << ", int, " << p.def << ", " << p.lo << ", " << p.hi << "\n";
+    }
+    return out.str();
+}
+
+bool Search::tune_set(const std::string& name, int value) {
+    for (const TuneParam& p : tune_params())
+        if (name == p.name) {
+            *p.value = std::clamp(value, p.lo, p.hi);
+            Reductions.fill();
+            return true;
+        }
+    return false;
+}
+#endif
 
 void Search::clear() {
     TT.clear();
