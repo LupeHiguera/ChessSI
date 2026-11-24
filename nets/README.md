@@ -7,6 +7,14 @@ here can also be loaded with `setoption name EvalFile value <path>`.
 Architecture so far: (768 → H) × 2 perspectives → SCReLU → 1, quantised with QA = 255, QB = 64, eval
 scale 400 (format in `nnue/train.py`).
 
+## net27-h1536.nnue
+
+- **SHA-256:** `6645993f4a7f78622aca1c2e429e623d8245cd9a06e579bd8c26401b9d80ce77`.
+- **Data:** scattered shards of generations 10 to 14, all GPU self-play at 5,000 nodes a move labelled by net14, net19b, net20-h768, net22-h768 and net24-h768 in turn: 1,998,832,341 unique training positions (2,039,662,881 before deduplication). Validation holds out games; 20,000,000 positions used.
+- **Training:** the streaming trainer, 16 epochs, 1536 hidden units, one epoch per process outside the 16:00-19:00 window, finished 2026-11-04 10:06. Command: `train.py --shards <g10s> --shards <g11s> --shards <g12s> --shards <g13s> --shards <g14s> net27-h1536.nnue --hidden 1536 --epochs 16 --seed 1 --aux-weight 1.0 --future-plies 4`. Validation loss 0.00756 (net25-h1024: 0.00772 on generations 10 and 11 only, so the two are not on the same set).
+- **Result:** replaced net25. **+11.87 ± 6.10 Elo**, 3,718 games, SPRT [0, 5], H1 at LLR 2.95 on 2026-11-23 13:50 Arizona. Both networks in one binary from `2d20c888`, TC 10+0.1, Threads 1, UHO paired openings, 6 concurrent on PC1 WSL cores 14-19 (Astra's cores, idle). Pentanomial [20, 402, 900, 505, 32]. The match runs on time, so the slower network's speed cost is inside the result.
+- **net26-h1024** (same recipe at 1024 units on generations 10 to 13, 1.77B positions, SHA-256 `a12dad27...d69c55`, validation 0.00771) was tested against net25 at the same time and stopped when net27 passed: +5.79 ± 6.22, 3,722 games, LLR 1.22. It is not in the repository.
+
 ## net25-h1024.nnue
 
 - **SHA-256:** `b5ee8ed96d066db6c00a7e168142647ef27c245a30fcc4de5670d51385c1bb93`.
