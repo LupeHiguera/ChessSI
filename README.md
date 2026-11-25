@@ -58,11 +58,11 @@ The engine:
   with constants tuned by SPSA.
 - **Move ordering:** killer moves, a history heuristic with continuation history (how a move fared
   after the previous move and the one before), and losing captures after the quiet moves.
-- **Evaluation:** NNUE, (768 → 1024) × 2 → SCReLU → 1, compiled into the binary, plus correction
+- **Evaluation:** NNUE, (768 → 1536) × 2 → SCReLU → 1, compiled into the binary, plus correction
   history, which learns during a game how far the network is off for each pawn structure and for each
   side's non-pawn pieces.
-  - The network is trained only on ChessSI's own games. The default, net25-h1024, was trained for 16
-    epochs on 1.394B unique generation-10/11 positions labelled by ChessSI, using the streaming
+  - The network is trained only on ChessSI's own games. The default, net27-h1536, was trained for 16
+    epochs on 1.999B unique generation-10 to 14 positions labelled by ChessSI, using the streaming
     trainer and scattered shards; the history is in [nets/README.md](nets/README.md).
   - The output layer is vectorized by hand (AVX2 and AVX-VNNI).
   - PeSTO tables are the fallback.
@@ -70,7 +70,7 @@ The engine:
   data and plays fixed-node matches between candidate networks. CPU SPRTs decide whether a network
   becomes the default. GPU search-change testing and SPSA were paused after calibration disagreed
   with CPU results; their earlier measurements remain in the benchmark log.
-- **Bench:** `51917` nodes with net25-h1024 and the 2026-11-04 accepted search changes.
+- **Bench:** `42737` nodes with net27-h1536 and the search changes accepted up to 2026-11-23.
 
 The newer merged engine has not yet had a CCRL-style gauntlet; 3482 ±21 remains the latest measured estimate.
 
