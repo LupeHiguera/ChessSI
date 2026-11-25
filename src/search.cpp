@@ -81,6 +81,8 @@ PARAM(LmrBase, 82, 20, 160) // hundredths
 PARAM(LmrDiv, 172, 100, 320) // hundredths
 PARAM(LmrMoves, 4, 1, 10)
 PARAM(AspDelta, 22, 8, 60)
+PARAM(CorrMinor, 32, 0, 128) // sixty-fourths of the pawn table's weight
+PARAM(CorrMajor, 32, 0, 128)
 
 // Late move reduction in plies, by depth and move number (both capped at 63).
 struct ReductionTable {
@@ -108,6 +110,9 @@ int16_t mainCorrHist[2][CorrHistSize];
 // Non-pawn correction history (Alexandria, Stockfish): the same idea keyed by one side's
 // non-pawn pieces (knights, bishops, rooks, queens and king), one table per keyed colour.
 int16_t mainNonPawnCorrHist[2][2][CorrHistSize]; // [side to move][keyed colour][hash]
+// Minor-piece and major-piece correction history (Stockfish, Reckless, PlentyChess): the same idea
+// keyed by where both sides' knights, bishops and kings stand, and by their rooks, queens and kings.
+int16_t mainPieceCorrHist[2][2][CorrHistSize]; // [side to move][minor, major][hash]
 
 // Continuation history: how a quiet move fared immediately after the move one ply back and the move
 // two plies back. Both distances share one table, indexed
@@ -137,6 +142,19 @@ int nonpawn_index(const Position& pos, Color c) {
     return int(h >> 50);
 }
 
+// Both sides' pieces of types a and b and their kings. Each product is folded, high half onto
+// low: the low half alone packs everything on the eighth rank into the hash's top byte.
+int piece_index(const Position& pos, PieceType a, PieceType b) {
+    auto fold = [](uint64_t x, uint64_t k) {
+        unsigned __int128 p = static_cast<unsigned __int128>(x) * k;
+        return uint64_t(p) ^ uint64_t(p >> 64);
+    };
+    Bitboard keyed = pos.pieces(a) | pos.pieces(b) | pos.pieces(KING);
+    uint64_t h = fold(pos.pieces(a), 0x9E3779B97F4A7C15ull) ^ fold(pos.pieces(b), 0xC2B2AE3D27D4EB4Full)
+               ^ fold(pos.pieces(KING), 0x165667B19E3779F9ull) ^ fold(pos.pieces(WHITE) & keyed, 0xD6E8FEB86659FD93ull);
+    return int(fold(h, 0xBF58476D1CE4E5B9ull) >> 50);
+}
+
 int threadCount = 1; // the UCI Threads option
 
 struct Searcher {
@@ -161,6 +179,8 @@ struct Searcher {
     int16_t (*corrHist)[CorrHistSize] = ownCorrHist; // the main thread's points to mainCorrHist
     int16_t ownNonPawnCorrHist[2][2][CorrHistSize] = {};
     int16_t (*nonPawnCorrHist)[2][CorrHistSize] = ownNonPawnCorrHist; // main thread: mainNonPawnCorrHist
+    int16_t ownPieceCorrHist[2][2][CorrHistSize] = {};
+    int16_t (*pieceCorrHist)[2][CorrHistSize] = ownPieceCorrHist; // main thread: mainPieceCorrHist
     Move moveStack[MAX_PLY + 1] = {}; // move played at each ply; MOVE_NONE = null move
     Move excluded[MAX_PLY + 1] = {};  // move a singular search leaves out at each ply
     int rootDepth = 0;
@@ -300,7 +320,9 @@ struct Searcher {
         Color us = pos.side_to_move();
         int nonPawn = nonPawnCorrHist[us][WHITE][nonpawn_index(pos, WHITE)]
                     + nonPawnCorrHist[us][BLACK][nonpawn_index(pos, BLACK)];
-        int correction = (corrHist[us][pawn_index(pos)] + nonPawn / 2) / 16;
+        int pieces = pieceCorrHist[us][0][piece_index(pos, KNIGHT, BISHOP)] * CorrMinor
+                   + pieceCorrHist[us][1][piece_index(pos, ROOK, QUEEN)] * CorrMajor;
+        int correction = (corrHist[us][pawn_index(pos)] + nonPawn / 2 + pieces / 64) / 16;
         return std::clamp(evaluate(pos) + correction, -VALUE_MATE_IN_MAX_PLY + 1, VALUE_MATE_IN_MAX_PLY - 1);
     }
 
@@ -314,6 +336,9 @@ struct Searcher {
             int16_t& n = nonPawnCorrHist[pos.side_to_move()][c][nonpawn_index(pos, c)];
             n = int16_t(n + bonus - n * std::abs(bonus) / CorrHistLimit);
         }
+        for (int16_t* p : {&pieceCorrHist[pos.side_to_move()][0][piece_index(pos, KNIGHT, BISHOP)],
+                           &pieceCorrHist[pos.side_to_move()][1][piece_index(pos, ROOK, QUEEN)]})
+            *p = int16_t(*p + bonus - *p * std::abs(bonus) / CorrHistLimit);
     }
 
     // Static exchange evaluation: does capturing on the target square, with
@@ -793,6 +818,7 @@ void Search::clear() {
     std::fill(&mainContHist[0][0], &mainContHist[0][0] + ContHistStride * ContHistStride, 0);
     std::fill(&mainCorrHist[0][0], &mainCorrHist[0][0] + 2 * CorrHistSize, 0);
     std::fill(&mainNonPawnCorrHist[0][0][0], &mainNonPawnCorrHist[0][0][0] + 4 * CorrHistSize, 0);
+    std::fill(&mainPieceCorrHist[0][0][0], &mainPieceCorrHist[0][0][0] + 4 * CorrHistSize, 0);
 }
 
 void Search::set_threads(int n) {
@@ -808,6 +834,7 @@ SearchResult Search::think(Position& pos, const SearchLimits& limits, bool verbo
     s.contHist = mainContHist;
     s.corrHist = mainCorrHist;
     s.nonPawnCorrHist = mainNonPawnCorrHist;
+    s.pieceCorrHist = mainPieceCorrHist;
     s.set_time_limits();
     SearchResult result;
     int maxDepth = std::min(limits.depth, MAX_PLY - 1);
