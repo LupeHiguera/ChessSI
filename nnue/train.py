@@ -14,6 +14,12 @@ Network: (768 -> H) x 2 perspectives -> SCReLU -> 1, the usual first NNUE. Input
 (piece colour relative to the perspective, piece type, square), with squares mirrored vertically for
 Black's perspective. The output, times SCALE, is centipawns for the side to move.
 
+--ft picks how the first layer is computed. dense (the default, needs CuPy) multiplies a one-hot
+matrix by the weights; bag is torch's EmbeddingBag, the only path before 2026-11-25 and the slower
+one. They are the same function: trained in float64 they export the same file. In float32 the order
+of additions differs, so the two exports differ slightly and a printed loss can differ in its last
+digit.
+
 Loss: mean squared error between sigmoid(output) and a blend of sigmoid(score / SCALE) and the game
 result, both from the side to move: target = lambda * score + (1 - lambda) * result. With
 --aux-weight, a second head (training only, not exported) also learns the win probability
@@ -27,6 +33,7 @@ int16[768][H] and biases int16[H] scaled by QA, output weights int16[2H] scaled 
 int32 scaled by QA * QB.
 """
 import argparse
+import functools
 import glob
 import hashlib
 import os
@@ -91,7 +98,6 @@ def white_features(board_field):
 # piece code (feature // 64: 0-5 White, 6-11 Black) per occupied square in ascending square order,
 # 24 bytes instead of the 64 of the padded feature list. decode() rebuilds that list exactly, in
 # FEN order with PAD at the end, so training sees the same tensors.
-SQ_FEN = np.array([r * 8 + f for r in range(7, -1, -1) for f in range(8)], dtype=np.int64)
 
 
 def encode(feats, chunk=1 << 20):
@@ -118,7 +124,9 @@ def decode(occ, pcs):
     bits = (occ.unsqueeze(1) >> asc) & 1
     nib = torch.stack((pcs & 15, pcs >> 4), 2).reshape(-1, 32).long()
     piece = torch.gather(nib, 1, (torch.cumsum(bits, 1) - 1).clamp(0, 31))
-    f = torch.where(bits.bool(), piece * 64 + asc, PAD)[:, torch.from_numpy(SQ_FEN).to(dev)]
+    # asc ^ 56 is FEN order, rank 8 first. Built on the device: a copy from host memory here made every
+    # step wait for the GPU to finish all queued work.
+    f = torch.where(bits.bool(), piece * 64 + asc, PAD)[:, asc ^ 56]
     order = torch.sort((f == PAD).to(torch.int8), dim=1, stable=True).indices[:, :32]
     return torch.gather(f, 1, order)
 
@@ -390,9 +398,41 @@ def teacher_predictions(path, inputs, n, dev, data_dev, chunk=1 << 18):
     return out
 
 
+@functools.cache
+def screlu_kernels():
+    import cupy  # only the dense path needs it, so the CPU tools that import this file do not
+    return (cupy.asarray,
+            cupy.ElementwiseKernel("T a", "T x", "T c = min(max(a, (T)0), (T)1); x = c * c", "screlu"),
+            cupy.ElementwiseKernel("T g, T a", "T d", "d = a >= (T)0 && a <= (T)1 ? g * ((T)2 * a) : (T)0", "screlu_grad"))
+
+
+class SCReLU(torch.autograd.Function):
+    """clamp(a, 0, 1) ** 2 with the gradient PyTorch gives that expression, as one CUDA kernel each way.
+    The hidden layer of a batch is 200 MB at 1536 units and these operations cost what it costs to move
+    that through memory, so separate clamp and power kernels, forward and backward, pay for it several
+    times over."""
+
+    @staticmethod
+    def forward(ctx, a):
+        view, fwd, _ = screlu_kernels()
+        ctx.save_for_backward(a)
+        x = torch.empty_like(a)
+        fwd(view(a.detach()), view(x))
+        return x
+
+    @staticmethod
+    def backward(ctx, g):
+        view, _, bwd = screlu_kernels()
+        (a,) = ctx.saved_tensors
+        d = torch.empty_like(a)
+        bwd(view(g.detach().contiguous()), view(a.detach()), view(d))
+        return d
+
+
 class Net(torch.nn.Module):
-    def __init__(self, hidden, aux=False, policy=False, teacher=False):
+    def __init__(self, hidden, aux=False, policy=False, teacher=False, dense=True):
         super().__init__()
+        self.dense = dense
         self.ft = torch.nn.EmbeddingBag(PAD + 1, hidden, mode="sum", padding_idx=PAD)
         self.ft_bias = torch.nn.Parameter(torch.zeros(hidden))
         self.out = torch.nn.Linear(2 * hidden, 1)
@@ -411,12 +451,34 @@ class Net(torch.nn.Module):
         self.teach = torch.nn.Linear(2 * hidden, 1) if teacher else None
 
     def forward(self, stm, nstm):
+        if self.dense:
+            return self.forward_dense(stm, nstm)
         a = torch.clamp(self.ft(stm) + self.ft_bias, 0, 1) ** 2
         b = torch.clamp(self.ft(nstm) + self.ft_bias, 0, 1) ** 2
         x = torch.cat([a, b], dim=1)
         return (self.out(x).squeeze(1), self.aux(x).squeeze(1) if self.aux is not None else None,
                 self.policy(x) if self.policy is not None else None,
                 self.teach(x).squeeze(1) if self.teach is not None else None)
+
+    def forward_dense(self, stm, nstm):
+        """forward() as matrix products, the same function of the same parameters. Both perspectives
+        are the rows of one 0/1 matrix, (2 * batch, 769): a 1 for each feature present, and a last
+        column of ones that multiplies the bias, appended to the weights as row 769. EmbeddingBag's
+        backward sorts every index and re-reads each position's gradient row once per piece; here the
+        weight gradient is one more product. This works while there are only 768 features: the cost
+        grows with the number of feature rows, not with the pieces on the board."""
+        n, w = stm.shape[0], self.ft.weight
+        x = torch.zeros(2 * n, PAD + 1, dtype=w.dtype, device=w.device)
+        x.scatter_(1, torch.cat([stm, nstm]), 1.0)
+        x[:, PAD] = 1.0
+        hidden = SCReLU.apply(x @ torch.cat([w[:PAD], self.ft_bias[None]])).view(2, n, -1)
+        slots = (self.out, self.aux, self.policy, self.teach)
+        heads = [h for h in slots if h is not None]
+        # Each head's weights as (perspective, hidden, output), so no (batch, 2 * hidden) copy is needed.
+        hw = torch.cat([h.weight for h in heads]).view(-1, 2, hidden.shape[2]).permute(1, 2, 0)
+        y = (hidden @ hw).sum(0) + torch.cat([h.bias for h in heads])
+        parts = iter(y.split([h.out_features for h in heads], dim=1))
+        return tuple(next(parts).squeeze(1) if h is not None else None for h in slots)
 
     def clip(self):
         # Keeps quantised values in range: QA * w and QB * w must fit int16, and the int32
@@ -511,7 +573,7 @@ def train_streaming(args):
 
     dev = torch.device("cuda")
     flip_t = torch.from_numpy(FLIP).to(dev)
-    net = Net(args.hidden, aux=args.aux_weight > 0).to(dev)
+    net = Net(args.hidden, aux=args.aux_weight > 0, dense=args.ft == "dense").to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
     first_epoch = 1
@@ -526,22 +588,26 @@ def train_streaming(args):
         first_epoch = state["epoch"] + 1
         print(f"resumed after epoch {state['epoch']}", flush=True)
 
-    def losses(b):
-        occ = torch.from_numpy(b["occ"].view(np.int64)).to(dev, non_blocking=True)
-        pcs = torch.from_numpy(b["pcs"]).to(dev, non_blocking=True)
+    def on_gpu(b):
+        """Rows as GPU tensors: occupancy, pieces, side to move, and the main and auxiliary targets."""
+        occ = torch.from_numpy(b["occ"].view(np.int64)).to(dev)
+        pcs = torch.from_numpy(b["pcs"]).to(dev)
         w = torch.from_numpy(b["white"]).to(dev).bool()
+        score = torch.from_numpy(b["scores"]).to(dev) * (w.float() * 2 - 1)
+        result_w = torch.from_numpy(b["results"]).to(dev)
+        target = args.lam * torch.sigmoid(score / SCALE) + (1 - args.lam) * torch.where(w, result_w, 1 - result_w)
+        future_w = torch.from_numpy(b["future"]).to(dev)
+        return occ, pcs, w, target, torch.where(w, future_w, 1 - future_w)
+
+    def losses(occ, pcs, w, target, future):
         feats_w = decode(occ, pcs)
         feats_b = flip_t[feats_w]
         wt = w.unsqueeze(1)
         main, aux, _, _ = net(torch.where(wt, feats_w, feats_b), torch.where(wt, feats_b, feats_w))
-        score = torch.from_numpy(b["scores"]).to(dev) * (w.float() * 2 - 1)
-        result_w = torch.from_numpy(b["results"]).to(dev)
-        target = args.lam * torch.sigmoid(score / SCALE) + (1 - args.lam) * torch.where(w, result_w, 1 - result_w)
         main_loss = torch.mean((torch.sigmoid(main) - target) ** 2)
         if aux is None:
             return main_loss, torch.zeros((), device=dev)
-        future_w = torch.from_numpy(b["future"]).to(dev)
-        return main_loss, torch.mean((torch.sigmoid(aux) - torch.where(w, future_w, 1 - future_w)) ** 2)
+        return main_loss, torch.mean((torch.sigmoid(aux) - future) ** 2)
 
     def groups(epoch):
         # The epoch's shard order and each group's shuffle come from (seed, epoch), so a resumed run
@@ -562,20 +628,28 @@ def train_streaming(args):
         while (x := q.get()) is not None:
             yield x
 
+    # A copy from host memory and a loss read back with .item() both wait for the GPU to finish all
+    # queued work, and with several in every step the Python side of a step could not overlap the GPU
+    # side. So rows go to the GPU 64 batches at a time, and the loss total stays there until the epoch
+    # ends (in float64, the same sum Python made of the .item() values).
+    block = 64 * args.batch
     for epoch in range(first_epoch, args.epochs + 1):
         net.train()
-        total, seen, te = 0.0, 0, time.time()
+        total, seen, te = torch.zeros((), dtype=torch.float64, device=dev), 0, time.time()
         for g in prefetch(groups(epoch)):
             m = len(g["white"])
-            for i in range(0, m, args.batch):
-                b = {c: g[c][i:i + args.batch] for c in g}
-                opt.zero_grad()
-                main_loss, aux_loss = losses(b)
-                (main_loss + args.aux_weight * aux_loss).backward()
-                opt.step()
-                net.clip()
-                total += main_loss.item() * len(b["white"])
+            for s in range(0, m, block):
+                rows = on_gpu({c: g[c][s:s + block] for c in g})
+                for i in range(0, len(rows[0]), args.batch):
+                    b = [t[i:i + args.batch] for t in rows]
+                    opt.zero_grad()
+                    main_loss, aux_loss = losses(*b)
+                    (main_loss + args.aux_weight * aux_loss).backward()
+                    opt.step()
+                    net.clip()
+                    total += main_loss.detach().double() * len(b[0])
             seen += m
+            torch.cuda.synchronize()  # the rate below counts finished steps, not queued ones
             print(f"  epoch {epoch}: {seen}/{ntrain} positions, {seen / (time.time() - te):,.0f}/s", flush=True)
         sched.step()
         net.eval()
@@ -583,12 +657,12 @@ def train_streaming(args):
         nv = len(val["white"])
         with torch.no_grad():
             for i in range(0, nv, 65536):
-                b = {c: val[c][i:i + 65536] for c in val}
-                main_loss, aux_loss = losses(b)
-                v += main_loss.item() * len(b["white"])
-                va += aux_loss.item() * len(b["white"])
+                b = on_gpu({c: val[c][i:i + 65536] for c in val})
+                main_loss, aux_loss = losses(*b)
+                v += main_loss.item() * len(b[0])
+                va += aux_loss.item() * len(b[0])
         aux_text = f" aux {va / nv:.5f}" if args.aux_weight > 0 else ""
-        print(f"epoch {epoch:3d} train {total / seen:.5f} val {v / nv:.5f}{aux_text}  ({time.time() - t0:.0f}s)", flush=True)
+        print(f"epoch {epoch:3d} train {total.item() / seen:.5f} val {v / nv:.5f}{aux_text}  ({time.time() - t0:.0f}s)", flush=True)
         export(net, f"{args.out}.e{epoch:02d}")
         torch.save({"net": net.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(), "epoch": epoch,
                     "args": vars(args)}, state_path + ".tmp")
@@ -610,6 +684,8 @@ def main():
     ap.add_argument("--val-max", type=int, default=20_000_000, help="with --shards: validation positions kept")
     ap.add_argument("--resume", action="store_true", help="with --shards: continue from <out>.pt")
     ap.add_argument("--stop-after", type=int, help="with --shards: stop after this epoch (the schedule still spans --epochs)")
+    ap.add_argument("--ft", choices=("dense", "bag"), default="dense",
+                    help="first layer as a matrix product (needs CuPy) or as torch's EmbeddingBag, the slower earlier path")
     ap.add_argument("--hidden", type=int, default=128)
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--batch", type=int, default=16384)
@@ -625,6 +701,11 @@ def main():
     ap.add_argument("--teacher", help="an exported network whose evaluation a training-only head learns")
     ap.add_argument("--teacher-weight", type=float, default=1.0, help="weight of the teacher loss (with --teacher)")
     args = ap.parse_args()
+    if args.ft == "dense":
+        try:
+            screlu_kernels()
+        except ImportError:
+            ap.error("--ft dense needs CuPy (see gpu/README.md); --ft bag runs without it")
     if args.shards:
         if args.data or args.policy_weight > 0 or args.teacher:
             ap.error("--shards takes no data files, --policy-weight or --teacher")
@@ -696,7 +777,8 @@ def main():
         tv = torch.mean((teacher_t[val_t] - target[val_t]) ** 2).item()
         print(f"teacher {os.path.basename(args.teacher)}: validation loss {tv:.5f} on this run's target", flush=True)
 
-    net = Net(args.hidden, aux=args.aux_weight > 0, policy=args.policy_weight > 0, teacher=teacher).to(dev)
+    net = Net(args.hidden, aux=args.aux_weight > 0, policy=args.policy_weight > 0, teacher=teacher,
+              dense=args.ft == "dense").to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
     zero = torch.zeros((), device=dev)
@@ -719,7 +801,7 @@ def main():
     for epoch in range(1, args.epochs + 1):
         net.train()
         order = train_t[torch.randperm(len(train_t), generator=shuffle, dtype=torch.int32).to(data_dev)]
-        total = 0.0
+        total = torch.zeros((), dtype=torch.float64, device=dev)  # on the GPU: see train_streaming
         for i in range(0, len(order), args.batch):
             idx = order[i:i + args.batch]
             opt.zero_grad()
@@ -728,7 +810,8 @@ def main():
              + args.teacher_weight * teach_loss).backward()
             opt.step()
             net.clip()
-            total += main_loss.item() * len(idx)
+            total += main_loss.detach().double() * len(idx)
+        total = total.item()
         sched.step()
         net.eval()
         v = va = vp = vt = 0.0
