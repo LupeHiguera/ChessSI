@@ -663,7 +663,7 @@ struct Searcher {
 
     std::string score_string(int score) const {
         if (std::abs(score) < VALUE_MATE_IN_MAX_PLY)
-            return "cp " + std::to_string(score);
+            return "cp " + std::to_string(score * 100 / NormalizeScore);
         int moves = score > 0 ? (VALUE_MATE - score + 1) / 2 : -(VALUE_MATE + score) / 2;
         return "mate " + std::to_string(moves);
     }

@@ -53,7 +53,8 @@ One idea per cycle. Do not batch ideas: a combined result says nothing about eac
 3. `make test` must pass. If the change should not alter search (refactor, speedup), the bench node
    count must be unchanged.
 4. Run `scripts/sprt.sh` against the last accepted commit. Gainers use `ELO0=0 ELO1=5`; simplifications
-   use `ELO0=-5 ELO1=0`.
+   use `ELO0=-5 ELO1=0`. The bounds are in normalized Elo, fastchess's default: measured on 2026-11-24, one
+   normalized Elo was about 0.52 Elo for this engine, so `[0, 5]` asks for about 2.6 Elo. Logs print both.
 5. Add a row to the log in `docs/IDEAS.md`, pass or fail: date, model, kind (Known or Novel), idea,
    result, Elo with its error bar, games. The model column names the AI that proposed and wrote the
    change. That column is the benchmark data, so fill it in honestly.

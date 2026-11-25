@@ -5,7 +5,7 @@
 #
 # Settings (environment variables):
 #   TC=10+0.1        time control; confirm winners with TC=60+0.6
-#   ELO0=0 ELO1=5    SPRT bounds; use ELO0=-5 ELO1=0 for simplifications
+#   ELO0=0 ELO1=5    SPRT bounds in normalized Elo; use ELO0=-5 ELO1=0 for simplifications
 #   ALPHA=0.05 BETA=0.05  SPRT error rates (false pass, false fail)
 #   ROUNDS=100000    maximum game pairs before stopping undecided
 #   CONCURRENCY=N    games in parallel (default: cores - 2)
@@ -60,5 +60,5 @@ echo "SPRT [$ELO0, $ELO1] alpha $ALPHA beta $BETA at $TC, $CONCURRENCY games in 
     -resign movecount=3 score=400 twosided=true \
     -draw movenumber=40 movecount=8 score=10 \
     -concurrency "$CONCURRENCY" \
-    -sprt elo0="$ELO0" elo1="$ELO1" alpha="$ALPHA" beta="$BETA" \
+    -sprt elo0="$ELO0" elo1="$ELO1" alpha="$ALPHA" beta="$BETA" model=normalized \
     -pgnout file=engines/sprt.pgn

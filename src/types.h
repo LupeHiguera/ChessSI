@@ -43,3 +43,8 @@ constexpr int MAX_PLY = 128;
 constexpr int VALUE_INF = 32001;
 constexpr int VALUE_MATE = 32000;
 constexpr int VALUE_MATE_IN_MAX_PLY = VALUE_MATE - MAX_PLY;
+
+// The raw score at which the side ahead wins half its games, measured on the engine's own self-play
+// (scripts/winrate.py: 337 for net27-h1536, generation 17). UCI output divides by it, so 100 centipawns
+// means what GUIs and match runners take it to mean. Measure it again when a network shifts the scale.
+constexpr int NormalizeScore = 337;

@@ -46,5 +46,5 @@ echo "binary from $(git rev-parse --short "$REF"); $n vs $b at $TC, SPRT [$ELO0,
     -resign movecount=3 score=400 twosided=true \
     -draw movenumber=40 movecount=8 score=10 \
     -concurrency "$CONCURRENCY" \
-    -sprt elo0="$ELO0" elo1="$ELO1" alpha="$ALPHA" beta="$BETA" \
+    -sprt elo0="$ELO0" elo1="$ELO1" alpha="$ALPHA" beta="$BETA" model=normalized \
     -pgnout file="engines/$NAME.pgn"
