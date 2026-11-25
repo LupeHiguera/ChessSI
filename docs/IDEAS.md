@@ -107,22 +107,11 @@ it next to the full result shows whether the pre-screen can be trusted to drop i
 | 2026-11-23 | Claude Opus 5.5 trained it (2026-11-04), Claude Fable 5.2 tested it | Known | net27-h1536: net25's recipe at 1536 hidden units on generations 10 to 14 (1.999B training positions, 16 epochs), against net25-h1024, both in one binary from `2d20c888`. Pentanomial [20, 402, 900, 505, 32] | Passed (H1, LLR 2.95) | +11.87 ± 6.10 | 3,718 (6 concurrent, PC1 WSL cores 14-19, Astra's while idle) | Not run |
 | 2026-11-23 | Claude Opus 5.5 trained it (2026-11-03), Claude Fable 5.2 tested it | Known | net26-h1024: net25's recipe on generations 10 to 13 (1.77B positions), against net25-h1024, both in one binary from `2d20c888`. Pentanomial [24, 439, 885, 477, 36]. Stopped when net27-h1536 passed against the same base | Inconclusive (stopped, LLR 1.22) | +5.79 ± 6.22 | 3,722 (6 concurrent, PC1 WSL cores 8-13) | GPU at equal nodes on 2026-11-03: −4.8 ± 10.5 and +13.2 ± 10.5 at 20k, +10.0 ± 9.5 at 100k |
 | 2026-11-23 | Claude Fable 5.2 | Known | Capture history: a [moving piece][to][captured type] table with the quiet history's bonus, a quarter of the entry added to the MVV-LVA score (`claude/capture-history`, `9a4a44d`, against net27 main `fe862e0`). Pentanomial [16, 438, 898, 429, 18]. Old test setup (see the note below the table) | Inconclusive (stopped to give the PC to the owner, LLR −0.51) | −0.48 ± 5.99 | 3,598 (6 concurrent, PC1 WSL cores 8-13) | Not run |
-| 2026-11-23 | Claude Fable 5.2 | Known | Persistent quiet history: the main thread keeps its butterfly history between searches, halved at each new one, as continuation history already was (`claude/history-persist`, `547d3fb`, against `fe862e0`). Pentanomial [13, 443, 934, 401, 17]. Old test setup | Inconclusive (stopped, LLR −1.32) | −3.27 ± 5.85 | 3,616 (6 concurrent, PC1 WSL cores 14-19) | Not run |
+| 2026-11-23 | Claude Fable 5.2 | Known | Persistent quiet history: the main thread keeps its butterfly history between searches, halved at each new one, as continuation history already was (`claude/history-persist`, `547d3fb`, against `fe862e0`). Pentanomial [13, 443, 934, 401, 17]. Old test setup | Inconclusive (stopped, LLR −1.32) | −3.27 ± 5.85 | 3,616 (6 concurrent, PC1 WSL cores 14-19, Astra's while idle) | Not run |
 | 2026-11-24 | Claude Fable 5.2 | Known | LMR: one ply more at expected cut nodes, with the cut-node flag passed as in Stockfish (`claude/lmr-cutnode`, `6b11e58`, against `2d20c888` = net25 main + TT eval). Five engines measured +5 to +7 for this; ChessSI's base reduction (divisor 1.72) already reduces far more than theirs (2.36 to 2.95). Pentanomial [60, 1365, 3017, 1373, 45]. Old test setup | Inconclusive (stopped, LLR −1.82) | −0.65 ± 3.27 | 11,720 (4 concurrent, PC1 WSL cores 1-4) | Not run |
 | 2026-11-24 | Claude Fable 5.2 | Known | net28-h1536: net27's recipe on generations 10 to 16 (2.747B training positions, 10 epochs, streaming trainer), against net27-h1536, both in one binary from `1616040`. Pentanomial [29, 544, 1075, 568, 44]. Old test setup; restarted on 2026-11-25 under the corrected one | Stopped (LLR 0.93) | +4.15 ± 5.64 | 4,520 (6 concurrent, PC1 WSL cores 5,6,8-11) | GPU at equal nodes: +13.2 ± 10.4 and +11.2 ± 10.7 at 20k, +13.4 ± 9.3 at 100k |
 | 2026-11-24 | Claude Fable 5.2 | Known | Profile-guided and link-time-optimised build (`claude/pgo-build`, `2dd77fd`, work in progress). Speed only, measured with a game running on the PC: PGO + LTO 1.00 to 1.01 times the plain build, PGO alone about 1.02, LTO alone about 1.03, run-to-run noise 7 to 20%. A profile puts about 47% of bench time in the network's accumulator update and evaluation, which compiler flags do not speed up | Not tested by SPRT (gain within noise) | | | |
-| 2026-11-25 | Claude Fable 5.2 | Known | CPU SPSA retune of 24 search constants: the values after 12,000 game pairs at 5+0.05 with net27, tuned under the old test setup with the new tool `scripts/spsa.py` and `make TUNE=1` (`135a030`), tested as `claude/spsa-tuned` `f704535` against `1c64e85` under the corrected setup. Largest moves: reverse futility margin 77 → 103, futility margin 127 → 152, null-move eval divisor 200 → 356, history bonus per ply 300 → 586 and cap 1600 → 3570, LMR divisor 1.72 → 2.19. Pentanomial [11, 364, 789, 338, 9]. The first 284 games, under the old setup, stood at −9.8 ± 20.9 | Failed (H0, LLR −2.95, bounds [0, 10] nElo) | −3.45 ± 6.30 | 3,022 (11 concurrent, PC1 WSL cores 1-4 and 12-18) | Not run |
-
-**The old test setup (found 2026-11-25).** Every row above this note dated up to 2026-11-24 was played under two defects,
-fixed in PR #109. First, the SPRT bounds in `scripts/sprt.sh` and `scripts/nnue-sprt.sh` are in
-normalized Elo, fastchess's default, so "[0, 5]" asked for about 2.6 Elo, not 5: the logged LLR of the
-cut-node test (−1.82 at 11,720 games) is what the normalized formula gives (−1.825), where the
-logistic one gives about −5.7. Second, the engine printed its raw network score as centipawns, and
-that score is 3.37 times larger (the side ahead wins half its self-play games at a raw 337). The
-resign rule, meant as four pawns, fired at about 1.3 pawns, where the side ahead wins 60% and draws
-37% of its games; it decided 52.5% of the 4,458 games of the first net28 run, at a median of 63
-plies. The results remain valid measurements of that setup, but their sizes are not comparable with
-results under the corrected one.
+| 2026-11-25 | Claude Fable 5.2 | Known | CPU SPSA retune of 24 search constants: the values after 12,000 game pairs at 5+0.05 with net27, tuned under the old test setup with the new tool `scripts/spsa.py` and `make TUNE=1` (`135a030`), tested as `claude/spsa-tuned` `f704535` against `1c64e85` under the corrected setup. Largest moves: reverse futility margin 77 → 103, futility margin 127 → 152, null-move eval divisor 200 → 356, history bonus per ply 300 → 586 and cap 1600 → 3570, LMR divisor 1.72 → 2.19. Pentanomial [11, 364, 789, 338, 9]. The first 284 games, under the old setup, stood at −9.8 ± 20.9 | Failed (H0, LLR −2.95, bounds [0, 10] nElo) | −3.45 ± 6.30 | 3,022 (11 concurrent, PC1 WSL cores 1-4 and 12-18, Astra's 14-18 while idle) | Not run |
 
 These five completed or stopped trials were recovered from Claude's original logs by GPT-6 (Codex)
 on 2026-11-03. Claude retains the proposal and implementation credit. All used SPRT [0, 5] at
@@ -130,6 +119,19 @@ on 2026-11-03. Claude retains the proposal and implementation credit. All used S
 terminal statistics and the takeover state are in [the handoff record](research/takeover-2026-11-03/HANDOFF.md).
 
 The #103 result (+7.4 ±4.6 against #100) includes both double singular extensions and keeping checking moves. It is not an incremental gain over #102; do not add it to #102’s +16.1. Integration on 2026-11-04 preserves that tested stack.
+
+**The old test setup (found 2026-11-25, fixed in PR #109).** Two defects shaped the rows before
+2026-11-25. First, every SPRT run through `scripts/sprt.sh` or `scripts/nnue-sprt.sh` used
+fastchess's default model, normalized Elo, so "[0, 5]" asked for about 2.6 Elo, not 5: the logged LLR
+of the cut-node test (−1.82 at 11,720 games) is what the normalized formula gives (−1.825), where the
+logistic one gives about −5.7. Second, from the first network (2026-10-23; PeSTO printed real
+centipawns) the engine printed its raw network score as centipawns, and adjudication read it. That
+score is larger than a centipawn by a factor that depends on the network: 3.37 for net27, where the
+side ahead wins half its self-play games at a raw 337. The resign rule, meant as four pawns, fired at
+about 1.2 pawns for net27, where the side ahead wins 60% and draws 37% of its games; it decided 52.5%
+of the 4,458 games of the first net28 run, at a median of 63 plies. Rows without adjudication, such
+as the 2026-10-21 killer-move test, are not affected by the second defect. The results remain valid
+measurements of that setup, but their sizes are not comparable with results under the corrected one.
 
 Late move pruning failed because quiet moves after the killers are in generation order, so the
 "late" moves it skipped were arbitrary rather than the worst. It needs a history heuristic first.
