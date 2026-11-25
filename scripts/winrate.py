@@ -1,5 +1,10 @@
 """Win rate against the engine's raw score, from its own self-play data (White's view: fen | score | result | ...).
-Finds the raw score at which the side ahead wins half its games, the usual meaning of 100 centipawns."""
+Finds the raw score at which the side ahead wins half its games, the usual meaning of 100 centipawns.
+
+    python3 scripts/winrate.py <datagen file> <lines>
+
+Give it millions of lines from fresh self-play of the network in question: on net27's generation-17
+data, 3,000,000 lines gave 337 and 346 on two slices, and 200,000 lines gave 267."""
 import os, sys
 
 path, limit = os.path.expanduser(sys.argv[1]), int(sys.argv[2])

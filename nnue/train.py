@@ -463,7 +463,7 @@ class Net(torch.nn.Module):
     def forward_dense(self, stm, nstm):
         """forward() as matrix products, the same function of the same parameters. Both perspectives
         are the rows of one 0/1 matrix, (2 * batch, 769): a 1 for each feature present, and a last
-        column of ones that multiplies the bias, appended to the weights as row 769. EmbeddingBag's
+        column of ones that multiplies the bias, appended to the weights as row 768. EmbeddingBag's
         backward sorts every index and re-reads each position's gradient row once per piece; here the
         weight gradient is one more product. This works while there are only 768 features: the cost
         grows with the number of feature rows, not with the pieces on the board."""
