@@ -19,6 +19,7 @@ Phase 4 of 5 (refinement: tuning, more data and bigger networks). The project st
 | 2026-10-31 | Non-pawn correction history, continuation history, a null-move reduction that grows with eval − beta | 3499 ± 23 | 1,200 vs Stash 30-37 at 10+0.1 |
 | 2026-11-01 | The same engine, under CCRL-style conditions | **3420 ± 21** | 1,260 vs seven engines rated 3375-3720 |
 | 2026-11-03 | Main `014dd979`: net22-h768, RFP improving and speedups, under CCRL-style conditions | **3482 ± 21** | 1,260 against the same seven-engine pool, PC2 E-cores |
+| 2026-11-26 | `06c5d46`: net28-h1536, minor/major correction history, the corrected adjudication and score scale, under CCRL-style conditions | **3550 ± 20** | 1,260 against the same seven-engine pool, PC1 P- and E-cores (1-4, 12-18) |
 
 Until 2026-10-31, gauntlets were played at 10+0.1 against Stash versions with known CCRL ratings, the
 strongest of them 3417, so the figures were extrapolations. The 2026-11-01 gauntlet copies CCRL Blitz's
