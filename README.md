@@ -61,8 +61,8 @@ The engine:
 - **Evaluation:** NNUE, (768 → 1536) × 2 → SCReLU → 1, compiled into the binary, plus correction
   history, which learns during a game how far the network is off for each pawn structure and for each
   side's non-pawn pieces.
-  - The network is trained only on ChessSI's own games. The default, net27-h1536, was trained for 16
-    epochs on 1.999B unique generation-10 to 14 positions labelled by ChessSI, using the streaming
+  - The network is trained only on ChessSI's own games. The default, net28-h1536, was trained for 10
+    epochs on 2.747B unique generation-10 to 16 positions labelled by ChessSI, using the streaming
     trainer and scattered shards; the history is in [nets/README.md](nets/README.md).
   - The output layer is vectorized by hand (AVX2 and AVX-VNNI).
   - PeSTO tables are the fallback.
@@ -70,7 +70,7 @@ The engine:
   data and plays fixed-node matches between candidate networks. CPU SPRTs decide whether a network
   becomes the default. GPU search-change testing and SPSA were paused after calibration disagreed
   with CPU results; their earlier measurements remain in the benchmark log.
-- **Bench:** `42737` nodes with net27-h1536 and the search changes accepted up to 2026-11-23.
+- **Bench:** `49864` nodes with net28-h1536 and the search changes accepted up to 2026-11-25.
 
 The newer merged engine has not yet had a CCRL-style gauntlet; 3482 ±21 remains the latest measured estimate.
 
