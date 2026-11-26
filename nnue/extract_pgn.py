@@ -9,6 +9,10 @@ move played is not a capture or promotion, and the score is not a mate. Writes t
 
 With --engine, keeps only positions where the engine whose PGN name starts with NAME is to move:
 for games against other engines, so only ChessSI's own scores are used (see the rules in AGENTS.md).
+
+Training data holds the network's raw score, and the PGN holds what the engine printed. Builds from
+2026-11-25 on print centipawns, raw * 100 / NormalizeScore (src/types.h), so --raw-per-cp defaults to
+NormalizeScore / 100. Pass --raw-per-cp 1 for games played by earlier builds, which printed raw scores.
 """
 import argparse
 import re
@@ -23,6 +27,8 @@ RESULTS = {"1-0": "1.0", "0-1": "0.0", "1/2-1/2": "0.5"}
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--engine", help="keep only positions where this engine (PGN name prefix) is to move")
+    ap.add_argument("--raw-per-cp", type=float, default=3.37,
+                    help="raw network units per printed centipawn: NormalizeScore / 100 of the build that played; 1 before 2026-11-25")
     ap.add_argument("out")
     ap.add_argument("pgns", nargs="+")
     args = ap.parse_args()
@@ -43,7 +49,7 @@ def main():
                         m = SCORE.match(node.comment or "")
                         if (m and board.turn in ours and not board.is_check() and not board.is_capture(move)
                                 and move.promotion is None):
-                            cp = round(float(m.group(1)) * 100)
+                            cp = round(float(m.group(1)) * 100 * args.raw_per_cp)
                             if board.turn == chess.BLACK:
                                 cp = -cp
                             out.write(f"{board.fen()} | {cp} | {result}\n")
