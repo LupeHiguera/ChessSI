@@ -176,7 +176,7 @@ void Position::push_accumulator(const NNUE::Delta& delta, bool apply) {
     int16_t* acc = accStack.data() + accTop;
     accTop += n;
     if (apply)
-        NNUE::apply(acc - n, acc, delta);
+        NNUE::apply(acc - n, acc, delta, *this);
 }
 
 std::string Position::fen() const {

@@ -11,8 +11,9 @@ unset), so A and B can also be one network with two sets of constants.
 
 nodes is one count for both sides, or "<A>:<B>" for node odds. A fixed node count leaves out speed: a bigger
 network searches fewer nodes in the same time, so give it fewer here, in the ratio of the two networks'
-CPU nodes per second, as an estimate of a timed match. Networks of different sizes, or node odds, play
-through match_side, one kernel build per side; GPU_MATCH_SPLIT=1 forces that path (the same games).
+CPU nodes per second, as an estimate of a timed match. Networks of different sizes, a mirrored network against
+a plain one, or node odds, play through match_side, one kernel build per side; GPU_MATCH_SPLIT=1 forces that
+path (the same games).
 """
 import json
 import math
@@ -61,14 +62,15 @@ def parse_nodes(text):
 
 class Sides:
     """Both sides of a set of match games on the GPU: A is network A with GPU_PARAMS and its own tables, B network
-    B with GPU_PARAMS_B (A's if unset). One match_step plays a ply of every game when the two have one hidden size
-    and one node count; otherwise each side has a build of its own size and plays its plies through match_side."""
+    B with GPU_PARAMS_B (A's if unset). One match_step plays a ply of every game when the two have one build (hidden
+    size and mirroring) and one node count; otherwise each side has a build of its own and plays its plies through
+    match_side."""
 
     def __init__(self, net_a, net_b, capacity, nodes):
         self.dg = dg = GpuDatagen(net_a, capacity, kernel="match_step")  # the games, and A's network and tables
         self.n = n = dg.capacity
         self.nodes_a, self.nodes_b = (np.uint64(x) for x in parse_nodes(nodes))
-        hb, ftw, ftb, outw, outb = load_net(net_b)
+        hb, mirror_b, ftw, ftb, outw, outb = load_net(net_b)
         # Still to allocate: B's tables, and B's accumulators if the sides are split. Past free memory the driver
         # pages GPU memory out to system RAM, and a match crawls instead of failing.
         need = n * (dg.tables_bytes + (MAX_PLY + 2) * 2 * hb * 2)
@@ -84,9 +86,10 @@ class Sides:
         self.tables_b = cp.zeros(n * dg.tables_bytes, cp.uint8)  # B's TTs and histories
         self.k = {name: dg.mod.get_function(name)
                   for name in ("match_init", "match_setup", "match_step", "match_side", "match_results")}
-        self.split = hb != dg.h or self.nodes_a != self.nodes_b or os.environ.get("GPU_MATCH_SPLIT") == "1"
+        same_build = (hb, mirror_b) == (dg.h, dg.mirror)
+        self.split = not same_build or self.nodes_a != self.nodes_b or os.environ.get("GPU_MATCH_SPLIT") == "1"
         if self.split:
-            mod_b = dg.mod if hb == dg.h else build_module(hb)
+            mod_b = dg.mod if same_build else build_module(hb, mirror_b)
             assert module_sizes(mod_b) == module_sizes(dg.mod), "both builds must lay out a game the same way"
             self.side_b = mod_b.get_function("match_side")
             self.accs_b = cp.zeros(n * (MAX_PLY + 2) * 2 * hb, cp.int16)

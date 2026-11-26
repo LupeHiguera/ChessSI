@@ -362,9 +362,17 @@ __device__ bool gives_check(const Game* g, u16 m) {
 
 // ---- NNUE (one warp per game; this lane's units) ----
 __device__ __forceinline__ short* acc_slot(short* acc, int slot) { return acc + (size_t)slot * 2 * H; }
-__device__ __forceinline__ int feat(int persp, int p, int s) { // White's view, or Black's (colors swapped, ranks flipped)
-    return persp == 0 ? p * 64 + s : ((color_of(p) ^ 1) * 6 + type_of(p)) * 64 + (s ^ 56);
+// White's view, or Black's (colors swapped, ranks flipped), with files flipped when flip is 7 (see flip_of).
+__device__ __forceinline__ int feat(int persp, int p, int s, int flip) {
+    return persp == 0 ? p * 64 + (s ^ flip) : ((color_of(p) ^ 1) * 6 + type_of(p)) * 64 + (s ^ 56 ^ flip);
 }
+// A mirrored network (-DMIRROR, "CSNM" files) flips a perspective's view left to right while that side's king
+// stands on files e-h, as NNUE::orientation in src/nnue.cpp.
+#ifdef MIRROR
+__device__ __forceinline__ int flip_of(const Game* g, int persp) { return king_sq(g, persp) & 4 ? 7 : 0; }
+#else
+__device__ __forceinline__ int flip_of(const Game*, int) { return 0; }
+#endif
 // A lane's units move in groups of 8 int16 values, one 16-byte load or store each (rows and
 // accumulators are 16-byte aligned). __vadd2 and __vsub2 add two int16 values per 32-bit word with
 // the same wrap-around as (short)(a + b).
@@ -382,25 +390,28 @@ __device__ __forceinline__ uint4 sub8(uint4 a, uint4 b) {
     return make_uint4(__vsub2(a.x, b.x), __vsub2(a.y, b.y), __vsub2(a.z, b.z), __vsub2(a.w, b.w));
 }
 
-__device__ void refresh(const Game* g, const Net& net, short* a) {
-    int base = LANE_BASE;
-    for (int persp = 0; persp < 2; ++persp) {
-        for (int c = 0; c < UNITS; c += 8) {
-            uint4 v = load8(net.ftb + UOFF(c));
-            for (u64 b = occupied(g); b; b &= b - 1) {
-                int s = lsb(b);
-                v = add8(v, load8(net.ftw + (size_t)feat(persp, g->board[s], s) * H + UOFF(c)));
-            }
-            store8(a + persp * H + UOFF(c), v);
+__device__ void refresh_half(const Game* g, const Net& net, short* a, int persp) {
+    int base = LANE_BASE, flip = flip_of(g, persp);
+    for (int c = 0; c < UNITS; c += 8) {
+        uint4 v = load8(net.ftb + UOFF(c));
+        for (u64 b = occupied(g); b; b &= b - 1) {
+            int s = lsb(b);
+            v = add8(v, load8(net.ftw + (size_t)feat(persp, g->board[s], s, flip) * H + UOFF(c)));
         }
+        store8(a + persp * H + UOFF(c), v);
     }
+}
+__device__ void refresh(const Game* g, const Net& net, short* a) {
+    for (int persp = 0; persp < 2; ++persp) refresh_half(g, net, a, persp);
 }
 // The feature changes of a move, in fixed slots: 0 off and 1 on for the moving piece (1 is the new
 // piece for a promotion), 2 off for a capture or castling's rook, 3 on for the rook. Fixed slots keep
-// the indices compile-time constants, so the struct stays in registers.
+// the indices compile-time constants, so the struct stays in registers. flipW and flipB: flip_of each
+// side after the move.
 struct Delta {
     int n;
     int piece[4], sq[4];
+    int flipW, flipB;
 };
 // net.ftw holds 768 rows of feature weights and then the same rows negated (feature_rows in datagen.py): a removed
 // feature (slots 0 and 2) adds its negated row, one 16x2 add per word where a subtraction takes three on sm_120.
@@ -418,15 +429,16 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
 #pragma unroll 1
         for (int persp = 0; persp < 2; ++persp) {
             uint4 v = load8(from + persp * H + UOFF(c)), w[4];
+            int flip = persp ? d.flipB : d.flipW;
 #pragma unroll
             for (int k = 0; k < 4; ++k)
 #ifdef NO_NEG_ROWS
-                if (k < d.n) w[k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + UOFF(c));
+                if (k < d.n) w[k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k], flip) * H + UOFF(c));
 #pragma unroll
             for (int k = 0; k < 4; ++k)
                 if (k < d.n) v = k % 2 ? add8(v, w[k]) : sub8(v, w[k]);
 #else
-                if (k < d.n) w[k] = load8(net.ftw + (size_t)(feat(persp, d.piece[k], d.sq[k]) + OFF_ROW(k)) * H + UOFF(c));
+                if (k < d.n) w[k] = load8(net.ftw + (size_t)(feat(persp, d.piece[k], d.sq[k], flip) + OFF_ROW(k)) * H + UOFF(c));
 #pragma unroll
             for (int k = 0; k < 4; ++k)
                 if (k < d.n) v = add8(v, w[k]);
@@ -443,7 +455,7 @@ __device__ void apply_delta(const Net& net, const short* from, short* to, const 
             v[persp] = load8(from + persp * H + UOFF(c));
 #pragma unroll
             for (int k = 0; k < 4; ++k)
-                if (k < d.n) w[persp][k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k]) * H + UOFF(c));
+                if (k < d.n) w[persp][k] = load8(net.ftw + (size_t)feat(persp, d.piece[k], d.sq[k], persp ? d.flipB : d.flipW) * H + UOFF(c));
         }
 #pragma unroll
         for (int persp = 0; persp < 2; ++persp) {
@@ -704,7 +716,16 @@ __device__ bool do_move(Game* g, u16 m, const Net& net, short* acc, Tables* tb =
     // Legal first: the caller undoes an illegal move at once, and nothing ever reads its
     // accumulator, so it is only computed for legal ones. The search checks with legal() before.
     bool legal = known || !attacked(g, king_sq(g, us), them);
-    if (legal) apply_delta(net, acc_slot(acc, top), acc_slot(acc, top + 1), d);
+    if (legal) {
+        d.flipW = flip_of(g, 0);
+        d.flipB = flip_of(g, 1);
+        apply_delta(net, acc_slot(acc, top), acc_slot(acc, top + 1), d);
+#ifdef MIRROR
+        // The mover's king crossed the d/e line, so its whole view flipped: rebuild that half. The CPU starts from
+        // its refresh cache instead, with the same integers, since sums of rows come out the same in any order.
+        if (type_of(pc) == KING && ((from ^ to) & 4)) refresh_half(g, net, acc_slot(acc, top + 1), us);
+#endif
+    }
     __syncwarp();
     return legal;
 }

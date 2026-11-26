@@ -1,7 +1,10 @@
 #include "nnue.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -41,6 +44,7 @@ constexpr int QA = 255, QB = 64;
 // File layout written by nnue/train.py, all little-endian.
 struct Network {
     int hidden = 0;
+    bool mirrored = false;          // magic "CSNM"; "CSNN" otherwise
     std::vector<int16_t> ftWeights; // [Inputs][hidden]
     std::vector<int16_t> ftBias;    // [hidden]
     std::vector<int16_t> outWeights; // [2 * hidden]: side to move first, then the opponent
@@ -50,10 +54,17 @@ struct Network {
 Network net;
 int loadedGeneration = 0;
 
-// Feature index from `persp`'s point of view: own pieces first, squares mirrored for Black.
-int feature(Color persp, Piece p, Square s) {
+// What `persp` sees on square s is s ^ orientation: ranks flipped for Black, and with a mirrored network
+// files flipped while that side's king stands on files e-h.
+int orientation(const Position& pos, Color persp, bool mirrored) {
+    int o = persp == WHITE ? 0 : 56;
+    return mirrored && file_of(pos.king_square(persp)) >= 4 ? o ^ 7 : o;
+}
+
+// Feature index from `persp`'s point of view: own pieces first.
+int feature(Color persp, Piece p, Square s, int orient) {
     int side = color_of(p) == persp ? 0 : 384;
-    return side + type_of(p) * 64 + (persp == WHITE ? s : s ^ 56);
+    return side + type_of(p) * 64 + (s ^ orient);
 }
 
 // Reads `count` values from a byte buffer, advancing `pos`; false if the buffer is too short.
@@ -71,8 +82,11 @@ bool parse(const char* data, size_t size) {
     size_t pos = 0;
     char magic[4];
     Network n;
-    if (!read(data, size, pos, magic, 4) || std::memcmp(magic, "CSNN", 4) != 0 || !read(data, size, pos, &n.hidden, 1)
-        || n.hidden <= 0 || n.hidden > 4096 || n.hidden % 32 != 0)
+    if (!read(data, size, pos, magic, 4))
+        return false;
+    n.mirrored = std::memcmp(magic, "CSNM", 4) == 0;
+    if ((!n.mirrored && std::memcmp(magic, "CSNN", 4) != 0) || !read(data, size, pos, &n.hidden, 1) || n.hidden <= 0
+        || n.hidden > 4096 || n.hidden % 32 != 0)
         return false;
     n.ftWeights.resize(size_t(Inputs) * n.hidden);
     n.ftBias.resize(n.hidden);
@@ -128,33 +142,73 @@ int NNUE::hidden() {
     return net.hidden;
 }
 
-void NNUE::refresh(const Position& pos, int16_t* acc) {
-    const int h = net.hidden;
-    std::copy(net.ftBias.begin(), net.ftBias.end(), acc);
-    std::copy(net.ftBias.begin(), net.ftBias.end(), acc + h);
+namespace {
+
+// One perspective's half of an accumulator from scratch: the bias plus the row of every piece. The trainer
+// clips weights to +-1.98, so 32 pieces plus the bias stay within int16.
+void refresh_half(const Position& pos, Color persp, int16_t* half) {
+    const int h = net.hidden, o = orientation(pos, persp, net.mirrored);
+    std::copy(net.ftBias.begin(), net.ftBias.end(), half);
     for (Bitboard b = pos.pieces(); b;) {
         Square s = pop_lsb(b);
-        add(acc, pos.piece_on(s), s);
+        const int16_t* row = &net.ftWeights[size_t(feature(persp, pos.piece_on(s), s, o)) * h];
+        for (int i = 0; i < h; ++i)
+            half[i] += row[i];
     }
 }
 
-// The trainer clips weights to +-1.98, so 32 pieces plus the bias stay within int16.
-void NNUE::add(int16_t* acc, Piece p, Square s) {
-    Delta d;
-    d.add(p, s);
-    apply(acc, acc, d);
+// A mirrored network's refresh cache, per thread: for each perspective and each of its two orientations, the
+// half last built for it and the pieces it was built from. A rebuild starts from that entry and adds or removes
+// only the pieces that differ, usually a few where a full refresh adds all of them. Integer sums come out the
+// same in any order, so the result equals refresh_half's.
+struct CacheEntry {
+    std::vector<int16_t> half;
+    Bitboard pieces[12] = {}; // by Piece
+};
+thread_local struct {
+    int generation = 0;
+    CacheEntry entries[2][2]; // [perspective][files flipped]
+} cache;
+
+void rebuild_half(const Position& pos, Color persp, int16_t* half) {
+    if (cache.generation != loadedGeneration) {
+        for (auto& side : cache.entries)
+            for (CacheEntry& e : side)
+                e = {net.ftBias, {}};
+        cache.generation = loadedGeneration;
+    }
+    const int h = net.hidden, o = orientation(pos, persp, true);
+    CacheEntry& e = cache.entries[persp][o & 7 ? 1 : 0];
+    for (Piece p = 0; p < 12; ++p) {
+        const Bitboard now = pos.pieces(color_of(p), type_of(p));
+        for (Bitboard b = e.pieces[p] & ~now; b;) {
+            const int16_t* row = &net.ftWeights[size_t(feature(persp, p, pop_lsb(b), o)) * h];
+            for (int i = 0; i < h; ++i)
+                e.half[i] -= row[i];
+        }
+        for (Bitboard b = now & ~e.pieces[p]; b;) {
+            const int16_t* row = &net.ftWeights[size_t(feature(persp, p, pop_lsb(b), o)) * h];
+            for (int i = 0; i < h; ++i)
+                e.half[i] += row[i];
+        }
+        e.pieces[p] = now;
+    }
+    std::copy(e.half.begin(), e.half.end(), half);
 }
 
-void NNUE::sub(int16_t* acc, Piece p, Square s) {
-    Delta d;
-    d.sub(p, s);
-    apply(acc, acc, d);
+// Whether the move d that led to pos changed how `persp` sees the board, with a mirrored network: when that
+// side's king left a square on the other side of the d/e line from where it stands now.
+bool reoriented(const NNUE::Delta& d, const Position& pos, Color persp) {
+    const Piece king = make_piece(persp, KING);
+    const Square now = pos.king_square(persp);
+    for (int k = 0; k < d.subs; ++k)
+        if (d.subPiece[k] == king && ((d.subSq[k] ^ now) & 4))
+            return true;
+    return false;
 }
-
-namespace {
 
 // acc[i] = prev[i] + the added rows - the removed rows, in one pass; A and S are known at compile
-// time so the loop vectorizes. prev may equal acc.
+// time so the loop vectorizes.
 template <int A, int S>
 void apply_rows(const int16_t* prev, int16_t* acc, const int16_t* const* add, const int16_t* const* sub, int n) {
     for (int i = 0; i < n; ++i) {
@@ -167,37 +221,83 @@ void apply_rows(const int16_t* prev, int16_t* acc, const int16_t* const* add, co
     }
 }
 
-template <int A, int S>
-void apply_both(const int16_t* prev, int16_t* acc, const NNUE::Delta& d) {
+template <bool Mirrored, int A, int S>
+void apply_both(const int16_t* prev, int16_t* acc, const NNUE::Delta& d, const Position& pos) {
     const int h = net.hidden;
     for (int persp = 0; persp < 2; ++persp) {
+        const Color c = Color(persp);
+        if (Mirrored && reoriented(d, pos, c)) {
+            rebuild_half(pos, c, acc + persp * h);
+            continue;
+        }
+        const int o = orientation(pos, c, Mirrored);
         const int16_t* add[2];
         const int16_t* sub[2];
         for (int k = 0; k < A; ++k)
-            add[k] = &net.ftWeights[size_t(feature(Color(persp), d.addPiece[k], d.addSq[k])) * h];
+            add[k] = &net.ftWeights[size_t(feature(c, d.addPiece[k], d.addSq[k], o)) * h];
         for (int k = 0; k < S; ++k)
-            sub[k] = &net.ftWeights[size_t(feature(Color(persp), d.subPiece[k], d.subSq[k])) * h];
+            sub[k] = &net.ftWeights[size_t(feature(c, d.subPiece[k], d.subSq[k], o)) * h];
         apply_rows<A, S>(prev + persp * h, acc + persp * h, add, sub, h);
     }
 }
 
+template <bool Mirrored>
+void apply_delta(const int16_t* prev, int16_t* acc, const NNUE::Delta& d, const Position& pos) {
+    switch (d.adds * 4 + d.subs) {
+    case 1 * 4 + 1: apply_both<Mirrored, 1, 1>(prev, acc, d, pos); break; // quiet move, promotion
+    case 1 * 4 + 2: apply_both<Mirrored, 1, 2>(prev, acc, d, pos); break; // capture
+    case 2 * 4 + 2: apply_both<Mirrored, 2, 2>(prev, acc, d, pos); break; // castling
+    default: std::abort();                                                 // do_move makes no other delta
+    }
+}
+
+// Out of line, so the mirrored code stays out of the plain update's function body: inlined beside it, it left
+// plain networks 0.4% slower.
+[[gnu::noinline]] void apply_mirrored(const int16_t* prev, int16_t* acc, const NNUE::Delta& d, const Position& pos) {
+    apply_delta<true>(prev, acc, d, pos);
+}
+
+#ifdef CHECK_ACC
+// With -DCHECK_ACC added to CXXFLAGS, every updated accumulator is compared with one built from scratch, and the
+// counts print at exit, so a run shows how many updates it checked and how many halves were rebuilt.
+std::atomic<uint64_t> checkedUpdates{0}, checkedRebuilds{0};
+struct CheckReport {
+    ~CheckReport() {
+        std::fprintf(stderr, "accumulator check: %llu updates, %llu half rebuilds, all equal to a full refresh\n",
+                     (unsigned long long)checkedUpdates, (unsigned long long)checkedRebuilds);
+    }
+} checkReport;
+
+void check(const int16_t* acc, const NNUE::Delta& d, const Position& pos) {
+    const int h = net.hidden;
+    std::vector<int16_t> fresh(2 * size_t(h));
+    for (int persp = 0; persp < 2; ++persp) {
+        refresh_half(pos, Color(persp), fresh.data() + persp * h);
+        checkedRebuilds += net.mirrored && reoriented(d, pos, Color(persp));
+    }
+    if (!std::equal(fresh.begin(), fresh.end(), acc)) {
+        std::fprintf(stderr, "accumulator differs from a full refresh after a move to %s\n", pos.fen().c_str());
+        std::abort();
+    }
+    ++checkedUpdates;
+}
+#endif
+
 } // namespace
 
-void NNUE::apply(const int16_t* prev, int16_t* acc, const Delta& d) {
-    switch (d.adds * 4 + d.subs) {
-    case 1 * 4 + 1: apply_both<1, 1>(prev, acc, d); break; // quiet move, promotion
-    case 1 * 4 + 2: apply_both<1, 2>(prev, acc, d); break; // capture
-    case 2 * 4 + 2: apply_both<2, 2>(prev, acc, d); break; // castling
-    case 1 * 4 + 0: apply_both<1, 0>(prev, acc, d); break;
-    case 0 * 4 + 1: apply_both<0, 1>(prev, acc, d); break;
-    case 0: if (prev != acc) std::copy(prev, prev + 2 * net.hidden, acc); break;
-    default: // never produced by do_move
-        apply_both<0, 0>(prev, acc, d);
-        for (int k = 0; k < d.adds; ++k)
-            add(acc, d.addPiece[k], d.addSq[k]);
-        for (int k = 0; k < d.subs; ++k)
-            sub(acc, d.subPiece[k], d.subSq[k]);
-    }
+void NNUE::refresh(const Position& pos, int16_t* acc) {
+    refresh_half(pos, WHITE, acc);
+    refresh_half(pos, BLACK, acc + net.hidden);
+}
+
+void NNUE::apply(const int16_t* prev, int16_t* acc, const Delta& d, const Position& pos) {
+    if (net.mirrored)
+        apply_mirrored(prev, acc, d, pos);
+    else
+        apply_delta<false>(prev, acc, d, pos);
+#ifdef CHECK_ACC
+    check(acc, d, pos);
+#endif
 }
 
 int NNUE::evaluate(const Position& pos) {

@@ -12,6 +12,10 @@ class Position;
 //
 // An accumulator holds the first layer for both perspectives: [0, H) from White's side, [H, 2H)
 // from Black's. Position keeps one per ply and updates it as pieces move.
+//
+// A mirrored network (magic "CSNM" where a plain one has "CSNN") also flips a perspective's view left to
+// right while that side's own king stands on files e-h, so each side sees its king on files a-d only. A king
+// move across the d/e line changes its own side's whole view, so that half is rebuilt instead of updated.
 namespace NNUE {
 
 // Loads a network file; returns false and keeps the current evaluation if it is invalid.
@@ -36,10 +40,8 @@ struct Delta {
 };
 
 void refresh(const Position& pos, int16_t* acc);
-// acc = prev with the delta applied, in one pass; prev may equal acc.
-void apply(const int16_t* prev, int16_t* acc, const Delta& d);
-void add(int16_t* acc, Piece p, Square s);
-void sub(int16_t* acc, Piece p, Square s);
+// acc = prev updated for the move d that led to pos.
+void apply(const int16_t* prev, int16_t* acc, const Delta& d, const Position& pos);
 
 // Centipawns from the side to move's point of view.
 int evaluate(const Position& pos);

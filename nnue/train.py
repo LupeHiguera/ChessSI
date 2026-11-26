@@ -1,7 +1,7 @@
 """Train ChessSI's NNUE on positions in the datagen text format.
 
     python train.py <data.txt>... <out.nnue> [--hidden 128] [--epochs 20] [--lambda 0.75] [--cache-dir dir]
-                    [--aux-weight 0] [--future-plies 8] [--policy-weight 0]
+                    [--aux-weight 0] [--future-plies 8] [--policy-weight 0] [--mirror]
     python train.py --shards <dir> <out.nnue> [same options] [--group 8] [--val-max N] [--resume]
 
 With --shards, positions stream from binary shards on disk (made by shards.cpp and shards.py), so the
@@ -12,7 +12,9 @@ one epoch); scattered, 0.00891.
 
 Network: (768 -> H) x 2 perspectives -> SCReLU -> 1, the usual first NNUE. Input features are
 (piece colour relative to the perspective, piece type, square), with squares mirrored vertically for
-Black's perspective. The output, times SCALE, is centipawns for the side to move.
+Black's perspective. With --mirror, a perspective's squares are also mirrored left to right while its own
+king stands on files e-h, so each side sees its king on files a-d only. The output, times SCALE, is
+centipawns for the side to move.
 
 --ft picks how the first layer is computed. dense (the default, needs CuPy) multiplies a one-hot
 matrix by the weights; bag is torch's EmbeddingBag, the only path before 2026-11-25 and the slower
@@ -28,8 +30,8 @@ from and to squares of the move played (cross-entropy), where the next recorded 
 With --teacher <net.nnue>, a training-only head learns that network's evaluation of each position
 (self-distillation from an earlier ChessSI network), weighted by --teacher-weight.
 
-Export (little-endian, see src/nnue.cpp): magic "CSNN", hidden size (int32), feature weights
-int16[768][H] and biases int16[H] scaled by QA, output weights int16[2H] scaled by QB, output bias
+Export (little-endian, see src/nnue.cpp): magic "CSNN" ("CSNM" with --mirror), hidden size (int32), feature
+weights int16[768][H] and biases int16[H] scaled by QA, output weights int16[2H] scaled by QB, output bias
 int32 scaled by QA * QB.
 """
 import argparse
@@ -52,9 +54,10 @@ PIECES = {"P": 0, "N": 1, "B": 2, "R": 3, "Q": 4, "K": 5}
 PAD = 768
 
 
-def features(board_field):
-    """Feature indices from White's and Black's perspective for one FEN board field."""
-    white, black = [], []
+def features(board_field, mirror=False):
+    """Feature indices from White's and Black's perspective for one FEN board field; with mirror, each
+    perspective's squares are flipped left to right while its own king stands on files e-h."""
+    pieces = []
     rank = 7
     file = 0
     for ch in board_field:
@@ -64,18 +67,35 @@ def features(board_field):
         elif ch.isdigit():
             file += int(ch)
         else:
-            sq = rank * 8 + file
-            is_white = ch.isupper()
-            pt = PIECES[ch.upper()]
-            white.append((0 if is_white else 384) + pt * 64 + sq)
-            black.append((0 if not is_white else 384) + pt * 64 + (sq ^ 56))
+            pieces.append((ch.isupper(), PIECES[ch.upper()], rank * 8 + file))
             file += 1
+    flip = {c: 7 if mirror and sq % 8 >= 4 else 0 for c, pt, sq in pieces if pt == PIECES["K"]}
+    white = [(0 if is_white else 384) + pt * 64 + (sq ^ flip[True]) for is_white, pt, sq in pieces]
+    black = [(0 if not is_white else 384) + pt * 64 + (sq ^ 56 ^ flip[False]) for is_white, pt, sq in pieces]
     return white, black
 
 
 # FLIP[f] is feature f seen from the other side: colours swap, squares mirror vertically. So one
 # White-perspective list per position is enough; the Black one is FLIP applied to it.
 FLIP = np.array([((f + 384) % 768) ^ 56 for f in range(PAD)] + [PAD], dtype=np.int64)
+
+
+def mirror_files(f):
+    """One perspective's feature lists (b, 32), flipped left to right (square ^ 7) in the rows where that
+    perspective's own king, the one feature in [320, 384), stands on files e-h. Bit 2 of a feature is bit 2
+    of its square, the high bit of the file."""
+    king_east = ((f >= 5 * 64) & (f < 6 * 64) & ((f & 4) != 0)).any(1, keepdim=True)
+    return torch.where(king_east & (f != PAD), f ^ 7, f)
+
+
+def views(feats_w, white, flip_t, mirror):
+    """The network's two inputs, side to move first, from White-perspective feature lists and whether White is
+    to move (bool, b); see mirror_files for mirror."""
+    feats_b = flip_t[feats_w]
+    if mirror:
+        feats_w, feats_b = mirror_files(feats_w), mirror_files(feats_b)
+    wt = white.unsqueeze(1)
+    return torch.where(wt, feats_w, feats_b), torch.where(wt, feats_b, feats_w)
 
 
 def white_features(board_field):
@@ -373,11 +393,12 @@ def played_moves(d, chunk=1 << 18):
 
 def teacher_predictions(path, inputs, n, dev, data_dev, chunk=1 << 18):
     """Win probability, from the side to move's view, that an exported one-bucket network gives
-    each of the n positions (`inputs` maps position indices on data_dev to feature tensors on dev,
-    as in main), kept on data_dev. The weights are dequantised back to floats, so this matches the
-    engine's eval up to rounding."""
+    each of the n positions (`inputs` maps position indices on data_dev, and whether to mirror, to
+    feature tensors on dev, as in main), kept on data_dev. The weights are dequantised back to floats,
+    so this matches the engine's eval up to rounding."""
     with open(path, "rb") as f:
-        assert f.read(4) == b"CSNN", "the teacher must be a one-bucket (CSNN) network"
+        magic = f.read(4)
+        assert magic in (b"CSNN", b"CSNM"), "the teacher must be a one-bucket (CSNN or CSNM) network"
         (h,) = struct.unpack("<i", f.read(4))
         ft_w = np.frombuffer(f.read(PAD * h * 2), dtype="<i2").reshape(PAD, h)
         ft_b = np.frombuffer(f.read(h * 2), dtype="<i2")
@@ -391,7 +412,7 @@ def teacher_predictions(path, inputs, n, dev, data_dev, chunk=1 << 18):
     with torch.no_grad():
         for s in range(0, n, chunk):
             idx = torch.arange(s, min(s + chunk, n), device=data_dev)
-            stm, nstm = inputs(idx)[:2]
+            stm, nstm = inputs(idx, magic == b"CSNM")
             a = torch.clamp(torch.nn.functional.embedding_bag(stm, w, mode="sum") + b, 0, 1) ** 2
             c = torch.clamp(torch.nn.functional.embedding_bag(nstm, w, mode="sum") + b, 0, 1) ** 2
             out[s:s + len(idx)] = torch.sigmoid(a @ ow[:h] + c @ ow[h:] + out_b / (QA * QB)).to(data_dev)
@@ -488,14 +509,14 @@ class Net(torch.nn.Module):
             self.out.weight.clamp_(-1.98, 1.98)
 
 
-def export(net, path):
+def export(net, path, mirror):
     hidden = net.ft_bias.shape[0]
     ft_w = torch.round(net.ft.weight[:PAD] * QA).to(torch.int16).cpu().numpy()
     ft_b = torch.round(net.ft_bias * QA).to(torch.int16).cpu().numpy()
     out_w = torch.round(net.out.weight[0] * QB).to(torch.int16).cpu().numpy()
     out_b = int(round(net.out.bias.item() * QA * QB))
     with open(path, "wb") as f:
-        f.write(b"CSNN")
+        f.write(b"CSNM" if mirror else b"CSNN")
         f.write(struct.pack("<i", hidden))
         f.write(ft_w.astype("<i2").tobytes())
         f.write(ft_b.astype("<i2").tobytes())
@@ -582,6 +603,8 @@ def train_streaming(args):
         state = torch.load(state_path, map_location=dev)
         if state["args"]["epochs"] != args.epochs:  # the schedule's length is fixed at the start
             raise SystemExit(f"{state_path} was started with --epochs {state['args']['epochs']}")
+        if state["args"].get("mirror", False) != args.mirror:
+            raise SystemExit(f"{state_path} was started {'without' if args.mirror else 'with'} --mirror")
         net.load_state_dict(state["net"])
         opt.load_state_dict(state["opt"])
         sched.load_state_dict(state["sched"])
@@ -600,10 +623,7 @@ def train_streaming(args):
         return occ, pcs, w, target, torch.where(w, future_w, 1 - future_w)
 
     def losses(occ, pcs, w, target, future):
-        feats_w = decode(occ, pcs)
-        feats_b = flip_t[feats_w]
-        wt = w.unsqueeze(1)
-        main, aux, _, _ = net(torch.where(wt, feats_w, feats_b), torch.where(wt, feats_b, feats_w))
+        main, aux, _, _ = net(*views(decode(occ, pcs), w, flip_t, args.mirror))
         main_loss = torch.mean((torch.sigmoid(main) - target) ** 2)
         if aux is None:
             return main_loss, torch.zeros((), device=dev)
@@ -663,7 +683,7 @@ def train_streaming(args):
                 va += aux_loss.item() * len(b[0])
         aux_text = f" aux {va / nv:.5f}" if args.aux_weight > 0 else ""
         print(f"epoch {epoch:3d} train {total.item() / seen:.5f} val {v / nv:.5f}{aux_text}  ({time.time() - t0:.0f}s)", flush=True)
-        export(net, f"{args.out}.e{epoch:02d}")
+        export(net, f"{args.out}.e{epoch:02d}", args.mirror)
         torch.save({"net": net.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(), "epoch": epoch,
                     "args": vars(args)}, state_path + ".tmp")
         os.replace(state_path + ".tmp", state_path)
@@ -671,7 +691,7 @@ def train_streaming(args):
             print(f"stopped after epoch {epoch} (--stop-after); continue with --resume", flush=True)
             return
 
-    export(net, args.out)
+    export(net, args.out, args.mirror)
     print(f"wrote {args.out}")
 
 
@@ -686,6 +706,8 @@ def main():
     ap.add_argument("--stop-after", type=int, help="with --shards: stop after this epoch (the schedule still spans --epochs)")
     ap.add_argument("--ft", choices=("dense", "bag"), default="dense",
                     help="first layer as a matrix product (needs CuPy) or as torch's EmbeddingBag, the slower earlier path")
+    ap.add_argument("--mirror", action="store_true",
+                    help="mirror each perspective's squares left to right while its king is on files e-h (exports CSNM)")
     ap.add_argument("--hidden", type=int, default=128)
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--batch", type=int, default=16384)
@@ -764,11 +786,8 @@ def main():
     def to_dev(x):
         return x.to(dev, non_blocking=True)
 
-    def inputs(idx):  # idx on data_dev
-        w = decode(to_dev(occ_t[idx]), to_dev(pcs_t[idx]))
-        b = flip_t[w]
-        wt = to_dev(white_t[idx]).unsqueeze(1)
-        return torch.where(wt, w, b), torch.where(wt, b, w)
+    def inputs(idx, mirror=args.mirror):  # idx on data_dev
+        return views(decode(to_dev(occ_t[idx]), to_dev(pcs_t[idx])), to_dev(white_t[idx]), flip_t, mirror)
 
     train_t, val_t = torch.from_numpy(train).to(data_dev), torch.from_numpy(val).to(data_dev)
     teacher = args.teacher is not None
@@ -829,7 +848,7 @@ def main():
         print(f"epoch {epoch:3d} train {total / len(train):.5f} val {v / len(val):.5f}{aux_text}  "
               f"({time.time() - t0:.0f}s)", flush=True)
 
-    export(net.cpu(), args.out)
+    export(net.cpu(), args.out, args.mirror)
     print(f"wrote {args.out}")
 
 

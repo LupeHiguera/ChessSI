@@ -103,14 +103,16 @@ def make_params(values=None):
 
 
 def load_net(path):
+    """Hidden size, whether the inputs are mirrored ("CSNM" files; see datagen.cu's flip_of), and the weights."""
     with open(path, "rb") as f:
-        assert f.read(4) == b"CSNN"
+        magic = f.read(4)
+        assert magic in (b"CSNN", b"CSNM")
         (h,) = struct.unpack("<i", f.read(4))
         ftw = np.frombuffer(f.read(768 * h * 2), dtype="<i2").copy()
         ftb = np.frombuffer(f.read(h * 2), dtype="<i2").copy()
         outw = np.frombuffer(f.read(2 * h * 2), dtype="<i2").copy()
         (outb,) = struct.unpack("<i", f.read(4))
-    return h, ftw, ftb, outw, outb
+    return h, magic == b"CSNM", ftw, ftb, outw, outb
 
 
 def feature_rows(ftw):
@@ -212,10 +214,10 @@ def auto_capacity(resident, game_bytes, free_bytes):
     return max(resident, min(AUTO_WAVES * resident, fit))
 
 
-def build_module(h):
-    """datagen.cu compiled for networks of h hidden units, with its Zobrist keys loaded."""
+def build_module(h, mirror=False):
+    """datagen.cu compiled for networks of h hidden units, mirrored or not, with its Zobrist keys loaded."""
     src = open(os.path.join(HERE, "datagen.cu")).read()
-    options = ("--std=c++17", f"-DH={h}", f"-DTT_BITS={TT_BITS}")
+    options = ("--std=c++17", f"-DH={h}", f"-DTT_BITS={TT_BITS}") + (("-DMIRROR",) if mirror else ())
     # Compile-time variants of datagen.cu for measuring, as -D flags (e.g. "-DSPLIT_DELTA -DNO_PREFETCH").
     options += tuple(os.environ.get("GPU_DEFINES", "").split())
     # Registers per thread (GPU_MAXRREG overrides; 0 leaves it to the compiler): 128 fits four 4-warp blocks per SM
@@ -241,8 +243,8 @@ def module_sizes(mod):
 class GpuDatagen:
     def __init__(self, net_path, capacity, kernel="datagen_step"):
         """capacity: games in flight, or "<k>w" for k full waves of `kernel` (match_step for matches and SPSA)."""
-        self.h, ftw, ftb, outw, self.outb = load_net(net_path)
-        self.mod = build_module(self.h)
+        self.h, self.mirror, ftw, ftb, outw, self.outb = load_net(net_path)
+        self.mod = build_module(self.h, self.mirror)
         self.game_bytes, sample_bytes, tt_bytes, params_bytes, self.tables_bytes = module_sizes(self.mod)
         assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16 and params_bytes == PARAMS.itemsize
         # The search's constants: src/search.cpp's, or GPU_PARAMS (JSON, as gpu/spsa.py prints them).

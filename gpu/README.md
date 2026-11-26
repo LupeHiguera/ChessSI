@@ -22,7 +22,9 @@ python gpu/datagen.py run <net.nnue> <out.txt> <games> [nodes=5000] [capacity=10
 
 It writes the same lines as `chesssi datagen`: `<fen> | <score> | <result> | <eval>`. The kernel is compiled for
 the network's hidden size, any multiple of 256: with net19b-h512 and with seeded synthetic 768- and 1024-unit
-networks it plays the same 200 games as `ref.cpp` built with each (`claude-work/2026-11-01/parity-h.sh`). Every game opens
+networks it plays the same 200 games as `ref.cpp` built with each (`claude-work/2026-11-01/parity-h.sh`). A mirrored
+network (`CSNM`, from `nnue/train.py --mirror`) gets a build with `-DMIRROR`, which rebuilds a perspective's half
+when its king crosses the d/e line; the engine starts that rebuild from its refresh cache, with the same integers. Every game opens
 with random legal plies, then plays at a fixed node count, and a finished game's slot is refilled at
 once. From the same start positions it writes byte-identical lines to `ref.cpp`, so its data is as good
 as the CPU's. The one difference is a 1 MB TT per game instead of 16 MB, which makes little difference at

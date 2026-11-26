@@ -17,13 +17,14 @@ from train import QA, QB, SCALE, features
 
 def load(path):
     with open(path, "rb") as f:
-        assert f.read(4) == b"CSNN"
+        magic = f.read(4)
+        assert magic in (b"CSNN", b"CSNM")
         (h,) = struct.unpack("<i", f.read(4))
         ft_w = np.frombuffer(f.read(768 * h * 2), dtype="<i2").reshape(768, h).astype(np.int64)
         ft_b = np.frombuffer(f.read(h * 2), dtype="<i2").astype(np.int64)
         out_w = np.frombuffer(f.read(2 * h * 2), dtype="<i2").astype(np.int64)
         (out_b,) = struct.unpack("<i", f.read(4))
-    return ft_w, ft_b, out_w, out_b
+    return ft_w, ft_b, out_w, out_b, magic == b"CSNM"
 
 
 def tdiv(a, b):
@@ -33,9 +34,9 @@ def tdiv(a, b):
 
 
 def reference(net, fen):
-    ft_w, ft_b, out_w, out_b = net
+    ft_w, ft_b, out_w, out_b, mirror = net
     parts = fen.split()
-    w, b = features(parts[0])
+    w, b = features(parts[0], mirror)
     us, them = (w, b) if parts[1] == "w" else (b, w)
     acc = np.concatenate([ft_b + ft_w[us].sum(0), ft_b + ft_w[them].sum(0)])
     x = np.clip(acc, 0, QA)
