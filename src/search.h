@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <string>
 
 #include "position.h"
 
@@ -34,5 +35,11 @@ void set_threads(int n);
 
 // Iterative deepening from the root. Prints UCI "info" lines when verbose.
 SearchResult think(Position& pos, const SearchLimits& limits, bool verbose);
+
+#ifdef TUNE
+// The tunable search constants: as UCI option lines, or as "name, int, default, min, max" lines.
+std::string tune_list(bool uci);
+bool tune_set(const std::string& name, int value);
+#endif
 
 } // namespace Search
