@@ -20,7 +20,7 @@ endif
 
 # The network compiled in as the default evaluation (OpenBench passes EVALFILE too). Empty: PeSTO.
 # nets/README.md records where each network came from.
-EVALFILE ?= nets/net27-h1536.nnue
+EVALFILE ?= nets/net28-h1536.nnue
 ifneq ($(EVALFILE),)
     NETFLAGS := -DEVALFILE='"$(abspath $(EVALFILE))"'
 endif
