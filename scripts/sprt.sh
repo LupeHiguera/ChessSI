@@ -5,7 +5,7 @@
 #
 # Settings (environment variables):
 #   TC=10+0.1        time control; confirm winners with TC=60+0.6
-#   ELO0=0 ELO1=5    SPRT bounds in normalized Elo; use ELO0=-5 ELO1=0 for simplifications
+#   ELO0=0 ELO1=10   SPRT bounds in normalized Elo; use ELO0=-5 ELO1=0 for simplifications
 #   ALPHA=0.05 BETA=0.05  SPRT error rates (false pass, false fail)
 #   ROUNDS=100000    maximum game pairs before stopping undecided
 #   CONCURRENCY=N    games in parallel (default: cores - 2)
@@ -24,7 +24,7 @@ cd "$(dirname "$0")/.."
 BASE_REF=${1:-HEAD}
 TC=${TC:-10+0.1}
 ELO0=${ELO0:-0}
-ELO1=${ELO1:-5}
+ELO1=${ELO1:-10}
 ALPHA=${ALPHA:-0.05}
 BETA=${BETA:-0.05}
 ROUNDS=${ROUNDS:-100000}

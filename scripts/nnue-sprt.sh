@@ -9,7 +9,7 @@
 # Settings (environment variables), as in sprt.sh:
 #   NAME=nnue-sprt   name for the binary and PGN, so several tests can run at once
 #   REF=HEAD         commit to build the binary from
-#   TC=10+0.1  ELO0=0 ELO1=5  ALPHA=0.05 BETA=0.05  ROUNDS=100000  CONCURRENCY=N  CPUS=list
+#   TC=10+0.1  ELO0=0 ELO1=10  ALPHA=0.05 BETA=0.05  ROUNDS=100000  CONCURRENCY=N  CPUS=list
 #   BOOK=path        EPD opening book (default: books/UHO_Lichess_4852_v1.epd)
 #   FASTCHESS=path   fastchess binary (default: fastchess on PATH)
 set -euo pipefail
@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 new=$(realpath "${1:?usage: scripts/nnue-sprt.sh <new.nnue> <base.nnue>}")
 base=$(realpath "${2:?usage: scripts/nnue-sprt.sh <new.nnue> <base.nnue>}")
 NAME=${NAME:-nnue-sprt} REF=${REF:-HEAD}
-TC=${TC:-10+0.1} ELO0=${ELO0:-0} ELO1=${ELO1:-5} ALPHA=${ALPHA:-0.05} BETA=${BETA:-0.05}
+TC=${TC:-10+0.1} ELO0=${ELO0:-0} ELO1=${ELO1:-10} ALPHA=${ALPHA:-0.05} BETA=${BETA:-0.05}
 ROUNDS=${ROUNDS:-100000}
 BOOK=${BOOK:-books/UHO_Lichess_4852_v1.epd}
 FASTCHESS=${FASTCHESS:-fastchess}
