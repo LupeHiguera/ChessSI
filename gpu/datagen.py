@@ -103,16 +103,30 @@ def make_params(values=None):
 
 
 def load_net(path):
-    """Hidden size, whether the inputs are mirrored ("CSNM" files; see datagen.cu's flip_of), and the weights."""
+    """Hidden size, the build options the network needs (-DMIRROR for mirrored inputs, see datagen.cu's flip_of;
+    -DPAIRWISE for the pairwise tail), and the weights: the first layer's, then the SCReLU output's (outw, outb) or,
+    for a pairwise network, its other layers' bytes as datagen.cu's Tail lays them out (and outb 0). The formats are
+    src/nnue.cpp's."""
     with open(path, "rb") as f:
-        magic = f.read(4)
-        assert magic in (b"CSNN", b"CSNM")
-        (h,) = struct.unpack("<i", f.read(4))
-        ftw = np.frombuffer(f.read(768 * h * 2), dtype="<i2").copy()
-        ftb = np.frombuffer(f.read(h * 2), dtype="<i2").copy()
-        outw = np.frombuffer(f.read(2 * h * 2), dtype="<i2").copy()
-        (outb,) = struct.unpack("<i", f.read(4))
-    return h, magic == b"CSNM", ftw, ftb, outw, outb
+        data = f.read()
+    magic, (h,) = data[:4], struct.unpack_from("<i", data, 4)
+    if magic == b"CSN2":
+        mirror, pairwise = struct.unpack_from("<ii", data, 8)
+        pos = 16
+    else:
+        assert magic in (b"CSNN", b"CSNM"), f"{path}: not a network file"
+        mirror, pairwise, pos = magic == b"CSNM", 0, 8
+    ftw = np.frombuffer(data, "<i2", 768 * h, pos).copy()
+    ftb = np.frombuffer(data, "<i2", h, pos + ftw.nbytes).copy()
+    pos += ftw.nbytes + ftb.nbytes
+    if pairwise:
+        outw, outb = np.frombuffer(data, np.uint8, offset=pos).copy(), 0
+        assert len(outw) == 16 * h + 772, f"{path}: {len(outw)} bytes after the first layer"
+    else:
+        outw = np.frombuffer(data, "<i2", 2 * h, pos).copy()
+        (outb,) = struct.unpack_from("<i", data, pos + outw.nbytes)
+    defines = (("-DMIRROR",) if mirror else ()) + (("-DPAIRWISE",) if pairwise else ())
+    return h, defines, ftw, ftb, outw, outb
 
 
 def feature_rows(ftw):
@@ -214,10 +228,10 @@ def auto_capacity(resident, game_bytes, free_bytes):
     return max(resident, min(AUTO_WAVES * resident, fit))
 
 
-def build_module(h, mirror=False):
-    """datagen.cu compiled for networks of h hidden units, mirrored or not, with its Zobrist keys loaded."""
+def build_module(h, defines=()):
+    """datagen.cu compiled for networks of h hidden units with load_net's build options, with its Zobrist keys loaded."""
     src = open(os.path.join(HERE, "datagen.cu")).read()
-    options = ("--std=c++17", f"-DH={h}", f"-DTT_BITS={TT_BITS}") + (("-DMIRROR",) if mirror else ())
+    options = ("--std=c++17", f"-DH={h}", f"-DTT_BITS={TT_BITS}") + tuple(defines)
     # Compile-time variants of datagen.cu for measuring, as -D flags (e.g. "-DSPLIT_DELTA -DNO_PREFETCH").
     options += tuple(os.environ.get("GPU_DEFINES", "").split())
     # Registers per thread (GPU_MAXRREG overrides; 0 leaves it to the compiler): 128 fits four 4-warp blocks per SM
@@ -243,8 +257,8 @@ def module_sizes(mod):
 class GpuDatagen:
     def __init__(self, net_path, capacity, kernel="datagen_step"):
         """capacity: games in flight, or "<k>w" for k full waves of `kernel` (match_step for matches and SPSA)."""
-        self.h, self.mirror, ftw, ftb, outw, self.outb = load_net(net_path)
-        self.mod = build_module(self.h, self.mirror)
+        self.h, self.defines, ftw, ftb, outw, self.outb = load_net(net_path)
+        self.mod = build_module(self.h, self.defines)
         self.game_bytes, sample_bytes, tt_bytes, params_bytes, self.tables_bytes = module_sizes(self.mod)
         assert sample_bytes == SAMPLE.itemsize and tt_bytes == 16 and params_bytes == PARAMS.itemsize
         # The search's constants: src/search.cpp's, or GPU_PARAMS (JSON, as gpu/spsa.py prints them).

@@ -24,7 +24,11 @@ It writes the same lines as `chesssi datagen`: `<fen> | <score> | <result> | <ev
 the network's hidden size, any multiple of 256: with net19b-h512 and with seeded synthetic 768- and 1024-unit
 networks it plays the same 200 games as `ref.cpp` built with each (`claude-work/2026-11-01/parity-h.sh`). A mirrored
 network (`CSNM`, from `nnue/train.py --mirror`) gets a build with `-DMIRROR`, which rebuilds a perspective's half
-when its king crosses the d/e line; the engine starts that rebuild from its refresh cache, with the same integers. Every game opens
+when its king crosses the d/e line; the engine starts that rebuild from its refresh cache, with the same integers. A
+pairwise network (`CSN2` with the pairwise tail, from `--tail pairwise`) gets a build with `-DPAIRWISE`: each lane forms
+the bytes of its groups of four L1 inputs and adds their `__dp4a` products into 16 partial sums, warp reductions total
+them, and L2 and L3 take one output per lane. The engine skips zero groups and the GPU does not, which cannot change an
+integer sum. Every game opens
 with random legal plies, then plays at a fixed node count, and a finished game's slot is refilled at
 once. From the same start positions it writes byte-identical lines to `ref.cpp`, so its data is as good
 as the CPU's. The one difference is a 1 MB TT per game instead of 16 MB, which makes little difference at

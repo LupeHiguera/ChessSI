@@ -497,6 +497,61 @@ __device__ __forceinline__ int screlu2(unsigned a, unsigned w, int part) {
     part = dp2a_lo(p0, v, part);                            // + (short)(v0 * w0) * v0 + (high half) * 0
     return dp2a_hi(p1, v, part);                            // + (short)(v1 * w1) * v1 + (high half) * 0
 }
+#ifdef PAIRWISE
+// A pairwise network (-DPAIRWISE) passes its layers after the first in place of the SCReLU output weights (net.outw),
+// laid out as the file stores them (src/nnue.cpp): L1 weights in input-major groups of four, 16 outputs.
+struct Tail {
+    signed char l1w[H * 16];
+    int l1b[16];
+    signed char l2w[16 * 32];
+    int l2b[32];
+    short l3w[32];
+    int l3b;
+};
+// Two units of the first half (a) times the same two of the second (b), each clipped to [0, QA], >> 9: two bytes.
+__device__ __forceinline__ unsigned pair2(unsigned a, unsigned b) {
+    unsigned ca = clamp2(a), cb = clamp2(b);
+    return ((ca & 0xFFFF) * (cb & 0xFFFF)) >> 9 | (((ca >> 16) * (cb >> 16)) >> 9) << 8;
+}
+__device__ __forceinline__ int activate(int sum) { return min(max(sum >> 6, 0), 127); }
+// NNUE::evaluate for a pairwise network, the same integers as src/nnue.cpp. Lane l takes the groups of four L1 inputs
+// l, l + 32, ...: forms their bytes and adds their products into its 16 partial sums, which warp reductions total.
+// Then lane l computes L2's output l, and a last reduction L3. Integer sums come out the same in any order, and
+// skipping the zero groups, as the CPU does, cannot change them.
+__device__ int evaluate(const Game* g, const Net& net, const short* acc) {
+    const short* a = acc_slot((short*)acc, g->accTop);
+    const Tail* t = (const Tail*)net.outw;
+    int lane = lane_id(), s[16];
+#pragma unroll
+    for (int o = 0; o < 16; ++o) s[o] = 0;
+    __syncwarp(); // the units a lane reads here were written by other lanes
+    for (int k = 0; k < H / 128; ++k) {
+        int grp = lane + 32 * k, half = grp >= H / 8;
+        const short* x = a + (half ? g->stm ^ 1 : g->stm) * H + grp * 4 - half * (H / 2);
+        uint2 lo = *(const uint2*)x, hi = *(const uint2*)(x + H / 2);
+        int u = (int)(pair2(lo.x, hi.x) | pair2(lo.y, hi.y) << 16);
+        const int4* w = (const int4*)(t->l1w + grp * 64);
+#pragma unroll
+        for (int q = 0; q < 4; ++q) {
+            int4 v = w[q];
+            s[4 * q] = __dp4a(u, v.x, s[4 * q]);
+            s[4 * q + 1] = __dp4a(u, v.y, s[4 * q + 1]);
+            s[4 * q + 2] = __dp4a(u, v.z, s[4 * q + 2]);
+            s[4 * q + 3] = __dp4a(u, v.w, s[4 * q + 3]);
+        }
+    }
+    int sum = t->l2b[lane];
+#pragma unroll
+    for (int q = 0; q < 4; ++q) {
+        int u = 0;
+#pragma unroll
+        for (int i = 0; i < 4; ++i) u |= activate(__reduce_add_sync(0xffffffffu, s[4 * q + i]) + t->l1b[4 * q + i]) << (8 * i);
+        sum = __dp4a(u, *(const int*)(t->l2w + (q * 32 + lane) * 4), sum);
+    }
+    long long out = __reduce_add_sync(0xffffffffu, activate(sum) * t->l3w[lane]) + (long long)t->l3b;
+    return (int)(out * EVAL_SCALE * 512 / (QA * QA * 1024));
+}
+#else
 // NNUE::evaluate: the side to move's view first, SCReLU, int16 v * w times v, truncating divisions.
 __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
     const short* a = acc_slot((short*)acc, g->accTop);
@@ -525,6 +580,7 @@ __device__ int evaluate(const Game* g, const Net& net, const short* acc) {
     sum = sum / QA + net.outb;
     return (int)(sum * EVAL_SCALE / (QA * QB));
 }
+#endif
 
 // Board edits. do_move and undo_move read the position with every lane, and after a __syncwarp() one lane toggles
 // the moved pieces in place (xor_piece: a type word and a color word each), so no lane can see a half-done update
