@@ -157,6 +157,45 @@ void refresh_half(const Position& pos, Color persp, int16_t* half) {
     }
 }
 
+// A mirrored network's refresh cache, per thread: for each perspective and each of its two orientations, the
+// half last built for it and the pieces it was built from. A rebuild starts from that entry and adds or removes
+// only the pieces that differ, usually a few where a full refresh adds all of them. Integer sums come out the
+// same in any order, so the result equals refresh_half's.
+struct CacheEntry {
+    std::vector<int16_t> half;
+    Bitboard pieces[12] = {}; // by Piece
+};
+thread_local struct {
+    int generation = 0;
+    CacheEntry entries[2][2]; // [perspective][files flipped]
+} cache;
+
+void rebuild_half(const Position& pos, Color persp, int16_t* half) {
+    if (cache.generation != loadedGeneration) {
+        for (auto& side : cache.entries)
+            for (CacheEntry& e : side)
+                e = {net.ftBias, {}};
+        cache.generation = loadedGeneration;
+    }
+    const int h = net.hidden, o = orientation(pos, persp, true);
+    CacheEntry& e = cache.entries[persp][o & 7 ? 1 : 0];
+    for (Piece p = 0; p < 12; ++p) {
+        const Bitboard now = pos.pieces(color_of(p), type_of(p));
+        for (Bitboard b = e.pieces[p] & ~now; b;) {
+            const int16_t* row = &net.ftWeights[size_t(feature(persp, p, pop_lsb(b), o)) * h];
+            for (int i = 0; i < h; ++i)
+                e.half[i] -= row[i];
+        }
+        for (Bitboard b = now & ~e.pieces[p]; b;) {
+            const int16_t* row = &net.ftWeights[size_t(feature(persp, p, pop_lsb(b), o)) * h];
+            for (int i = 0; i < h; ++i)
+                e.half[i] += row[i];
+        }
+        e.pieces[p] = now;
+    }
+    std::copy(e.half.begin(), e.half.end(), half);
+}
+
 // Whether the move d that led to pos changed how `persp` sees the board, with a mirrored network: when that
 // side's king left a square on the other side of the d/e line from where it stands now.
 bool reoriented(const NNUE::Delta& d, const Position& pos, Color persp) {
@@ -188,7 +227,7 @@ void apply_both(const int16_t* prev, int16_t* acc, const NNUE::Delta& d, const P
     for (int persp = 0; persp < 2; ++persp) {
         const Color c = Color(persp);
         if (Mirrored && reoriented(d, pos, c)) {
-            refresh_half(pos, c, acc + persp * h);
+            rebuild_half(pos, c, acc + persp * h);
             continue;
         }
         const int o = orientation(pos, c, Mirrored);
@@ -200,6 +239,22 @@ void apply_both(const int16_t* prev, int16_t* acc, const NNUE::Delta& d, const P
             sub[k] = &net.ftWeights[size_t(feature(c, d.subPiece[k], d.subSq[k], o)) * h];
         apply_rows<A, S>(prev + persp * h, acc + persp * h, add, sub, h);
     }
+}
+
+template <bool Mirrored>
+void apply_delta(const int16_t* prev, int16_t* acc, const NNUE::Delta& d, const Position& pos) {
+    switch (d.adds * 4 + d.subs) {
+    case 1 * 4 + 1: apply_both<Mirrored, 1, 1>(prev, acc, d, pos); break; // quiet move, promotion
+    case 1 * 4 + 2: apply_both<Mirrored, 1, 2>(prev, acc, d, pos); break; // capture
+    case 2 * 4 + 2: apply_both<Mirrored, 2, 2>(prev, acc, d, pos); break; // castling
+    default: std::abort();                                                 // do_move makes no other delta
+    }
+}
+
+// Out of line, so the mirrored code stays out of the plain update's function body: inlined beside it, it left
+// plain networks 0.4% slower.
+[[gnu::noinline]] void apply_mirrored(const int16_t* prev, int16_t* acc, const NNUE::Delta& d, const Position& pos) {
+    apply_delta<true>(prev, acc, d, pos);
 }
 
 #ifdef CHECK_ACC
@@ -236,15 +291,10 @@ void NNUE::refresh(const Position& pos, int16_t* acc) {
 }
 
 void NNUE::apply(const int16_t* prev, int16_t* acc, const Delta& d, const Position& pos) {
-    switch (net.mirrored * 16 + d.adds * 4 + d.subs) {
-    case 1 * 4 + 1: apply_both<false, 1, 1>(prev, acc, d, pos); break; // quiet move, promotion
-    case 1 * 4 + 2: apply_both<false, 1, 2>(prev, acc, d, pos); break; // capture
-    case 2 * 4 + 2: apply_both<false, 2, 2>(prev, acc, d, pos); break; // castling
-    case 16 + 1 * 4 + 1: apply_both<true, 1, 1>(prev, acc, d, pos); break;
-    case 16 + 1 * 4 + 2: apply_both<true, 1, 2>(prev, acc, d, pos); break;
-    case 16 + 2 * 4 + 2: apply_both<true, 2, 2>(prev, acc, d, pos); break;
-    default: std::abort(); // do_move makes no other delta
-    }
+    if (net.mirrored)
+        apply_mirrored(prev, acc, d, pos);
+    else
+        apply_delta<false>(prev, acc, d, pos);
 #ifdef CHECK_ACC
     check(acc, d, pos);
 #endif
