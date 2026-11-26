@@ -1,7 +1,7 @@
 """Train ChessSI's NNUE on positions in the datagen text format.
 
     python train.py <data.txt>... <out.nnue> [--hidden 128] [--epochs 20] [--lambda 0.75] [--cache-dir dir]
-                    [--aux-weight 0] [--future-plies 8] [--policy-weight 0] [--mirror]
+                    [--aux-weight 0] [--future-plies 8] [--policy-weight 0] [--mirror] [--tail pairwise]
     python train.py --shards <dir> <out.nnue> [same options] [--group 8] [--val-max N] [--resume]
 
 With --shards, positions stream from binary shards on disk (made by shards.cpp and shards.py), so the
@@ -15,6 +15,13 @@ Network: (768 -> H) x 2 perspectives -> SCReLU -> 1, the usual first NNUE. Input
 Black's perspective. With --mirror, a perspective's squares are also mirrored left to right while its own
 king stands on files e-h, so each side sees its king on files a-d only. The output, times SCALE, is
 centipawns for the side to move.
+
+--tail pairwise replaces SCReLU -> 1: each perspective's units are clipped to [0, 1], unit j of the first
+half is multiplied by unit j of the second, and the two perspectives' H / 2 products, side to move first,
+feed layers of 16 and 32 neurons, each clamped to [0, 1], and an output. The engine runs it in integers
+(see quantized_eval). The small layers train with their weights rounded to the integers the file holds
+(Net.params) and clipped to that integer range, and each epoch also reports the validation loss of the
+exported integers ("quantized"), beside the float one.
 
 --ft picks how the first layer is computed. dense (the default, needs CuPy) multiplies a one-hot
 matrix by the weights; bag is torch's EmbeddingBag, the only path before 2026-11-25 and the slower
@@ -32,7 +39,10 @@ With --teacher <net.nnue>, a training-only head learns that network's evaluation
 
 Export (little-endian, see src/nnue.cpp): magic "CSNN" ("CSNM" with --mirror), hidden size (int32), feature
 weights int16[768][H] and biases int16[H] scaled by QA, output weights int16[2H] scaled by QB, output bias
-int32 scaled by QA * QB.
+int32 scaled by QA * QB. A pairwise network: magic "CSN2", hidden size, mirrored (0 or 1) and tail (1) as int32,
+the same feature weights and biases, then L1 weights int8 at WEIGHT_Q in input-major groups of four (see
+groups_of_four), L1 biases int32[16] at PAIR_ONE * WEIGHT_Q, L2 weights and biases the same way (16 -> 32),
+L3 weights int16[32] at OUT_Q and its bias int32 at PAIR_ONE * OUT_Q.
 """
 import argparse
 import functools
@@ -52,6 +62,14 @@ SCALE = 400
 QA, QB = 255, 64
 PIECES = {"P": 0, "N": 1, "B": 2, "R": 3, "Q": 4, "K": 5}
 PAD = 768
+# The pairwise tail's integers (src/nnue.cpp): a product of two units clipped to [0, QA] is shifted right by
+# PAIR_SHIFT to a byte, so an activation's 1.0 is PAIR_ONE; each small layer's sum is shifted right by
+# log2(WEIGHT_Q) and clamped to [0, 127].
+L1, L2 = 16, 32
+PAIR_SHIFT = 9
+PAIR_ONE = QA * QA / 2 ** PAIR_SHIFT
+WEIGHT_Q, OUT_Q = 64, 1024
+TAILS = ("screlu", "pairwise")  # the tail field of a CSN2 file is the index
 
 
 def features(board_field, mirror=False):
@@ -450,34 +468,108 @@ class SCReLU(torch.autograd.Function):
         return d
 
 
+@functools.cache
+def pairwise_kernels():
+    import cupy
+    pair = "int r = i / (h / 2), j = i - r * (h / 2); T a = x[r * h + j], b = x[r * h + j + h / 2]; "
+    clip = "min(max({}, (T)0), (T)1)"
+    return (cupy.asarray,
+            cupy.ElementwiseKernel("raw T x, int32 h", "T y", pair + f"y = {clip.format('a')} * {clip.format('b')}",
+                                   "pairwise"),
+            cupy.ElementwiseKernel("T g, raw T x, int32 h", "raw T d",
+                                   pair + f"d[r * h + j] = a >= (T)0 && a <= (T)1 ? g * {clip.format('b')} : (T)0; "
+                                   f"d[r * h + j + h / 2] = b >= (T)0 && b <= (T)1 ? g * {clip.format('a')} : (T)0",
+                                   "pairwise_grad"))
+
+
+class Pairwise(torch.autograd.Function):
+    """pairwise() of each row as one CUDA kernel each way, with the gradient PyTorch gives that expression, for the
+    reason SCReLU has its own."""
+
+    @staticmethod
+    def forward(ctx, a):
+        view, fwd, _ = pairwise_kernels()
+        ctx.save_for_backward(a)
+        y = torch.empty(a.shape[0], a.shape[1] // 2, dtype=a.dtype, device=a.device)
+        fwd(view(a.detach()), np.int32(a.shape[1]), view(y))
+        return y
+
+    @staticmethod
+    def backward(ctx, g):
+        view, _, bwd = pairwise_kernels()
+        (a,) = ctx.saved_tensors
+        d = torch.empty_like(a)
+        bwd(view(g.detach().contiguous()), view(a.detach()), np.int32(a.shape[1]), view(d))
+        return d
+
+
+def pairwise(a):
+    """Each row's first half times its second half, both clipped to [0, 1]."""
+    h = a.shape[1] // 2
+    return torch.clamp(a[:, :h], 0, 1) * torch.clamp(a[:, h:], 0, 1)
+
+
 class Net(torch.nn.Module):
-    def __init__(self, hidden, aux=False, policy=False, teacher=False, dense=True):
+    def __init__(self, hidden, aux=False, policy=False, teacher=False, dense=True, tail="screlu"):
         super().__init__()
-        self.dense = dense
+        self.dense, self.tail = dense, tail
         self.ft = torch.nn.EmbeddingBag(PAD + 1, hidden, mode="sum", padding_idx=PAD)
         self.ft_bias = torch.nn.Parameter(torch.zeros(hidden))
-        self.out = torch.nn.Linear(2 * hidden, 1)
+        # What the first layer passes on: SCReLU of both perspectives' units, or their pairwise products.
+        width = 2 * hidden if tail == "screlu" else hidden
+        if tail == "screlu":
+            self.out = torch.nn.Linear(width, 1)
+        else:
+            self.l1 = torch.nn.Linear(width, L1)
         # Auxiliary head, used only in training and not exported: predicts the outcome a few plies
         # later from the same hidden layer, as extra signal for the shared first layer.
-        self.aux = torch.nn.Linear(2 * hidden, 1) if aux else None
+        self.aux = torch.nn.Linear(width, 1) if aux else None
         # Policy head, also training only: logits for the played move's from square (first 64)
         # and to square (last 64).
-        self.policy = torch.nn.Linear(2 * hidden, 128) if policy else None
+        self.policy = torch.nn.Linear(width, 128) if policy else None
         with torch.no_grad():
             self.ft.weight.uniform_(-0.05, 0.05)
             self.ft.weight[PAD].zero_()
         # Teacher head, also training only: predicts an earlier network's evaluation. Made after
         # the first layer's initialisation, so a run with a teacher starts from the same weights
         # as one without.
-        self.teach = torch.nn.Linear(2 * hidden, 1) if teacher else None
+        self.teach = torch.nn.Linear(width, 1) if teacher else None
+        if tail == "pairwise":
+            self.l2, self.l3 = torch.nn.Linear(L1, L2), torch.nn.Linear(L2, 1)
+        # With keep_products, forward leaves what the first layer passed on in `products`, for --sparsity.
+        self.keep_products, self.products = False, None
+
+    @property
+    def first(self):
+        """The layer that reads what the first layer passes on, beside the training-only heads."""
+        return self.out if self.tail == "screlu" else self.l1
+
+    def params(self, layer):
+        """A layer's weight and bias as the forward pass uses them. The pairwise tail's layers train with the values the
+        file will hold, rounded to their integer steps, and pass gradients straight through the rounding: trained in
+        float, half of L1's weights at 256 units were under 4 steps, and rounding them alone raised the validation loss
+        from 0.01020 to 0.01102 after one epoch."""
+        if self.tail == "screlu" or layer not in (self.l1, self.l2, self.l3):
+            return layer.weight, layer.bias
+        scale = OUT_Q if layer is self.l3 else WEIGHT_Q
+        return tuple(t + (torch.round(t * s) / s - t).detach()
+                     for t, s in ((layer.weight, scale), (layer.bias, PAIR_ONE * scale)))
+
+    def main(self, y):
+        """The network's output from its first small layer's (`first`)."""
+        if self.tail == "screlu":
+            return y.squeeze(1)
+        h = torch.clamp(torch.nn.functional.linear(torch.clamp(y, 0, 1), *self.params(self.l2)), 0, 1)
+        return torch.nn.functional.linear(h, *self.params(self.l3)).squeeze(1)
 
     def forward(self, stm, nstm):
         if self.dense:
             return self.forward_dense(stm, nstm)
-        a = torch.clamp(self.ft(stm) + self.ft_bias, 0, 1) ** 2
-        b = torch.clamp(self.ft(nstm) + self.ft_bias, 0, 1) ** 2
-        x = torch.cat([a, b], dim=1)
-        return (self.out(x).squeeze(1), self.aux(x).squeeze(1) if self.aux is not None else None,
+        act = (lambda a: torch.clamp(a, 0, 1) ** 2) if self.tail == "screlu" else pairwise
+        x = torch.cat([act(self.ft(stm) + self.ft_bias), act(self.ft(nstm) + self.ft_bias)], dim=1)
+        self.products = x if self.keep_products else None
+        return (self.main(torch.nn.functional.linear(x, *self.params(self.first))),
+                self.aux(x).squeeze(1) if self.aux is not None else None,
                 self.policy(x) if self.policy is not None else None,
                 self.teach(x).squeeze(1) if self.teach is not None else None)
 
@@ -492,36 +584,145 @@ class Net(torch.nn.Module):
         x = torch.zeros(2 * n, PAD + 1, dtype=w.dtype, device=w.device)
         x.scatter_(1, torch.cat([stm, nstm]), 1.0)
         x[:, PAD] = 1.0
-        hidden = SCReLU.apply(x @ torch.cat([w[:PAD], self.ft_bias[None]])).view(2, n, -1)
-        slots = (self.out, self.aux, self.policy, self.teach)
+        act = SCReLU if self.tail == "screlu" else Pairwise
+        hidden = act.apply(x @ torch.cat([w[:PAD], self.ft_bias[None]])).view(2, n, -1)
+        self.products = hidden if self.keep_products else None
+        slots = (self.first, self.aux, self.policy, self.teach)
         heads = [h for h in slots if h is not None]
+        params = [self.params(h) for h in heads]
         # Each head's weights as (perspective, hidden, output), so no (batch, 2 * hidden) copy is needed.
-        hw = torch.cat([h.weight for h in heads]).view(-1, 2, hidden.shape[2]).permute(1, 2, 0)
-        y = (hidden @ hw).sum(0) + torch.cat([h.bias for h in heads])
+        hw = torch.cat([w for w, _ in params]).view(-1, 2, hidden.shape[2]).permute(1, 2, 0)
+        y = (hidden @ hw).sum(0) + torch.cat([b for _, b in params])
         parts = iter(y.split([h.out_features for h in heads], dim=1))
-        return tuple(next(parts).squeeze(1) if h is not None else None for h in slots)
+        first, aux, policy, teach = (next(parts) if h is not None else None for h in slots)
+        return (self.main(first), aux.squeeze(1) if aux is not None else None, policy,
+                teach.squeeze(1) if teach is not None else None)
 
     def clip(self):
         # Keeps quantised values in range: QA * w and QB * w must fit int16, and the int32
-        # output sum must not overflow (see src/nnue.cpp).
+        # output sum must not overflow (see src/nnue.cpp); the pairwise tail's weights must fit
+        # int8 at WEIGHT_Q and, the last layer's, int16 at OUT_Q.
         with torch.no_grad():
             self.ft.weight.clamp_(-1.98, 1.98)
-            self.out.weight.clamp_(-1.98, 1.98)
+            if self.tail == "screlu":
+                self.first.weight.clamp_(-1.98, 1.98)
+            else:
+                for layer in (self.first, self.l2):
+                    layer.weight.clamp_(-127 / WEIGHT_Q, 127 / WEIGHT_Q)
+                self.l3.weight.clamp_(-32767 / OUT_Q, 32767 / OUT_Q)
+
+
+def quantize(net):
+    """The integers a network file holds, as tensors on the network's device: the first layer at QA, then
+    the tail's (see the module docstring)."""
+    def q(t, scale, dtype):
+        return torch.round(t.detach().double() * scale).to(dtype)
+    out = {"ft_w": torch.round(net.ft.weight[:PAD].detach() * QA).to(torch.int16),
+           "ft_b": torch.round(net.ft_bias.detach() * QA).to(torch.int16)}
+    if net.tail == "screlu":
+        out["out_w"] = torch.round(net.first.weight[0].detach() * QB).to(torch.int16)
+        out["out_b"] = torch.tensor([round(net.first.bias.item() * QA * QB)], dtype=torch.int32, device=net.ft_bias.device)
+        return out
+    for name, layer in (("l1", net.first), ("l2", net.l2)):
+        out[f"{name}_w"] = q(layer.weight, WEIGHT_Q, torch.int8)
+        out[f"{name}_b"] = q(layer.bias, PAIR_ONE * WEIGHT_Q, torch.int32)
+    out["l3_w"] = q(net.l3.weight[0], OUT_Q, torch.int16)
+    out["l3_b"] = q(net.l3.bias, PAIR_ONE * OUT_Q, torch.int32)
+    return out
+
+
+def groups_of_four(w):
+    """A layer's weights (outputs, inputs) in the engine's order: input-major groups of four, input i's weight
+    for output o at (i // 4) * outputs * 4 + o * 4 + i % 4, so a group of four inputs reads one block."""
+    o, i = w.shape
+    return w.reshape(o, i // 4, 4).transpose(1, 0, 2)
 
 
 def export(net, path, mirror):
-    hidden = net.ft_bias.shape[0]
-    ft_w = torch.round(net.ft.weight[:PAD] * QA).to(torch.int16).cpu().numpy()
-    ft_b = torch.round(net.ft_bias * QA).to(torch.int16).cpu().numpy()
-    out_w = torch.round(net.out.weight[0] * QB).to(torch.int16).cpu().numpy()
-    out_b = int(round(net.out.bias.item() * QA * QB))
+    q = {k: v.cpu().numpy() for k, v in quantize(net).items()}
+    hidden = q["ft_b"].shape[0]
     with open(path, "wb") as f:
-        f.write(b"CSNM" if mirror else b"CSNN")
-        f.write(struct.pack("<i", hidden))
-        f.write(ft_w.astype("<i2").tobytes())
-        f.write(ft_b.astype("<i2").tobytes())
-        f.write(out_w.astype("<i2").tobytes())
-        f.write(struct.pack("<i", out_b))
+        if net.tail == "screlu":
+            f.write(b"CSNM" if mirror else b"CSNN")
+            f.write(struct.pack("<i", hidden))
+        else:
+            f.write(b"CSN2" + struct.pack("<iii", hidden, int(mirror), TAILS.index(net.tail)))
+        f.write(q["ft_w"].astype("<i2").tobytes())
+        f.write(q["ft_b"].astype("<i2").tobytes())
+        if net.tail == "screlu":
+            f.write(q["out_w"].astype("<i2").tobytes())
+            f.write(q["out_b"].astype("<i4").tobytes())
+            return
+        for name in ("l1", "l2"):
+            f.write(groups_of_four(q[f"{name}_w"]).astype("i1").tobytes())
+            f.write(q[f"{name}_b"].astype("<i4").tobytes())
+        f.write(q["l3_w"].astype("<i2").tobytes())
+        f.write(q["l3_b"].astype("<i4").tobytes())
+
+
+def read_net(path):
+    """A network file's integers as quantize() gives them (numpy arrays), whether its inputs are mirrored, and its
+    tail ("screlu" or "pairwise")."""
+    with open(path, "rb") as f:
+        data = f.read()
+    magic, (h,) = data[:4], struct.unpack_from("<i", data, 4)
+    pos = 8
+    if magic == b"CSN2":
+        mirror, tail = struct.unpack_from("<ii", data, 8)
+        mirror, tail, pos = bool(mirror), TAILS[tail], 16
+    else:
+        assert magic in (b"CSNN", b"CSNM"), f"{path}: not a network file"
+        mirror, tail = magic == b"CSNM", "screlu"
+
+    def take(dtype, *shape):
+        nonlocal pos
+        a = np.frombuffer(data, dtype, math.prod(shape), pos).reshape(shape)
+        pos += a.nbytes
+        return a
+
+    q = {"ft_w": take("<i2", PAD, h), "ft_b": take("<i2", h)}
+    if tail == "screlu":
+        q["out_w"], q["out_b"] = take("<i2", 2 * h), take("<i4", 1)
+    else:
+        for name, inputs, outputs in (("l1", h, L1), ("l2", L1, L2)):
+            q[f"{name}_w"] = take("i1", inputs // 4, outputs, 4).transpose(1, 0, 2).reshape(outputs, inputs)
+            q[f"{name}_b"] = take("<i4", outputs)
+        q["l3_w"], q["l3_b"] = take("<i2", L2), take("<i4", 1)
+    assert pos == len(data), f"{path}: {len(data) - pos} bytes left over"
+    return q, mirror, tail
+
+
+def quantized_eval(q, stm, nstm):
+    """Centipawns for the side to move, as the engine computes them from the integers q (quantize or read_net, as
+    tensors), for feature lists stm and nstm (padded with PAD) from the side to move's and the opponent's view.
+    The same integer steps as src/nnue.cpp, in floating point: the first layer in float32 (sums of at most 33
+    int16 values, and products of two values up to QA, are exact), the rest in float64 (every value far below
+    2^53), with floor for the engine's right shifts and trunc for its divisions."""
+    rows = torch.zeros(PAD + 1, q["ft_b"].shape[0], device=stm.device)
+    rows[:PAD] = q["ft_w"]
+    accs = [torch.nn.functional.embedding_bag(f, rows, mode="sum") + q["ft_b"] for f in (stm, nstm)]
+    if "out_w" in q:
+        h, w = rows.shape[1], q["out_w"].double()
+        x = [torch.clamp(a, 0, QA).double() ** 2 for a in accs]
+        total = torch.trunc((x[0] @ w[:h] + x[1] @ w[h:]) / QA) + q["out_b"].double()
+        return torch.trunc(total * SCALE / (QA * QB))
+
+    def layer(x, name):
+        s = x @ q[f"{name}_w"].double().T + q[f"{name}_b"].double()
+        return torch.clamp(torch.floor(s / WEIGHT_Q), 0, 127)
+
+    def products(a):
+        h = a.shape[1] // 2
+        return torch.floor(torch.clamp(a[:, :h], 0, QA) * torch.clamp(a[:, h:], 0, QA) / 2 ** PAIR_SHIFT)
+
+    x = torch.cat([products(a) for a in accs], 1).double()
+    out = layer(layer(x, "l1"), "l2") @ q["l3_w"].double() + q["l3_b"].double()
+    return torch.trunc(out * SCALE * 2 ** PAIR_SHIFT / (QA * QA * OUT_Q))
+
+
+def quantized_loss(q, stm, nstm, target):
+    """The validation loss of the network the file holds: its integer evaluation against the target."""
+    return torch.mean((torch.sigmoid(quantized_eval(q, stm, nstm).float() / SCALE) - target) ** 2)
 
 
 SHARD_COLS = {"occ": np.uint64, "pcs": np.uint8, "white": np.int8, "scores": np.float32, "results": np.float32,
@@ -594,7 +795,8 @@ def train_streaming(args):
 
     dev = torch.device("cuda")
     flip_t = torch.from_numpy(FLIP).to(dev)
-    net = Net(args.hidden, aux=args.aux_weight > 0, dense=args.ft == "dense").to(dev)
+    net = Net(args.hidden, aux=args.aux_weight > 0, dense=args.ft == "dense", tail=args.tail).to(dev)
+    net.keep_products = args.sparsity > 0
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
     first_epoch = 1
@@ -605,6 +807,8 @@ def train_streaming(args):
             raise SystemExit(f"{state_path} was started with --epochs {state['args']['epochs']}")
         if state["args"].get("mirror", False) != args.mirror:
             raise SystemExit(f"{state_path} was started {'without' if args.mirror else 'with'} --mirror")
+        if state["args"].get("tail", "screlu") != args.tail:
+            raise SystemExit(f"{state_path} was started with --tail {state['args'].get('tail', 'screlu')}")
         net.load_state_dict(state["net"])
         opt.load_state_dict(state["opt"])
         sched.load_state_dict(state["sched"])
@@ -664,7 +868,10 @@ def train_streaming(args):
                     b = [t[i:i + args.batch] for t in rows]
                     opt.zero_grad()
                     main_loss, aux_loss = losses(*b)
-                    (main_loss + args.aux_weight * aux_loss).backward()
+                    loss = main_loss + args.aux_weight * aux_loss
+                    if args.sparsity:
+                        loss = loss + args.sparsity * net.products.mean()
+                    loss.backward()
                     opt.step()
                     net.clip()
                     total += main_loss.detach().double() * len(b[0])
@@ -673,16 +880,19 @@ def train_streaming(args):
             print(f"  epoch {epoch}: {seen}/{ntrain} positions, {seen / (time.time() - te):,.0f}/s", flush=True)
         sched.step()
         net.eval()
-        v = va = 0.0
+        v = va = vq = 0.0
         nv = len(val["white"])
+        q = quantize(net)
         with torch.no_grad():
             for i in range(0, nv, 65536):
                 b = on_gpu({c: val[c][i:i + 65536] for c in val})
                 main_loss, aux_loss = losses(*b)
                 v += main_loss.item() * len(b[0])
                 va += aux_loss.item() * len(b[0])
+                vq += quantized_loss(q, *views(decode(b[0], b[1]), b[2], flip_t, args.mirror), b[3]).item() * len(b[0])
         aux_text = f" aux {va / nv:.5f}" if args.aux_weight > 0 else ""
-        print(f"epoch {epoch:3d} train {total.item() / seen:.5f} val {v / nv:.5f}{aux_text}  ({time.time() - t0:.0f}s)", flush=True)
+        print(f"epoch {epoch:3d} train {total.item() / seen:.5f} val {v / nv:.5f} quantized {vq / nv:.5f}{aux_text}  "
+              f"({time.time() - t0:.0f}s)", flush=True)
         export(net, f"{args.out}.e{epoch:02d}", args.mirror)
         torch.save({"net": net.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(), "epoch": epoch,
                     "args": vars(args)}, state_path + ".tmp")
@@ -708,6 +918,11 @@ def main():
                     help="first layer as a matrix product (needs CuPy) or as torch's EmbeddingBag, the slower earlier path")
     ap.add_argument("--mirror", action="store_true",
                     help="mirror each perspective's squares left to right while its king is on files e-h (exports CSNM)")
+    ap.add_argument("--tail", choices=TAILS, default="screlu",
+                    help="what follows the first layer: SCReLU and one output, or pairwise products and layers of 16, 32 and 1")
+    ap.add_argument("--sparsity", type=float, default=0.0,
+                    help="with --tail pairwise: weight of a penalty on the mean pairwise product, which pushes products to "
+                         "zero so the engine's L1 skips more groups of four (bullet's reference example uses 0.005)")
     ap.add_argument("--hidden", type=int, default=128)
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--batch", type=int, default=16384)
@@ -723,9 +938,11 @@ def main():
     ap.add_argument("--teacher", help="an exported network whose evaluation a training-only head learns")
     ap.add_argument("--teacher-weight", type=float, default=1.0, help="weight of the teacher loss (with --teacher)")
     args = ap.parse_args()
+    if args.sparsity and args.tail != "pairwise":
+        ap.error("--sparsity needs --tail pairwise")
     if args.ft == "dense":
         try:
-            screlu_kernels()
+            screlu_kernels() if args.tail == "screlu" else pairwise_kernels()
         except ImportError:
             ap.error("--ft dense needs CuPy (see gpu/README.md); --ft bag runs without it")
     if args.shards:
@@ -797,7 +1014,8 @@ def main():
         print(f"teacher {os.path.basename(args.teacher)}: validation loss {tv:.5f} on this run's target", flush=True)
 
     net = Net(args.hidden, aux=args.aux_weight > 0, policy=args.policy_weight > 0, teacher=teacher,
-              dense=args.ft == "dense").to(dev)
+              dense=args.ft == "dense", tail=args.tail).to(dev)
+    net.keep_products = args.sparsity > 0
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
     zero = torch.zeros((), device=dev)
@@ -825,15 +1043,18 @@ def main():
             idx = order[i:i + args.batch]
             opt.zero_grad()
             main_loss, aux_loss, pol_loss, teach_loss = losses(idx)
-            (main_loss + args.aux_weight * aux_loss + args.policy_weight * pol_loss
-             + args.teacher_weight * teach_loss).backward()
+            loss = main_loss + args.aux_weight * aux_loss + args.policy_weight * pol_loss + args.teacher_weight * teach_loss
+            if args.sparsity:
+                loss = loss + args.sparsity * net.products.mean()
+            loss.backward()
             opt.step()
             net.clip()
             total += main_loss.detach().double() * len(idx)
         total = total.item()
         sched.step()
         net.eval()
-        v = va = vp = vt = 0.0
+        v = va = vp = vt = vq = 0.0
+        q = quantize(net)
         with torch.no_grad():
             for i in range(0, len(val_t), 65536):
                 idx = val_t[i:i + 65536]
@@ -842,11 +1063,12 @@ def main():
                 va += aux_loss.item() * len(idx)
                 vp += pol_loss.item() * len(idx)
                 vt += teach_loss.item() * len(idx)
+                vq += quantized_loss(q, *inputs(idx), to_dev(target[idx])).item() * len(idx)
         aux_text = f" aux {va / len(val):.5f}" if args.aux_weight > 0 else ""
         aux_text += f" policy {vp / len(val):.3f}" if args.policy_weight > 0 else ""
         aux_text += f" teacher {vt / len(val):.5f}" if teacher else ""
-        print(f"epoch {epoch:3d} train {total / len(train):.5f} val {v / len(val):.5f}{aux_text}  "
-              f"({time.time() - t0:.0f}s)", flush=True)
+        print(f"epoch {epoch:3d} train {total / len(train):.5f} val {v / len(val):.5f} quantized {vq / len(val):.5f}"
+              f"{aux_text}  ({time.time() - t0:.0f}s)", flush=True)
 
     export(net.cpu(), args.out, args.mirror)
     print(f"wrote {args.out}")
