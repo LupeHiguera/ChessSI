@@ -44,17 +44,26 @@ The engine speaks UCI on stdin. Extra commands: `perft <depth>`, `d` (show board
 
 ## The development loop
 
-One idea per cycle. Do not batch ideas: a combined result says nothing about each one.
+One idea per cycle. Do not batch ideas: a combined result says nothing about each one. The exception is
+parts that only work together: threat inputs and the narrower first layer they need are tested as one step
+(owner's decision, 2026-11-25), with a control network for the width change alone logged beside it.
 
-1. Pick the top idea from the queue in `docs/IDEAS.md`, or propose a new one. The project's real
-   question is whether AI can find genuinely novel improvements, so look for those too (see
-   "Novel ideas" in `docs/IDEAS.md`), and check prior art before calling an idea novel.
+1. Pick the idea with the largest expected gain, from the queue in `docs/IDEAS.md` or a new one: network
+   and architecture steps come before small search changes, and an idea expected to gain under 3 Elo waits
+   until nothing larger is ready (owner's decision, 2026-11-25). The project's real question is whether AI
+   can find genuinely novel improvements, so look for those too (see "Novel ideas" in `docs/IDEAS.md`),
+   and check prior art before calling an idea novel.
 2. Implement the smallest version of it.
 3. `make test` must pass. If the change should not alter search (refactor, speedup), the bench node
    count must be unchanged.
-4. Run `scripts/sprt.sh` against the last accepted commit. Gainers use `ELO0=0 ELO1=5`; simplifications
-   use `ELO0=-5 ELO1=0`. The bounds are in normalized Elo, fastchess's default: measured on 2026-11-24, one
-   normalized Elo was about 0.52 Elo for this engine, so `[0, 5]` asks for about 2.6 Elo. Logs print both.
+4. Run `scripts/sprt.sh` against the last accepted commit. Gainers use `ELO0=0 ELO1=10`; simplifications
+   and defect repairs use `ELO0=-5 ELO1=0`. The bounds are in normalized Elo, fastchess's default: measured
+   on 2026-11-24, one normalized Elo was about 0.52 Elo for this engine, so `[0, 10]` asks for about 5 Elo.
+   Logs print both. (Until 2026-11-25 gainers used `[0, 5]`, which needs about 25,600 games a test and left
+   about half of them undecided at the 15,000-game cap.) A change whose value grows with search depth, such
+   as a network architecture or a pruning rule, that ends inconclusive or fails with a positive Elo estimate
+   at 10+0.1 may be retested at `TC=60+0.6` with the same bounds; a pass there accepts it, and the log keeps
+   both results (owner's decision, 2026-11-25).
 5. Add a row to the log in `docs/IDEAS.md`, pass or fail: date, model, kind (Known or Novel), idea,
    result, Elo with its error bar, games. The model column names the AI that proposed and wrote the
    change. That column is the benchmark data, so fill it in honestly.
